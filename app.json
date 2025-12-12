@@ -30,6 +30,9 @@
     },
     "web": {
       "favicon": "./assets/icons/icon.png"
-    }
+    },
+    "plugins": [
+      "expo-router"
+    ]
   }
 }

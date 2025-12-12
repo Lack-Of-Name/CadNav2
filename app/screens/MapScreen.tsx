@@ -1,24 +1,81 @@
-import MapView from 'react-native-maps';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, FC } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-export default function MapScreen() {
+let MapView: typeof import('react-native-maps').default | null = null;
+let MapContainer: any;
+let TileLayer: any;
+
+if (Platform.OS === 'web') {
+  const leaflet = require('react-leaflet');
+  MapContainer = leaflet.MapContainer;
+  TileLayer = leaflet.TileLayer;
+} else {
+  MapView = require('react-native-maps').default;
+}
+
+function useLeafletCss() {
+  const addedRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || addedRef.current) return;
+
+    const id = 'leaflet-css';
+    if (document.getElementById(id)) {
+      addedRef.current = true;
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    link.crossOrigin = '';
+    document.head.appendChild(link);
+
+    addedRef.current = true;
+  }, []);
+}
+
+const MapScreen: FC = () => {
+  useLeafletCss();
+
   return (
     <View style={styles.root}>
-      <MapView
-        style={styles.mapNative}
-        initialRegion={{
-          latitude: 51.5074,
-          longitude: -0.1278,
-          latitudeDelta: 0.09,
-          longitudeDelta: 0.09
-        }}
-        rotateEnabled
-        pitchEnabled
-      />
+      {Platform.OS === 'web' ? (
+        <View style={styles.mapCanvas}>
+          <MapContainer
+            center={[51.5074, -0.1278]}
+            zoom={13}
+            style={{ height: '100%', width: '100%' }}
+            zoomControl={false}
+          >
+            <TileLayer
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              attribution="&copy; OpenStreetMap contributors"
+            />
+          </MapContainer>
+        </View>
+      ) : (
+        MapView && (
+          <MapView
+            style={styles.mapNative}
+            initialRegion={{
+              latitude: 51.5074,
+              longitude: -0.1278,
+              latitudeDelta: 0.09,
+              longitudeDelta: 0.09
+            }}
+            rotateEnabled
+            pitchEnabled
+          />
+        )
+      )}
 
       <View style={styles.leftPill} pointerEvents="none">
         <Text style={styles.pillTitle}>Map</Text>
-        <Text style={styles.pillText}>Offline • GPS: unknown</Text>
+        <Text style={styles.pillText}>
+          {Platform.OS === 'web' ? 'OSM • Pan/zoom enabled' : 'Offline • GPS: unknown'}
+        </Text>
       </View>
 
       <View style={styles.rightStack} pointerEvents="none">
@@ -45,11 +102,17 @@ export default function MapScreen() {
       </View>
     </View>
   );
-}
+};
+
+export default MapScreen;
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+    backgroundColor: '#f8fafc'
+  },
+  mapCanvas: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: '#f8fafc'
   },
   mapNative: {
