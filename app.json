@@ -2,15 +2,34 @@
   "expo": {
     "name": "CadNav 2",
     "slug": "cadnav2",
+    "scheme": "cadnav",
     "version": "0.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "icon": "./assets/icons/icon.png",
+    "splash": {
+      "image": "./assets/icons/CadNav.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cadnav.CadNav",
+      "icon": "./assets/icons/CadNavIcon.icon"
     },
     "android": {
-      "edgeToEdgeEnabled": true
+      "icon": "./assets/icons/icon.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icons/foreground.png",
+        "backgroundImage": "./assets/icons/background.png",
+        "monochromeImage": "./assets/icons/monochromatic.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.cadnav.CadNav"
+    },
+    "web": {
+      "favicon": "./assets/icons/icon.png"
     }
   }
 }
