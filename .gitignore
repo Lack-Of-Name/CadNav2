@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+.DS_Store
+
+# Expo web
+web-build/
+
+# Local env
+.env
+.env.*

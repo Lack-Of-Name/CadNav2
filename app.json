@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "CadNav 2",
+    "slug": "cadnav2",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "edgeToEdgeEnabled": true
+    }
+  }
+}
