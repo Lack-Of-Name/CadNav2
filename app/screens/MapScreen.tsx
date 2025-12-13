@@ -1,5 +1,6 @@
-import React, { useEffect, useRef, FC } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, FC, useState } from 'react';
+import { Platform, Pressable, StyleSheet, Text, View, Modal, Linking } from 'react-native';
+import * as Location from 'expo-location';
 
 let MapView: typeof import('react-native-maps').default | null = null;
 let MapContainer: any;
@@ -12,6 +13,10 @@ if (Platform.OS === 'web') {
 } else {
   MapView = require('react-native-maps').default;
 }
+
+const openAppSettings = () => {
+  Linking.openSettings();
+};
 
 function useLeafletCss() {
   const addedRef = useRef(false);
@@ -36,15 +41,43 @@ function useLeafletCss() {
   }, []);
 }
 
+async function locationPermissionsEnabled() {
+  let { status } = await Location.requestForegroundPermissionsAsync();
+  if (status !== 'granted') {
+    return false;
+  }
+  return true;
+}
+
 const MapScreen: FC = () => {
   useLeafletCss();
+
+  const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+
+  const checkPermissions = async () => {
+    const granted = await locationPermissionsEnabled();
+    setLocationGranted(granted);
+    setShowPermissionModal(!granted);
+    console.log('Location permission granted:', granted);
+  };
+
+  
+
+  useEffect(() => {
+    checkPermissions();
+  }, []);
+
+  const handlePermissionRetry = async () => {
+    await checkPermissions();
+  };
 
   return (
     <View style={styles.root}>
       {Platform.OS === 'web' ? (
         <View style={styles.mapCanvas}>
           <MapContainer
-            center={[51.5074, -0.1278]}
+            center={[-36.9962, 145.0272]}
             zoom={13}
             style={{ height: '100%', width: '100%' }}
             zoomControl={false}
@@ -60,8 +93,8 @@ const MapScreen: FC = () => {
           <MapView
             style={styles.mapNative}
             initialRegion={{
-              latitude: 51.5074,
-              longitude: -0.1278,
+              latitude: -36.9962,
+              longitude: 145.0272,
               latitudeDelta: 0.09,
               longitudeDelta: 0.09
             }}
@@ -100,6 +133,25 @@ const MapScreen: FC = () => {
           </Pressable>
         </View>
       </View>
+
+      <Modal
+        visible={showPermissionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handlePermissionRetry}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalContent}>
+            <Text style={[styles.modalText, {fontSize: 18}]} >Location is not granted.</Text>
+             <Text style={[styles.modalText, {color: 'blue', textDecorationLine: "underline"}]} onPress={openAppSettings}>
+              Open Settings
+            </Text>
+            <Pressable style={styles.modalButton} onPress={handlePermissionRetry}>
+              <Text style={styles.modalButtonText}>OK</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -182,5 +234,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#0f172a'
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderRadius: 12,
+    minWidth: 260,
+    alignItems: 'center'
+  },
+  modalText: {
+    fontSize: 14,
+    color: '#0f172a',
+    marginBottom: 16,
+    textAlign: 'center'
+  },
+  modalButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#0f172a'
+  },
+  modalButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600'
   }
 });
