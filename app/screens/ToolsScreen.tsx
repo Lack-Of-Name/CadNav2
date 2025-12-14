@@ -1,5 +1,5 @@
 import React, { FC } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 interface CardProps {
   title: string;
@@ -21,6 +21,27 @@ const ToolsScreen: FC = () => {
       <View style={styles.header}>
         <Text style={styles.title}>Tools</Text>
         <Text style={styles.subtitle}>Full-page tools to keep the map uncluttered.</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Map actions</Text>
+        <View style={styles.actionsRow}>
+          <Pressable style={styles.actionButton}>
+            <Text style={styles.actionText}>Center</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton}>
+            <Text style={styles.actionText}>Add CP</Text>
+          </Pressable>
+          <Pressable style={styles.actionButton}>
+            <Text style={styles.actionText}>Measure</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.statusRow}>
+          <Text style={styles.statusText}>Grid: Off</Text>
+          <Text style={styles.statusDivider}>•</Text>
+          <Text style={styles.statusText}>Compass: Free</Text>
+        </View>
       </View>
 
       <View style={styles.grid}>
@@ -57,6 +78,51 @@ const styles = StyleSheet.create({
   grid: {
     marginTop: 16,
     gap: 12,
+  },
+  section: {
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 14,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  actionsRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+  },
+  actionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
+  },
+  statusRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#475569',
+  },
+  statusDivider: {
+    fontSize: 12,
+    color: '#94a3b8',
   },
   card: {
     borderWidth: 1,

@@ -10,7 +10,6 @@
 ## Navigation model
 - **Primary navigation: swipe between full pages**
   - Pages: Map ⇄ Tools ⇄ Settings (horizontal swipe)
-  - Provide a non-intrusive page affordance (e.g., subtle dots/rail/handle) only if needed for discoverability
   - Web/desktop fallback: keyboard arrows + clickable page selector (implementation detail, not required for UX spec)
 
 ## Top bar philosophy (if present)
@@ -64,6 +63,7 @@
 3. Which states warrant showing the top bar (and what exactly should it show)?
 4. What are the “must have in thumb zone” actions on the map page?
 5. Is “Tools” a full page, or should some tools be quick overlays on the map?
+6. How do we ensure panning on the map functions while navigating between pages?
 # CadNav 2 — UI plan (workshop draft)
 
 ## Goals
@@ -71,6 +71,7 @@
 - Works well on phone first, scales to tablet/desktop
 - No server dependencies; offline-first defaults
 - Minimal taps, clear state, and consistent controls
+- Strong focus on offline usage
 
 ## Navigation model
 - **Bottom nav (primary):** Map • Tools • Settings

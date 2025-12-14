@@ -1,6 +1,15 @@
 import React, { FC, ReactElement, useEffect, useMemo, useRef, useState } from 'react';
-import { Platform, ScrollView, ScrollViewProps, StyleSheet, View, LayoutChangeEvent, NativeSyntheticEvent, 
-NativeScrollEvent, useWindowDimensions, GestureResponderEvent} from 'react-native';
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  LayoutChangeEvent,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  useWindowDimensions,
+  GestureResponderEvent,
+} from 'react-native';
 
 export type SwipePage = {
   key: string;
@@ -10,13 +19,22 @@ export type SwipePage = {
 
 interface SwipePagerProps {
   pages: SwipePage[];
+  activeIndex?: number;
+  onActiveIndexChange?: (index: number) => void;
 }
 
-const SwipePager: FC<SwipePagerProps> = ({ pages }) => {
+const SwipePager: FC<SwipePagerProps> = ({ pages, activeIndex: activeIndexProp, onActiveIndexChange }) => {
   const scrollRef = useRef<ScrollView>(null);
   const { width: windowWidth } = useWindowDimensions();
 
-  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [internalIndex, setInternalIndex] = useState<number>(0);
+  const isControlled = typeof activeIndexProp === 'number';
+  const activeIndex = isControlled ? (activeIndexProp as number) : internalIndex;
+
+  const setActiveIndex = (next: number) => {
+    if (!isControlled) setInternalIndex(next);
+    onActiveIndexChange?.(next);
+  };
   const [layoutWidth, setLayoutWidth] = useState<number>(0);
 
   const maxIndex = pages.length - 1;
@@ -24,11 +42,14 @@ const SwipePager: FC<SwipePagerProps> = ({ pages }) => {
 
   const activeSwipeMode = pages[activeIndex]?.swipeMode ?? 'full';
 
+  const scrollToIndex = (nextIndex: number, animated = true) => {
+    scrollRef.current?.scrollTo?.({ x: nextIndex * pageWidth, y: 0, animated });
+  };
+
   const goTo = (nextIndex: number, animated = true) => {
     const clamped = Math.max(0, Math.min(maxIndex, nextIndex));
     setActiveIndex(clamped);
-
-    scrollRef.current?.scrollTo?.({ x: clamped * pageWidth, y: 0, animated });
+    scrollToIndex(clamped, animated);
   };
 
   const onLayout = (event: LayoutChangeEvent) => {
@@ -46,9 +67,13 @@ const SwipePager: FC<SwipePagerProps> = ({ pages }) => {
   };
 
   useEffect(() => {
-    goTo(activeIndex, false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    scrollToIndex(activeIndex, false);
   }, [pageWidth]);
+
+  useEffect(() => {
+    if (!isControlled) return;
+    scrollToIndex(activeIndex, false);
+  }, [activeIndexProp]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -67,17 +92,6 @@ const SwipePager: FC<SwipePagerProps> = ({ pages }) => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [activeIndex, maxIndex, pageWidth]);
-
-  const dots = useMemo(
-    () =>
-      pages.map((page, index) => (
-        <View
-          key={page.key}
-          style={[styles.dot, index === activeIndex ? styles.dotActive : styles.dotInactive]}
-        />
-      )),
-    [activeIndex, pages]
-  );
 
   const edgeSwipeHandlers = useMemo(() => {
     if (activeSwipeMode !== 'edge') return null;
@@ -140,10 +154,6 @@ const SwipePager: FC<SwipePagerProps> = ({ pages }) => {
           <View style={styles.edgeRight} pointerEvents="box-only" {...edgeSwipeHandlers?.right} />
         </>
       )}
-
-      <View style={styles.dots} pointerEvents="none">
-        {dots}
-      </View>
     </View>
   );
 };
@@ -171,25 +181,5 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 0,
     width: 22,
-  },
-  dots: {
-    position: 'absolute',
-    top: 12,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 999,
-    marginHorizontal: 4,
-  },
-  dotActive: {
-    backgroundColor: '#0f172a',
-  },
-  dotInactive: {
-    backgroundColor: '#cbd5e1',
   },
 });

@@ -1,45 +1,12 @@
-import React, { useEffect, useRef, FC, useState } from 'react';
+import React, { useEffect, FC, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, Modal, Linking } from 'react-native';
 import * as Location from 'expo-location';
-
-let MapView: typeof import('react-native-maps').default | null = null;
-let MapContainer: any;
-let TileLayer: any;
-
-if (Platform.OS === 'web') {
-  const leaflet = require('react-leaflet');
-  MapContainer = leaflet.MapContainer;
-  TileLayer = leaflet.TileLayer;
-} else {
-  MapView = require('react-native-maps').default;
-}
+import MapCanvas from '../../components/MapCanvas';
+import CompassOverlay from '../components/CompassOverlay';
 
 const openAppSettings = () => {
   Linking.openSettings();
 };
-
-function useLeafletCss() {
-  const addedRef = useRef(false);
-
-  useEffect(() => {
-    if (Platform.OS !== 'web' || addedRef.current) return;
-
-    const id = 'leaflet-css';
-    if (document.getElementById(id)) {
-      addedRef.current = true;
-      return;
-    }
-
-    const link = document.createElement('link');
-    link.id = id;
-    link.rel = 'stylesheet';
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    link.crossOrigin = '';
-    document.head.appendChild(link);
-
-    addedRef.current = true;
-  }, []);
-}
 
 async function locationPermissionsEnabled() {
   let { status } = await Location.requestForegroundPermissionsAsync();
@@ -50,16 +17,13 @@ async function locationPermissionsEnabled() {
 }
 
 const MapScreen: FC = () => {
-  useLeafletCss();
-
-  const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [compassOpen, setCompassOpen] = useState(false);
+  const [headingDeg, setHeadingDeg] = useState<number | null>(null);
 
   const checkPermissions = async () => {
     const granted = await locationPermissionsEnabled();
-    setLocationGranted(granted);
     setShowPermissionModal(!granted);
-    console.log('Location permission granted:', granted);
   };
 
   
@@ -68,71 +32,48 @@ const MapScreen: FC = () => {
     checkPermissions();
   }, []);
 
+  useEffect(() => {
+    if (!compassOpen) return;
+    if (Platform.OS === 'web') return;
+
+    let subscription: Location.LocationSubscription | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        subscription = await Location.watchHeadingAsync((event) => {
+          if (cancelled) return;
+          const next =
+            (typeof event.trueHeading === 'number' && event.trueHeading >= 0)
+              ? event.trueHeading
+              : event.magHeading;
+          if (typeof next === 'number') setHeadingDeg(next);
+        });
+      } catch {
+        // no-op: heading isn't available on all devices/sims
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      subscription?.remove();
+    };
+  }, [compassOpen]);
+
   const handlePermissionRetry = async () => {
     await checkPermissions();
   };
 
   return (
     <View style={styles.root}>
-      {Platform.OS === 'web' ? (
-        <View style={styles.mapCanvas}>
-          <MapContainer
-            center={[-36.9962, 145.0272]}
-            zoom={13}
-            style={{ height: '100%', width: '100%' }}
-            zoomControl={false}
-          >
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution="&copy; OpenStreetMap contributors"
-            />
-          </MapContainer>
-        </View>
-      ) : (
-        MapView && (
-          <MapView
-            style={styles.mapNative}
-            initialRegion={{
-              latitude: -36.9962,
-              longitude: 145.0272,
-              latitudeDelta: 0.09,
-              longitudeDelta: 0.09
-            }}
-            rotateEnabled
-            pitchEnabled
-          />
-        )
-      )}
+      <MapCanvas />
 
-      <View style={styles.leftPill} pointerEvents="none">
-        <Text style={styles.pillTitle}>Map</Text>
-        <Text style={styles.pillText}>
-          {Platform.OS === 'web' ? 'OSM • Pan/zoom enabled' : 'Offline • GPS: unknown'}
-        </Text>
-      </View>
-
-      <View style={styles.rightStack} pointerEvents="none">
-        <View style={styles.rightPill}>
-          <Text style={styles.pillText}>Grid: Off</Text>
-        </View>
-        <View style={styles.rightPill}>
-          <Text style={styles.pillText}>Compass: Free</Text>
-        </View>
-      </View>
-
-      <View style={styles.bottomBar}>
-        <View style={styles.actionBar}>
-          <Pressable style={styles.actionButton}>
-            <Text style={styles.actionText}>Center</Text>
-          </Pressable>
-          <Pressable style={styles.actionButton}>
-            <Text style={styles.actionText}>Add CP</Text>
-          </Pressable>
-          <Pressable style={styles.actionButton}>
-            <Text style={styles.actionText}>Measure</Text>
-          </Pressable>
-        </View>
-      </View>
+      <CompassOverlay
+        open={compassOpen}
+        onToggle={() => setCompassOpen((v) => !v)}
+        headingDeg={Platform.OS === 'web' ? 0 : headingDeg}
+        targetLabel={null}
+      />
 
       <Modal
         visible={showPermissionModal}
@@ -162,78 +103,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f8fafc'
-  },
-  mapCanvas: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#f8fafc'
-  },
-  mapNative: {
-    ...StyleSheet.absoluteFillObject
-  },
-  leftPill: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10
-  },
-  rightStack: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    gap: 8
-  },
-  rightPill: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10
-  },
-  pillTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0f172a'
-  },
-  pillText: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#334155'
-  },
-  bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 22,
-    paddingHorizontal: 16
-  },
-  actionBar: {
-    flexDirection: 'row',
-    gap: 8,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 18,
-    padding: 8,
-    maxWidth: 420,
-    width: '100%'
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center'
-  },
-  actionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#0f172a'
   },
   modalBackdrop: {
     flex: 1,
