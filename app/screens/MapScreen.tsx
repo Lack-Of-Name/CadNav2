@@ -4,6 +4,7 @@ import MapCanvas from '../../components/MapCanvas';
 import CompassOverlay from '../components/CompassOverlay';
 import { MapController, useCadNav } from '../state/CadNavContext';
 import { calculateBearingDegrees } from '../utils/geo';
+import { symbolOnIosMaterialOtherwise } from '../utils/platform';
 
 const openAppSettings = async () => {
   try {
@@ -98,6 +99,13 @@ const MapScreen: FC = () => {
     selectedCheckpoint?.coordinate ?? null
   );
 
+  const zoomIcon = symbolOnIosMaterialOtherwise({
+    iosSymbol: 'location.fill.viewfinder',
+    otherSymbol: 'my-location',
+    size: 22,
+    color: '#0f172a',
+  });
+
   return (
     <View style={styles.root}>
       <MapCanvas
@@ -128,7 +136,7 @@ const MapScreen: FC = () => {
         style={styles.zoomButton}
         onPress={handleZoomToLocation}
       >
-        <Text style={styles.zoomButtonText}>LOC</Text>
+        {zoomIcon}
       </Pressable>
 
       <CompassOverlay
