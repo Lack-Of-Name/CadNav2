@@ -1,78 +1,142 @@
-import React, { useEffect, FC, useState } from 'react';
+import React, { useCallback, useEffect, FC, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, Modal, Linking } from 'react-native';
-import * as Location from 'expo-location';
 import MapCanvas from '../../components/MapCanvas';
 import CompassOverlay from '../components/CompassOverlay';
+import { MapController, useCadNav } from '../state/CadNavContext';
+import { calculateBearingDegrees } from '../utils/geo';
 
-const openAppSettings = () => {
-  Linking.openSettings();
+const openAppSettings = async () => {
+  try {
+    await Linking.openSettings();
+  } catch {
+    // Not all platforms/environments can open OS settings.
+    // Avoid throwing during the location/zoom flow.
+  }
 };
 
-async function locationPermissionsEnabled() {
-  let { status } = await Location.requestForegroundPermissionsAsync();
-  if (status !== 'granted') {
-    return false;
-  }
-  return true;
-}
-
 const MapScreen: FC = () => {
+  const {
+    checkpoints,
+    selectedCheckpointId,
+    location,
+    placingCheckpoint,
+    ensureLocationPermission,
+    startLocation,
+    centerOnMyLocation,
+    cancelCheckpointPlacement,
+    placeCheckpointAt,
+    registerMapController,
+    selectCheckpoint,
+  } = useCadNav();
+
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
-  const [headingDeg, setHeadingDeg] = useState<number | null>(null);
+
+  const mapControllerRef = useRef<MapController | null>(null);
+  const pendingCenterRef = useRef(false);
+  const didAutoCenterRef = useRef(false);
+
+  const setMapRef = useCallback(
+    (controller: MapController | null) => {
+      mapControllerRef.current = controller;
+      registerMapController(controller);
+    },
+    [registerMapController]
+  );
 
   const checkPermissions = async () => {
-    const granted = await locationPermissionsEnabled();
+    const granted = await ensureLocationPermission();
     setShowPermissionModal(!granted);
+    if (granted) {
+      await startLocation();
+      pendingCenterRef.current = true;
+    }
   };
-
-  
 
   useEffect(() => {
     checkPermissions();
   }, []);
 
   useEffect(() => {
-    if (!compassOpen) return;
-    if (Platform.OS === 'web') return;
+    if (didAutoCenterRef.current) return;
+    if (!pendingCenterRef.current) return;
+    if (!mapControllerRef.current) return;
+    if (!location.coordinate) return;
 
-    let subscription: Location.LocationSubscription | null = null;
-    let cancelled = false;
+    centerOnMyLocation();
+    pendingCenterRef.current = false;
+    didAutoCenterRef.current = true;
+  }, [centerOnMyLocation, location.coordinate]);
 
-    (async () => {
-      try {
-        subscription = await Location.watchHeadingAsync((event) => {
-          if (cancelled) return;
-          const next =
-            (typeof event.trueHeading === 'number' && event.trueHeading >= 0)
-              ? event.trueHeading
-              : event.magHeading;
-          if (typeof next === 'number') setHeadingDeg(next);
-        });
-      } catch {
-        // no-op: heading isn't available on all devices/sims
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      subscription?.remove();
-    };
-  }, [compassOpen]);
+  useEffect(() => {
+    return () => registerMapController(null);
+  }, [registerMapController]);
 
   const handlePermissionRetry = async () => {
     await checkPermissions();
   };
 
+  const handleZoomToLocation = async () => {
+    const granted = await ensureLocationPermission();
+    setShowPermissionModal(!granted);
+    if (!granted) return;
+    await startLocation();
+    pendingCenterRef.current = true;
+
+    if (mapControllerRef.current && location.coordinate) {
+      centerOnMyLocation();
+      pendingCenterRef.current = false;
+      didAutoCenterRef.current = true;
+    }
+  };
+
+  const selectedCheckpoint =
+    selectedCheckpointId ? checkpoints.find((c) => c.id === selectedCheckpointId) ?? null : null;
+
+  const targetBearingDeg = calculateBearingDegrees(
+    location.coordinate,
+    selectedCheckpoint?.coordinate ?? null
+  );
+
   return (
     <View style={styles.root}>
-      <MapCanvas />
+      <MapCanvas
+        ref={setMapRef}
+        checkpoints={checkpoints}
+        selectedCheckpointId={selectedCheckpointId}
+        userLocation={location.coordinate}
+        userHeadingDeg={location.headingDeg ?? null}
+        placingCheckpoint={placingCheckpoint}
+        onPlaceCheckpointAt={placeCheckpointAt}
+        onSelectCheckpoint={(id: string) => selectCheckpoint(id)}
+      />
+
+      {placingCheckpoint && (
+        <View style={styles.placingBannerWrap}>
+          <View style={styles.placingBanner}>
+            <Text style={styles.placingBannerText}>Placing mode: tap map to drop checkpoints</Text>
+            <Pressable style={styles.placingBannerButton} onPress={cancelCheckpointPlacement}>
+              <Text style={styles.placingBannerButtonText}>Exit</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Zoom to my location"
+        style={styles.zoomButton}
+        onPress={handleZoomToLocation}
+      >
+        <Text style={styles.zoomButtonText}>LOC</Text>
+      </Pressable>
 
       <CompassOverlay
         open={compassOpen}
         onToggle={() => setCompassOpen((v) => !v)}
-        headingDeg={Platform.OS === 'web' ? 0 : headingDeg}
-        targetLabel={null}
+        headingDeg={Platform.OS === 'web' ? 0 : (location.headingDeg ?? null)}
+        targetBearingDeg={targetBearingDeg}
+        targetLabel={selectedCheckpoint?.name ?? null}
       />
 
       <Modal
@@ -103,6 +167,57 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f8fafc'
+  },
+  placingBannerWrap: {
+    position: 'absolute',
+    top: 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  placingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(15,23,42,0.92)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  placingBannerText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  placingBannerButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#ffffff',
+  },
+  placingBannerButtonText: {
+    color: '#0f172a',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  zoomButton: {
+    position: 'absolute',
+    left: 12,
+    bottom: 86,
+    width: 46,
+    height: 46,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  zoomButtonText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0f172a',
+    letterSpacing: 0.6,
   },
   modalBackdrop: {
     flex: 1,

@@ -1,9 +1,49 @@
-import React, { useEffect, useRef } from 'react';
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from 'react';
 import { StyleSheet, View } from 'react-native';
+import type { LatLng } from '../app/utils/geo';
 
 const leaflet = require('react-leaflet');
 const MapContainer = leaflet.MapContainer;
 const TileLayer = leaflet.TileLayer;
+const Marker = leaflet.Marker;
+const CircleMarker = leaflet.CircleMarker;
+const Polyline = leaflet.Polyline;
+const useMap = leaflet.useMap;
+const useMapEvents = leaflet.useMapEvents;
+
+const L = require('leaflet');
+
+export type Checkpoint = {
+  id: string;
+  name: string;
+  coordinate: LatLng;
+  createdAt?: number;
+};
+
+export type MapCanvasHandle = {
+  centerOn: (coordinate: LatLng, options?: { animated?: boolean; zoom?: number }) => void;
+  getCenter: () => LatLng | null;
+};
+
+export type MapCanvasProps = {
+  checkpoints: Checkpoint[];
+  selectedCheckpointId: string | null;
+  userLocation: LatLng | null;
+  userHeadingDeg?: number | null;
+  placingCheckpoint?: boolean;
+  onPlaceCheckpointAt?: (coordinate: LatLng) => void;
+  onSelectCheckpoint: (id: string) => void;
+};
+
+function coordKey(coord: LatLng) {
+  return `${coord.latitude.toFixed(6)},${coord.longitude.toFixed(6)}`;
+}
 
 function useLeafletCss() {
   const addedRef = useRef(false);
@@ -28,25 +68,249 @@ function useLeafletCss() {
   }, []);
 }
 
-export default function MapCanvas() {
-  useLeafletCss();
+const DEFAULT_CENTER: LatLng = { latitude: -36.9962, longitude: 145.0272 };
+const DEFAULT_ZOOM = 13;
 
-  return (
-    <View style={styles.root}>
-      <MapContainer
-        center={[-36.9962, 145.0272]}
-        zoom={13}
-        style={{ height: '100%', width: '100%' }}
-        zoomControl={false}
-      >
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="&copy; OpenStreetMap contributors"
-        />
-      </MapContainer>
-    </View>
-  );
+function toLeafletLatLng(coord: LatLng) {
+  return [coord.latitude, coord.longitude] as [number, number];
 }
+
+function makeFlagIcon(selected: boolean) {
+  const stroke = selected ? '#0f172a' : '#64748b';
+  const fill = selected ? '#0f172a' : '#ffffff';
+  const text = selected ? '#ffffff' : '#0f172a';
+
+  const html = `
+    <div style="position:relative; width:28px; height:38px;">
+      <div style="position:absolute; left:12px; top:6px; width:2px; height:22px; background:${stroke}; border-radius:999px;"></div>
+      <div style="position:absolute; left:14px; top:6px; width:14px; height:10px; background:${fill}; border:1px solid ${stroke}; border-radius:4px; display:flex; align-items:center; justify-content:center;">
+        <div style="font-size:9px; font-weight:800; color:${text}; line-height:9px;">CP</div>
+      </div>
+      <div style="position:absolute; left:10px; bottom:6px; width:6px; height:6px; background:${stroke}; border-radius:999px;"></div>
+    </div>
+  `;
+
+  return L.divIcon({
+    className: 'leaflet-interactive',
+    html,
+    iconSize: [28, 38],
+    iconAnchor: [13, 32],
+  });
+}
+
+function makeLocationIcon(headingDeg: number | null | undefined) {
+  const safeHeading = typeof headingDeg === 'number' ? headingDeg : 0;
+  const html = `
+    <div style="position:relative; width:24px; height:24px;">
+      <div style="position:absolute; left:50%; top:50%; width:16px; height:16px; transform:translate(-50%,-50%); border-radius:999px; background:#0f172a; border:3px solid #ffffff; box-shadow:0 0 0 1px rgba(226,232,240,1);"></div>
+      <div style="position:absolute; left:50%; top:50%; width:0; height:0; transform:translate(-50%,-50%) rotate(${safeHeading}deg);">
+        <div style="position:absolute; left:-5px; top:-16px; width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid #0f172a;"></div>
+      </div>
+    </div>
+  `;
+
+  return L.divIcon({
+    className: '',
+    html,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+}
+
+const MapBridge = ({
+  onMap,
+  onCenter,
+  placingCheckpoint,
+  onPlaceCheckpointAt,
+}: {
+  onMap: (map: any) => void;
+  onCenter: (coord: LatLng) => void;
+  placingCheckpoint: boolean;
+  onPlaceCheckpointAt: ((coordinate: LatLng) => void) | null;
+}) => {
+  const map = useMap();
+
+  const placingCheckpointRef = useRef(placingCheckpoint);
+  const onPlaceCheckpointAtRef = useRef(onPlaceCheckpointAt);
+
+  placingCheckpointRef.current = placingCheckpoint;
+  onPlaceCheckpointAtRef.current = onPlaceCheckpointAt;
+
+  useEffect(() => {
+    onMap(map);
+    const center = map.getCenter();
+    onCenter({ latitude: center.lat, longitude: center.lng });
+  }, [map, onMap, onCenter]);
+
+  useMapEvents({
+    moveend: () => {
+      const center = map.getCenter();
+      onCenter({ latitude: center.lat, longitude: center.lng });
+    },
+    click: (e: any) => {
+      if (!placingCheckpointRef.current) return;
+      const handler = onPlaceCheckpointAtRef.current;
+      if (!handler) return;
+      const ll = e?.latlng;
+      if (!ll) return;
+      handler({ latitude: ll.lat, longitude: ll.lng });
+    },
+  });
+
+  return null;
+};
+
+const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
+  (
+    {
+      checkpoints,
+      selectedCheckpointId,
+      userLocation,
+      userHeadingDeg = null,
+      placingCheckpoint = false,
+      onPlaceCheckpointAt,
+      onSelectCheckpoint,
+    },
+    ref
+  ) => {
+    useLeafletCss();
+
+    const placingCheckpointRef = useRef(placingCheckpoint);
+    const onPlaceCheckpointAtRef = useRef(onPlaceCheckpointAt);
+    const onSelectCheckpointRef = useRef(onSelectCheckpoint);
+
+    placingCheckpointRef.current = placingCheckpoint;
+    onPlaceCheckpointAtRef.current = onPlaceCheckpointAt;
+    onSelectCheckpointRef.current = onSelectCheckpoint;
+
+    const mapRef = useRef<any | null>(null);
+    const centerRef = useRef<LatLng>(DEFAULT_CENTER);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        centerOn: (coordinate, options) => {
+          const map = mapRef.current;
+          if (!map) return;
+          const zoom = typeof options?.zoom === 'number' ? options.zoom : map.getZoom();
+          map.setView(toLeafletLatLng(coordinate), zoom, { animate: options?.animated ?? true });
+        },
+        getCenter: () => centerRef.current ?? null,
+      }),
+      []
+    );
+
+    const locationIcon = useMemo(() => makeLocationIcon(userHeadingDeg), [userHeadingDeg]);
+
+    const markerGroups = useMemo(() => {
+      const groups = new Map<string, { coordinate: LatLng; checkpoints: Checkpoint[] }>();
+      for (const cp of checkpoints) {
+        const key = coordKey(cp.coordinate);
+        const existing = groups.get(key);
+        if (existing) existing.checkpoints.push(cp);
+        else groups.set(key, { coordinate: cp.coordinate, checkpoints: [cp] });
+      }
+
+      return Array.from(groups.values()).map((g) => {
+        const selected =
+          selectedCheckpointId != null && g.checkpoints.some((c) => c.id === selectedCheckpointId);
+        const representative =
+          g.checkpoints
+            .slice()
+            .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))[0] ?? g.checkpoints[0];
+        return { ...g, selected, representative };
+      });
+    }, [checkpoints, selectedCheckpointId]);
+
+    const connectionPositions = useMemo(() => {
+      if (checkpoints.length < 2) return null;
+
+      const seen = new Set<string>();
+      const points: [number, number][] = [];
+
+      for (const cp of checkpoints) {
+        const key = coordKey(cp.coordinate);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        points.push(toLeafletLatLng(cp.coordinate));
+      }
+
+      return points.length >= 2 ? points : null;
+    }, [checkpoints]);
+
+    return (
+      <View style={styles.root}>
+        <MapContainer
+          center={toLeafletLatLng(DEFAULT_CENTER)}
+          zoom={DEFAULT_ZOOM}
+          style={{ height: '100%', width: '100%' }}
+          zoomControl={false}
+        >
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution="&copy; OpenStreetMap contributors"
+          />
+
+          <MapBridge
+            onMap={(map) => {
+              mapRef.current = map;
+            }}
+            onCenter={(center) => {
+              centerRef.current = center;
+            }}
+            placingCheckpoint={placingCheckpoint}
+            onPlaceCheckpointAt={onPlaceCheckpointAt ?? null}
+          />
+
+          {userLocation && (
+            <Marker position={toLeafletLatLng(userLocation)} icon={locationIcon} />
+          )}
+
+          {connectionPositions && (
+            <Polyline positions={connectionPositions} pathOptions={{ color: '#0f172a', weight: 2, opacity: 0.9 }} />
+          )}
+
+          {markerGroups.map((g) => {
+            const icon = makeFlagIcon(g.selected);
+            return (
+              <Marker
+                key={coordKey(g.coordinate)}
+                position={toLeafletLatLng(g.coordinate)}
+                icon={icon}
+                eventHandlers={{
+                  click: (e: any) => {
+                    try {
+                      if (e?.originalEvent) {
+                        L.DomEvent.stopPropagation(e.originalEvent);
+                      }
+                    } catch {
+                      // ignore
+                    }
+                    if (placingCheckpointRef.current) {
+                      const handler = onPlaceCheckpointAtRef.current;
+                      if (handler) handler(g.coordinate);
+                      return;
+                    }
+
+                    onSelectCheckpointRef.current(g.representative.id);
+                  },
+                }}
+              />
+            );
+          })}
+
+          {/* Simple accuracy halo when available later (kept as placeholder).
+              Leaving CircleMarker import here makes it easy to enable. */}
+          {false && userLocation && (
+            <CircleMarker center={toLeafletLatLng(userLocation)} radius={10} />
+          )}
+        </MapContainer>
+      </View>
+    );
+  }
+);
+
+export default MapCanvas;
 
 const styles = StyleSheet.create({
   root: {

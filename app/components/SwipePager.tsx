@@ -1,4 +1,13 @@
-import React, { FC, ReactElement, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  FC,
+  ReactElement,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Platform,
   ScrollView,
@@ -23,7 +32,12 @@ interface SwipePagerProps {
   onActiveIndexChange?: (index: number) => void;
 }
 
-const SwipePager: FC<SwipePagerProps> = ({ pages, activeIndex: activeIndexProp, onActiveIndexChange }) => {
+export type SwipePagerHandle = {
+  goTo: (index: number, animated?: boolean) => void;
+};
+
+const SwipePager = forwardRef<SwipePagerHandle, SwipePagerProps>(
+  ({ pages, activeIndex: activeIndexProp, onActiveIndexChange }, ref) => {
   const scrollRef = useRef<ScrollView>(null);
   const { width: windowWidth } = useWindowDimensions();
 
@@ -52,6 +66,14 @@ const SwipePager: FC<SwipePagerProps> = ({ pages, activeIndex: activeIndexProp, 
     scrollToIndex(clamped, animated);
   };
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      goTo,
+    }),
+    [maxIndex, pageWidth, activeIndex, isControlled]
+  );
+
   const onLayout = (event: LayoutChangeEvent) => {
     const nextWidth = event.nativeEvent.layout.width;
     if (nextWidth && nextWidth !== layoutWidth) {
@@ -60,6 +82,13 @@ const SwipePager: FC<SwipePagerProps> = ({ pages, activeIndex: activeIndexProp, 
   };
 
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = event.nativeEvent.contentOffset.x;
+    const nextIndex = Math.round(x / pageWidth);
+    const clamped = Math.max(0, Math.min(maxIndex, nextIndex));
+    if (clamped !== activeIndex) setActiveIndex(clamped);
+  };
+
+  const onScrollEndDrag = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const x = event.nativeEvent.contentOffset.x;
     const nextIndex = Math.round(x / pageWidth);
     const clamped = Math.max(0, Math.min(maxIndex, nextIndex));
@@ -139,6 +168,7 @@ const SwipePager: FC<SwipePagerProps> = ({ pages, activeIndex: activeIndexProp, 
         scrollEnabled={activeSwipeMode === 'full'}
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onMomentumScrollEnd}
+        onScrollEndDrag={onScrollEndDrag}
         scrollEventThrottle={16}
       >
         {pages.map((page) => (
@@ -156,7 +186,8 @@ const SwipePager: FC<SwipePagerProps> = ({ pages, activeIndex: activeIndexProp, 
       )}
     </View>
   );
-};
+}
+);
 
 export default SwipePager;
 
