@@ -4,7 +4,6 @@ import MapCanvas from '../../components/MapCanvas';
 import CompassOverlay from '../components/CompassOverlay';
 import { MapController, useCadNav } from '../state/CadNavContext';
 import { calculateBearingDegrees } from '../utils/geo';
-import { symbolOnIosMaterialOtherwise } from '../utils/platform';
 
 const openAppSettings = async () => {
   try {
@@ -99,13 +98,6 @@ const MapScreen: FC = () => {
     selectedCheckpoint?.coordinate ?? null
   );
 
-  const zoomIcon = symbolOnIosMaterialOtherwise({
-    iosSymbol: 'location.fill.viewfinder',
-    otherSymbol: 'my-location',
-    size: 22,
-    color: '#0f172a',
-  });
-
   return (
     <View style={styles.root}>
       <MapCanvas
@@ -121,12 +113,14 @@ const MapScreen: FC = () => {
 
       {placingCheckpoint && (
         <View style={styles.placingBannerWrap}>
-          <View style={styles.placingBanner}>
-            <Text style={styles.placingBannerText}>Placing mode: tap map to drop checkpoints</Text>
-            <Pressable style={styles.placingBannerButton} onPress={cancelCheckpointPlacement}>
-              <Text style={styles.placingBannerButtonText}>Exit</Text>
-            </Pressable>
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Exit placing mode"
+            style={({ pressed }) => [styles.placingBanner, pressed && styles.placingBannerPressed]}
+            onPress={cancelCheckpointPlacement}
+          >
+            <Text style={styles.placingBannerText}>Tap to exit placement mode</Text>
+          </Pressable>
         </View>
       )}
 
@@ -136,7 +130,7 @@ const MapScreen: FC = () => {
         style={styles.zoomButton}
         onPress={handleZoomToLocation}
       >
-        {zoomIcon}
+        <Text style={styles.zoomButtonText}>LOC</Text>
       </Pressable>
 
       <CompassOverlay
@@ -192,21 +186,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
   },
+  placingBannerPressed: {
+    opacity: 0.9,
+  },
   placingBannerText: {
     color: '#ffffff',
     fontSize: 12,
     fontWeight: '600',
-  },
-  placingBannerButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#ffffff',
-  },
-  placingBannerButtonText: {
-    color: '#0f172a',
-    fontSize: 12,
-    fontWeight: '700',
   },
   zoomButton: {
     position: 'absolute',

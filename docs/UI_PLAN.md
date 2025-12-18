@@ -10,7 +10,7 @@
 ## Navigation model
 - **Primary navigation: swipe between full pages**
   - Pages: Map ⇄ Tools ⇄ Settings (horizontal swipe)
-  - Web/desktop fallback: keyboard arrows + clickable page selector (implementation detail, not required for UX spec)
+  - Web/desktop fallback: keyboard arrows + clickable page selector
 
 ## Top bar philosophy (if present)
 - No static title/header by default.

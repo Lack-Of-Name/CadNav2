@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import type { LatLng } from '../app/utils/geo';
 
@@ -145,14 +145,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         )}
 
         {locationCoord && (
-          <Marker
-            coordinate={locationCoord}
-            anchor={{ x: 0.5, y: 0.5 }}
-            zIndex={1000}
-            // On Android, custom markers can fail to appear if view tracking is disabled.
-            // This is a tiny view and should be fine performance-wise.
-            tracksViewChanges={Platform.OS === 'android'}
-          >
+          <Marker coordinate={locationCoord} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
             <View style={styles.locationWrap}>
               {typeof userHeadingDeg === 'number' && (
                 <View

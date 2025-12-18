@@ -83,17 +83,10 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
     if (!granted) return;
 
     // Per Expo Location docs, permissions can be granted while services/providers are disabled.
-    // On Android we can often prompt the user to enable providers.
+    // In that case, attempting to watch location may reject.
     try {
       const servicesEnabled = await Location.hasServicesEnabledAsync();
-      if (!servicesEnabled && Platform.OS === 'android') {
-        try {
-          // Prompts user to enable location services when possible.
-          await Location.enableNetworkProviderAsync();
-        } catch {
-          // User dismissed or provider prompt not available.
-        }
-      }
+      if (!servicesEnabled) return;
     } catch {
       // Ignore provider checks if unavailable on the current platform.
     }
@@ -118,50 +111,12 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
     }
     headingSubRef.current = null;
 
-    // Seed an initial location immediately so UI doesn't wait for the first watch callback.
-    // Some Android devices can take a long time before the watch delivers the first fix.
-    try {
-      const lastKnown = await Location.getLastKnownPositionAsync({});
-      if (lastKnown?.coords?.latitude != null && lastKnown?.coords?.longitude != null) {
-        setLocation((prev) => ({
-          ...prev,
-          coordinate: {
-            latitude: lastKnown.coords.latitude,
-            longitude: lastKnown.coords.longitude,
-          },
-          accuracyMeters: lastKnown.coords.accuracy ?? null,
-          updatedAt: Date.now(),
-        }));
-      } else {
-        const position = await Location.getCurrentPositionAsync({
-          accuracy: Platform.OS === 'android' ? Location.Accuracy.High : Location.Accuracy.Balanced,
-          timeout: 15000,
-          maximumAge: 10000,
-          // Android-only: may show a system dialog to enable providers.
-          ...(Platform.OS === 'android' ? { mayShowUserSettingsDialog: true } : null),
-        } as Location.LocationOptions);
-
-        setLocation((prev) => ({
-          ...prev,
-          coordinate: {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          },
-          accuracyMeters: position.coords.accuracy ?? null,
-          updatedAt: Date.now(),
-        }));
-      }
-    } catch {
-      // Ignore initial fix failures; the watch below may still succeed.
-    }
-
     try {
       locationSubRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Platform.OS === 'android' ? Location.Accuracy.High : Location.Accuracy.Balanced,
+          accuracy: Location.Accuracy.Balanced,
           timeInterval: 1000,
           distanceInterval: 1,
-          ...(Platform.OS === 'android' ? { mayShowUserSettingsDialog: true } : null),
         },
         (position) => {
           setLocation((prev) => ({
@@ -171,6 +126,13 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
               longitude: position.coords.longitude,
             },
             accuracyMeters: position.coords.accuracy ?? null,
+            updatedAt: Date.now(),
+          }));
+        },
+        () => {
+          // Avoid unhandled errors bubbling to UI; keep last known coordinate.
+          setLocation((prev) => ({
+            ...prev,
             updatedAt: Date.now(),
           }));
         }

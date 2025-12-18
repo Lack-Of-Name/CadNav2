@@ -23,6 +23,7 @@ npm run ios
 ```
 
 UI workshop notes: see docs/UI_PLAN.md
+Project file guide: see docs/FILE_GUIDE.md
 
 ## Prototype
 
