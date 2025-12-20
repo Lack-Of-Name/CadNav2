@@ -7,6 +7,8 @@ import React, {
 } from 'react';
 import { StyleSheet, View } from 'react-native';
 import type { LatLng } from '../app/utils/geo';
+import type { GridConfig } from '../app/utils/grid';
+import { computeGrid } from '../app/utils/grid';
 
 const leaflet = require('react-leaflet');
 const MapContainer = leaflet.MapContainer;
@@ -36,6 +38,7 @@ export type MapCanvasProps = {
   selectedCheckpointId: string | null;
   userLocation: LatLng | null;
   userHeadingDeg?: number | null;
+  grid?: GridConfig;
   placingCheckpoint?: boolean;
   onPlaceCheckpointAt?: (coordinate: LatLng) => void;
   onSelectCheckpoint: (id: string) => void;
@@ -160,6 +163,134 @@ const MapBridge = ({
   return null;
 };
 
+const GridOverlay = ({ grid }: { grid: GridConfig | null }) => {
+  const map = useMap();
+  const layerRef = useRef<any | null>(null);
+
+  useEffect(() => {
+    if (!layerRef.current) {
+      layerRef.current = L.layerGroup();
+      layerRef.current.addTo(map);
+    }
+    return () => {
+      try {
+        layerRef.current?.remove();
+      } catch {
+        // ignore
+      }
+      layerRef.current = null;
+    };
+  }, [map]);
+
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+
+    const draw = () => {
+      try {
+        layer.clearLayers();
+      } catch {
+        // ignore
+      }
+
+      if (!grid?.enabled || !grid.anchor) return;
+
+      const b = map.getBounds();
+      const north = b.getNorth();
+      const south = b.getSouth();
+      const west = b.getWest();
+      const east = b.getEast();
+
+      const computed = computeGrid(
+        { latMin: south, latMax: north, lonMin: west, lonMax: east },
+        grid
+      );
+      if (!computed) return;
+
+      // Density controls (keep UX clean at low zoom).
+      const size = map.getSize();
+      const metersWide = map.distance([south, west], [south, east]);
+      const metersPerPx = metersWide > 0 && size?.x ? metersWide / size.x : 999;
+      const majorPx = grid.majorSpacingMeters / Math.max(0.001, metersPerPx);
+      const showMinor = majorPx >= 90;
+      const showLabels = majorPx >= 55;
+
+      const majorStyle = { color: '#0f172a', weight: 1, opacity: 0.55, interactive: false };
+      const minorStyle = { color: '#0f172a', weight: 1, opacity: 0.14, interactive: false };
+
+      const latPad = Math.max(0, (north - south) * 0.05);
+      const lonPad = Math.max(0, (east - west) * 0.05);
+
+      if (showMinor) {
+        for (const lon of computed.minorLonLines) {
+          L.polyline(
+            [
+              [south, lon],
+              [north, lon],
+            ],
+            minorStyle
+          ).addTo(layer);
+        }
+        for (const lat of computed.minorLatLines) {
+          L.polyline(
+            [
+              [lat, west],
+              [lat, east],
+            ],
+            minorStyle
+          ).addTo(layer);
+        }
+      }
+
+      for (const ln of computed.majorLonLines) {
+        L.polyline(
+          [
+            [south, ln.lon],
+            [north, ln.lon],
+          ],
+          majorStyle
+        ).addTo(layer);
+
+        if (showLabels) {
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="transform:translate(-50%,0); padding:1px 6px; background:rgba(255,255,255,0.92); color:#0f172a; font-weight:900; font-size:11px;">${ln.label}</div>`,
+          });
+          L.marker([north - latPad, ln.lon], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
+        }
+      }
+
+      for (const lt of computed.majorLatLines) {
+        L.polyline(
+          [
+            [lt.lat, west],
+            [lt.lat, east],
+          ],
+          majorStyle
+        ).addTo(layer);
+
+        if (showLabels) {
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="transform:translate(0,-50%); padding:1px 6px; background:rgba(255,255,255,0.92); color:#0f172a; font-weight:900; font-size:11px;">${lt.label}</div>`,
+          });
+          L.marker([lt.lat, west + lonPad], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
+        }
+      }
+    };
+
+    draw();
+    map.on('moveend', draw);
+    map.on('zoomend', draw);
+    return () => {
+      map.off('moveend', draw);
+      map.off('zoomend', draw);
+    };
+  }, [grid, map]);
+
+  return null;
+};
+
 const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   (
     {
@@ -167,6 +298,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       selectedCheckpointId,
       userLocation,
       userHeadingDeg = null,
+      grid = null,
       placingCheckpoint = false,
       onPlaceCheckpointAt,
       onSelectCheckpoint,
@@ -261,6 +393,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             placingCheckpoint={placingCheckpoint}
             onPlaceCheckpointAt={onPlaceCheckpointAt ?? null}
           />
+
+          <GridOverlay grid={grid} />
 
           {userLocation && (
             <Marker position={toLeafletLatLng(userLocation)} icon={locationIcon} />

@@ -1,5 +1,5 @@
 import React, { FC, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { useCadNav } from '../state/CadNavContext';
 import { usePager } from '../state/PagerContext';
 import { calculateDistanceMeters, formatDistance } from '../utils/geo';
@@ -24,11 +24,14 @@ const ToolsScreen: FC = () => {
     selectedCheckpointId,
     location,
     placingCheckpoint,
+    grid,
     startLocation,
     beginCheckpointPlacement,
     cancelCheckpointPlacement,
     centerOnCheckpoint,
     selectCheckpoint,
+    setGridEnabled,
+    setGridAnchorFromOffsetMeters,
   } = useCadNav();
 
   const { goToPage } = usePager();
@@ -44,10 +47,38 @@ const ToolsScreen: FC = () => {
   }>({});
 
   const [checkpointsExpanded, setCheckpointsExpanded] = useState(true);
+  const [gridExpanded, setGridExpanded] = useState(true);
+
+  const [eastingText, setEastingText] = useState('0');
+  const [northingText, setNorthingText] = useState('0');
+  const [scaleMode, setScaleMode] = useState<'auto' | '1000' | '100' | '10' | '1'>('auto');
+  const [referenceCoord, setReferenceCoord] = useState<null | { latitude: number; longitude: number }>(null);
+  const [referenceLabel, setReferenceLabel] = useState<string | null>(null);
 
   const selectedIndex = selectedCheckpointId
     ? checkpoints.findIndex((c) => c.id === selectedCheckpointId)
     : -1;
+
+  const selectedCheckpoint =
+    selectedCheckpointId ? checkpoints.find((c) => c.id === selectedCheckpointId) ?? null : null;
+
+  const parseDigits = (value: string) => value.trim().replace(/[^0-9]/g, '');
+  const eDigits = parseDigits(eastingText);
+  const nDigits = parseDigits(northingText);
+  const eValue = eDigits ? Number.parseInt(eDigits, 10) : 0;
+  const nValue = nDigits ? Number.parseInt(nDigits, 10) : 0;
+
+  const scaleFromDigits = (digitsCount: number) => {
+    // 2 digits => 1000m, 3 => 100m, 4 => 10m, 5 => 1m...
+    return 10 ** (5 - Math.max(1, digitsCount));
+  };
+
+  const manualScaleMeters = Number(scaleMode);
+  const eScaleMeters = scaleMode === 'auto' ? scaleFromDigits(eDigits.length || 1) : manualScaleMeters;
+  const nScaleMeters = scaleMode === 'auto' ? scaleFromDigits(nDigits.length || 1) : manualScaleMeters;
+  const eastingMeters = (Number.isFinite(eValue) ? eValue : 0) * eScaleMeters;
+  const northingMeters = (Number.isFinite(nValue) ? nValue : 0) * nScaleMeters;
+  const canApply = Boolean(referenceCoord) && eastingText.trim().length > 0 && northingText.trim().length > 0;
 
   const snakeLayout = useMemo(() => {
     const count = checkpoints.length;
@@ -430,7 +461,172 @@ const ToolsScreen: FC = () => {
             sectionYRef.current.gridTools = base + e.nativeEvent.layout.y;
           }}
         >
-          <Card title="Grid Tools" body="Snap • Rotate • Scale" />
+          <View style={styles.section}>
+            <Pressable
+              style={styles.sectionHeaderRow}
+              onPress={() => setGridExpanded((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel="Toggle Grid Tools section"
+            >
+              <Text style={styles.sectionTitle}>Grid Tools</Text>
+              <Text style={styles.sectionHeaderMeta}>{gridExpanded ? 'Hide' : 'Show'}</Text>
+            </Pressable>
+
+            {gridExpanded && (
+              <>
+                <View style={styles.gridRow}>
+                  <Text style={styles.gridRowLabel}>Grid</Text>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.gridToggle,
+                      grid.enabled ? styles.gridToggleOn : styles.gridToggleOff,
+                      pressed && styles.gridTogglePressed,
+                    ]}
+                    onPress={() => setGridEnabled(!grid.enabled)}
+                    accessibilityRole="button"
+                    accessibilityLabel={grid.enabled ? 'Disable grid' : 'Enable grid'}
+                  >
+                    <Text style={[styles.gridToggleText, grid.enabled && styles.gridToggleTextOn]}>
+                      {grid.enabled ? 'On' : 'Off'}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.gridHint}>
+                  Grid size: {grid.majorSpacingMeters}m • Subdivisions: {grid.minorDivisions}
+                </Text>
+
+                <View style={styles.gridOriginRow}>
+                  <Text style={styles.gridRowLabel}>Scale</Text>
+                  <View style={styles.scaleChips}>
+                    {([
+                      { key: 'auto', label: 'Auto' },
+                      { key: '1000', label: '1km' },
+                      { key: '100', label: '100m' },
+                      { key: '10', label: '10m' },
+                      { key: '1', label: '1m' },
+                    ] as const).map((opt) => {
+                      const active = scaleMode === opt.key;
+                      return (
+                        <Pressable
+                          key={opt.key}
+                          style={({ pressed }) => [
+                            styles.scaleChip,
+                            active && styles.scaleChipActive,
+                            pressed && styles.scaleChipPressed,
+                          ]}
+                          onPress={() => setScaleMode(opt.key)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Set scale ${opt.label}`}
+                        >
+                          <Text style={[styles.scaleChipText, active && styles.scaleChipTextActive]}>
+                            {opt.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.gridOriginRow}>
+                  <Text style={styles.gridRowLabel}>Origin</Text>
+                  <View style={styles.gridCoordInputs}>
+                    <TextInput
+                      value={eastingText}
+                      onChangeText={setEastingText}
+                      keyboardType="number-pad"
+                      inputMode="numeric"
+                      placeholder="E"
+                      style={styles.gridCoordInput}
+                    />
+                    <TextInput
+                      value={northingText}
+                      onChangeText={setNorthingText}
+                      keyboardType="number-pad"
+                      inputMode="numeric"
+                      placeholder="N"
+                      style={styles.gridCoordInput}
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.gridButtonsRow}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.gridButton,
+                      !selectedCheckpoint && styles.gridButtonDisabled,
+                      pressed && styles.gridButtonPressed,
+                    ]}
+                    disabled={!selectedCheckpoint}
+                    onPress={() => {
+                      if (!selectedCheckpoint) return;
+                      setReferenceCoord(selectedCheckpoint.coordinate);
+                      setReferenceLabel(selectedCheckpoint.name);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Set grid origin from selected checkpoint"
+                  >
+                    <Text style={styles.gridButtonText}>Use selected</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.gridButton,
+                      !location.coordinate && styles.gridButtonDisabled,
+                      pressed && styles.gridButtonPressed,
+                    ]}
+                    disabled={!location.coordinate}
+                    onPress={async () => {
+                      await startLocation();
+                      if (!location.coordinate) return;
+                      setReferenceCoord(location.coordinate);
+                      setReferenceLabel('My location');
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Set grid origin from my location"
+                  >
+                    <Text style={styles.gridButtonText}>Use my location</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.gridButtonPrimary,
+                      !canApply && styles.gridButtonDisabled,
+                      pressed && styles.gridButtonPrimaryPressed,
+                    ]}
+                    disabled={!canApply}
+                    onPress={() => {
+                      if (!referenceCoord) return;
+                      setGridAnchorFromOffsetMeters(referenceCoord, {
+                        eastingMeters,
+                        northingMeters,
+                        eastingInput: eastingText,
+                        northingInput: northingText,
+                        scaleMeters: scaleMode === 'auto' ? undefined : manualScaleMeters,
+                      });
+                      setGridEnabled(true);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply grid offset"
+                  >
+                    <Text style={styles.gridButtonPrimaryText}>Apply</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.gridStatus}>
+                  {grid.anchor
+                    ? `Locked: ${grid.anchor.eastingMeters.toFixed(0)}m ${grid.anchor.northingMeters.toFixed(0)}m @ ${grid.anchor.coordinate.latitude.toFixed(5)}, ${grid.anchor.coordinate.longitude.toFixed(5)}`
+                    : 'Locked: Not set'}
+                </Text>
+
+                <Text style={styles.gridStatus}>
+                  {referenceCoord
+                    ? `Selected reference: ${referenceLabel ?? 'Point'} @ ${referenceCoord.latitude.toFixed(5)}, ${referenceCoord.longitude.toFixed(5)}`
+                    : 'Selected reference: Choose a point, then Apply'}
+                </Text>
+              </>
+            )}
+          </View>
         </View>
         <View
           onLayout={(e) => {
@@ -722,6 +918,145 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     marginTop: 4,
+    fontSize: 12,
+    color: '#475569',
+  },
+
+  gridRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  gridOriginRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  gridRowLabel: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  gridHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#475569',
+  },
+  gridToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  gridToggleOn: {
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
+  },
+  gridToggleOff: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+  gridTogglePressed: {
+    opacity: 0.92,
+  },
+  gridToggleText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#0f172a',
+  },
+  gridToggleTextOn: {
+    color: '#ffffff',
+  },
+  gridCoordInputs: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  gridCoordInput: {
+    width: 84,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 12,
+    color: '#0f172a',
+    fontWeight: '700',
+  },
+  gridButtonsRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  scaleChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'flex-end',
+  },
+  scaleChip: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  scaleChipActive: {
+    borderColor: '#0f172a',
+    backgroundColor: 'rgba(15,23,42,0.06)',
+  },
+  scaleChipPressed: {
+    opacity: 0.92,
+  },
+  scaleChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  scaleChipTextActive: {
+    color: '#0f172a',
+  },
+  gridButton: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  gridButtonPressed: {
+    backgroundColor: '#f1f5f9',
+  },
+  gridButtonDisabled: {
+    opacity: 0.5,
+  },
+  gridButtonText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0f172a',
+  },
+  gridButtonPrimary: {
+    borderWidth: 1,
+    borderColor: '#0f172a',
+    backgroundColor: '#0f172a',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  gridButtonPrimaryPressed: {
+    opacity: 0.92,
+  },
+  gridButtonPrimaryText: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#ffffff',
+  },
+  gridStatus: {
+    marginTop: 10,
     fontSize: 12,
     color: '#475569',
   },

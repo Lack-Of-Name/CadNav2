@@ -11,6 +11,7 @@ import React, {
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import type { LatLng } from '../utils/geo';
+import type { GridAnchor, GridConfig } from '../utils/grid';
 
 export type Checkpoint = {
   id: string;
@@ -37,6 +38,8 @@ type CadNavContextValue = {
   location: LocationState;
   placingCheckpoint: boolean;
 
+  grid: GridConfig;
+
   ensureLocationPermission: () => Promise<boolean>;
   startLocation: () => Promise<void>;
   stopLocation: () => void;
@@ -52,6 +55,12 @@ type CadNavContextValue = {
   addCheckpointAtMapCenter: () => void;
   addCheckpointAtMyLocation: () => void;
   selectCheckpoint: (id: string | null) => void;
+
+  setGridEnabled: (enabled: boolean) => void;
+  setGridAnchorFromOffsetMeters: (
+    coordinate: LatLng,
+    args: { eastingMeters: number; northingMeters: number; eastingInput?: string; northingInput?: string; scaleMeters?: number }
+  ) => void;
 };
 
 const CadNavContext = createContext<CadNavContextValue | null>(null);
@@ -63,6 +72,13 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
   const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
   const [location, setLocation] = useState<LocationState>({ coordinate: null, headingDeg: null });
   const [placingCheckpoint, setPlacingCheckpoint] = useState(false);
+
+  const [grid, setGrid] = useState<GridConfig>({
+    enabled: false,
+    anchor: null,
+    majorSpacingMeters: 1000,
+    minorDivisions: 10,
+  });
 
   const mapControllerRef = useRef<MapController | null>(null);
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
@@ -247,6 +263,50 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
     setSelectedCheckpointId(id);
   }, []);
 
+  const setGridAnchorFromOffsetMeters = useCallback(
+    (
+      coordinate: LatLng,
+      args: {
+        eastingMeters: number;
+        northingMeters: number;
+        eastingInput?: string;
+        northingInput?: string;
+        scaleMeters?: number;
+      }
+    ) => {
+      const anchor: GridAnchor = {
+        coordinate,
+        eastingMeters: args.eastingMeters,
+        northingMeters: args.northingMeters,
+        eastingInput: args.eastingInput,
+        northingInput: args.northingInput,
+        scaleMeters: args.scaleMeters,
+      };
+      setGrid((prev) => ({ ...prev, anchor }));
+    },
+    []
+  );
+
+  const setGridEnabled = useCallback(
+    (enabled: boolean) => {
+      setGrid((prev) => {
+        if (!enabled) return { ...prev, enabled: false };
+
+        // When enabling for the first time, pick a sensible default anchor so users
+        // immediately see something without needing extra steps.
+        if (prev.anchor) return { ...prev, enabled: true };
+
+        const selected = selectedCheckpointId
+          ? checkpoints.find((c) => c.id === selectedCheckpointId)?.coordinate ?? null
+          : null;
+        const fallback = location.coordinate ?? selected ?? lastFallbackCenterRef.current;
+        const anchor: GridAnchor = { coordinate: fallback, eastingMeters: 0, northingMeters: 0 };
+        return { ...prev, enabled: true, anchor };
+      });
+    },
+    [checkpoints, location.coordinate, selectedCheckpointId]
+  );
+
   const value: CadNavContextValue = useMemo(
     () => ({
       checkpoints,
@@ -254,6 +314,8 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
       location,
       placingCheckpoint,
 
+      grid,
+
       ensureLocationPermission,
       startLocation,
       stopLocation,
@@ -269,12 +331,16 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
       addCheckpointAtMapCenter,
       addCheckpointAtMyLocation,
       selectCheckpoint,
+
+      setGridEnabled,
+      setGridAnchorFromOffsetMeters,
     }),
     [
       checkpoints,
       selectedCheckpointId,
       location,
       placingCheckpoint,
+      grid,
       ensureLocationPermission,
       startLocation,
       stopLocation,
@@ -287,6 +353,8 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
       addCheckpointAtMapCenter,
       addCheckpointAtMyLocation,
       selectCheckpoint,
+      setGridEnabled,
+      setGridAnchorFromOffsetMeters,
     ]
   );
 

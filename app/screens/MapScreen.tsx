@@ -20,6 +20,7 @@ const MapScreen: FC = () => {
     selectedCheckpointId,
     location,
     placingCheckpoint,
+    grid,
     ensureLocationPermission,
     startLocation,
     centerOnMyLocation,
@@ -106,6 +107,7 @@ const MapScreen: FC = () => {
         selectedCheckpointId={selectedCheckpointId}
         userLocation={location.coordinate}
         userHeadingDeg={location.headingDeg ?? null}
+        grid={grid}
         placingCheckpoint={placingCheckpoint}
         onPlaceCheckpointAt={placeCheckpointAt}
         onSelectCheckpoint={(id: string) => selectCheckpoint(id)}

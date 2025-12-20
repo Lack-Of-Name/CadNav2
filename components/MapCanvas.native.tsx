@@ -1,7 +1,9 @@
-import React, { forwardRef, useImperativeHandle, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, Region } from 'react-native-maps';
 import type { LatLng } from '../app/utils/geo';
+import type { GridConfig } from '../app/utils/grid';
+import { computeGrid } from '../app/utils/grid';
 
 export type Checkpoint = {
   id: string;
@@ -20,6 +22,7 @@ export type MapCanvasProps = {
   selectedCheckpointId: string | null;
   userLocation: LatLng | null;
   userHeadingDeg?: number | null;
+  grid?: GridConfig;
   placingCheckpoint?: boolean;
   onPlaceCheckpointAt?: (coordinate: LatLng) => void;
   onSelectCheckpoint: (id: string) => void;
@@ -43,6 +46,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       selectedCheckpointId,
       userLocation,
       userHeadingDeg = null,
+      grid = null,
       placingCheckpoint = false,
       onPlaceCheckpointAt,
       onSelectCheckpoint,
@@ -51,6 +55,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
   ) => {
     const mapRef = useRef<MapView | null>(null);
     const lastRegionRef = useRef<Region>(DEFAULT_REGION);
+    const [regionForGrid, setRegionForGrid] = useState<Region>(DEFAULT_REGION);
     const lastMarkerPressAtRef = useRef<number>(0);
 
     const placingCheckpointRef = useRef(placingCheckpoint);
@@ -118,6 +123,28 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       return points.length >= 2 ? points : null;
     })();
 
+    const computedGrid = useMemo(() => {
+      if (!grid?.enabled || !grid.anchor) return null;
+
+      const r = regionForGrid;
+      const latMin = r.latitude - r.latitudeDelta / 2;
+      const latMax = r.latitude + r.latitudeDelta / 2;
+      const lonMin = r.longitude - r.longitudeDelta / 2;
+      const lonMax = r.longitude + r.longitudeDelta / 2;
+      return computeGrid({ latMin, latMax, lonMin, lonMax }, grid);
+    }, [grid, regionForGrid]);
+
+    const gridDensity = useMemo(() => {
+      if (!grid?.enabled) return { showMinor: false, showLabels: false };
+      const r = regionForGrid;
+      const approxMetersWide = Math.max(r.latitudeDelta, r.longitudeDelta) * 111_320;
+      const approxMajorCount = approxMetersWide / Math.max(10, grid.majorSpacingMeters);
+      return {
+        showMinor: approxMajorCount <= 12,
+        showLabels: approxMajorCount <= 8,
+      };
+    }, [grid, regionForGrid]);
+
     return (
       <MapView
         ref={(r) => {
@@ -127,6 +154,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         initialRegion={DEFAULT_REGION}
         onRegionChangeComplete={(region) => {
           lastRegionRef.current = region;
+          setRegionForGrid(region);
         }}
         onPress={(e) => {
           if (Date.now() - lastMarkerPressAtRef.current < 250) return;
@@ -140,6 +168,102 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         rotateEnabled
         pitchEnabled
       >
+        {computedGrid && (
+          <>
+            {gridDensity.showMinor && (
+              <>
+                {computedGrid.minorLonLines.map((lon) => (
+                  <Polyline
+                    key={`minor-v-${lon.toFixed(6)}`}
+                    coordinates={[
+                      { latitude: regionForGrid.latitude - regionForGrid.latitudeDelta / 2, longitude: lon },
+                      { latitude: regionForGrid.latitude + regionForGrid.latitudeDelta / 2, longitude: lon },
+                    ]}
+                    strokeColor="rgba(15,23,42,0.14)"
+                    strokeWidth={1}
+                    zIndex={1}
+                  />
+                ))}
+
+                {computedGrid.minorLatLines.map((lat) => (
+                  <Polyline
+                    key={`minor-h-${lat.toFixed(6)}`}
+                    coordinates={[
+                      { latitude: lat, longitude: regionForGrid.longitude - regionForGrid.longitudeDelta / 2 },
+                      { latitude: lat, longitude: regionForGrid.longitude + regionForGrid.longitudeDelta / 2 },
+                    ]}
+                    strokeColor="rgba(15,23,42,0.14)"
+                    strokeWidth={1}
+                    zIndex={1}
+                  />
+                ))}
+              </>
+            )}
+
+            {computedGrid.majorLonLines.map((ln) => (
+              <React.Fragment key={`major-v-${ln.lon.toFixed(6)}`}>
+                <Polyline
+                  coordinates={[
+                    { latitude: regionForGrid.latitude - regionForGrid.latitudeDelta / 2, longitude: ln.lon },
+                    { latitude: regionForGrid.latitude + regionForGrid.latitudeDelta / 2, longitude: ln.lon },
+                  ]}
+                  strokeColor="rgba(15,23,42,0.55)"
+                  strokeWidth={1}
+                  zIndex={2}
+                />
+                {gridDensity.showLabels && (
+                  <Marker
+                    coordinate={{
+                      latitude:
+                        regionForGrid.latitude +
+                        regionForGrid.latitudeDelta / 2 -
+                        regionForGrid.latitudeDelta * 0.03,
+                      longitude: ln.lon,
+                    }}
+                    anchor={{ x: 0.5, y: 0 }}
+                    tracksViewChanges={false}
+                  >
+                    <View style={styles.gridLabelPill}>
+                      <Text style={styles.gridLabelText}>{ln.label}</Text>
+                    </View>
+                  </Marker>
+                )}
+              </React.Fragment>
+            ))}
+
+            {computedGrid.majorLatLines.map((lt) => (
+              <React.Fragment key={`major-h-${lt.lat.toFixed(6)}`}>
+                <Polyline
+                  coordinates={[
+                    { latitude: lt.lat, longitude: regionForGrid.longitude - regionForGrid.longitudeDelta / 2 },
+                    { latitude: lt.lat, longitude: regionForGrid.longitude + regionForGrid.longitudeDelta / 2 },
+                  ]}
+                  strokeColor="rgba(15,23,42,0.55)"
+                  strokeWidth={1}
+                  zIndex={2}
+                />
+                {gridDensity.showLabels && (
+                  <Marker
+                    coordinate={{
+                      latitude: lt.lat,
+                      longitude:
+                        regionForGrid.longitude -
+                        regionForGrid.longitudeDelta / 2 +
+                        regionForGrid.longitudeDelta * 0.03,
+                    }}
+                    anchor={{ x: 0, y: 0.5 }}
+                    tracksViewChanges={false}
+                  >
+                    <View style={styles.gridLabelPill}>
+                      <Text style={styles.gridLabelText}>{lt.label}</Text>
+                    </View>
+                  </Marker>
+                )}
+              </React.Fragment>
+            ))}
+          </>
+        )}
+
         {connectionCoords && (
           <Polyline coordinates={connectionCoords} strokeColor="#0f172a" strokeWidth={2} />
         )}
@@ -291,5 +415,16 @@ const styles = StyleSheet.create({
   },
   flagBaseActive: {
     backgroundColor: '#0f172a',
+  },
+
+  gridLabelPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  gridLabelText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#0f172a',
   },
 });
