@@ -1,4 +1,4 @@
-import React, { FC, useCallback, useMemo, useRef, useState } from 'react';
+import React, { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -7,12 +7,19 @@ import BottomPageSelector, { PageSelectorItem } from './components/BottomPageSel
 import MapScreen from './screens/MapScreen';
 import ToolsScreen from './screens/ToolsScreen';
 import SettingsScreen from './screens/SettingsScreen';
-import { CadNavProvider } from './state/CadNavContext';
+import { CadNavProvider, useCadNav } from './state/CadNavContext';
 import { PagerProvider } from './state/PagerContext';
 
-const App: FC = () => {
+const AppContent: FC = () => {
+  const { mapDownload } = useCadNav();
   const [activeIndex, setActiveIndex] = useState(0);
   const pagerRef = useRef<SwipePagerHandle | null>(null);
+
+  useEffect(() => {
+    if (!mapDownload.active) return;
+    // Download selection mode must be map-only.
+    if (activeIndex !== 0) setActiveIndex(0);
+  }, [activeIndex, mapDownload.active]);
 
   const goToPage = useCallback((index: number, options?: { animated?: boolean }) => {
     pagerRef.current?.goTo(index, options?.animated ?? true);
@@ -48,18 +55,39 @@ const App: FC = () => {
   );
 
   return (
+    <PagerProvider goToPage={goToPage}>
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'bottom', 'left']}>
+          <View style={styles.root}>
+            <SwipePager
+              ref={pagerRef}
+              pages={pages}
+              activeIndex={activeIndex}
+              onActiveIndexChange={(next) => {
+                if (mapDownload.active && next !== 0) return;
+                setActiveIndex(next);
+              }}
+            />
+
+            {!mapDownload.active && (
+              <BottomPageSelector
+                items={selectorItems}
+                activeIndex={activeIndex}
+                onSelectIndex={setActiveIndex}
+              />
+            )}
+            <StatusBar style="dark" />
+          </View>
+        </SafeAreaView>
+      </SafeAreaProvider>
+    </PagerProvider>
+  );
+};
+
+const App: FC = () => {
+  return (
     <CadNavProvider>
-      <PagerProvider goToPage={goToPage}>
-        <SafeAreaProvider>
-          <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'bottom', 'left']}>
-            <View style={styles.root}>
-              <SwipePager ref={pagerRef} pages={pages} activeIndex={activeIndex} onActiveIndexChange={setActiveIndex} />
-              <BottomPageSelector items={selectorItems} activeIndex={activeIndex} onSelectIndex={setActiveIndex} />
-              <StatusBar style="dark" />
-            </View>
-          </SafeAreaView>
-        </SafeAreaProvider>
-      </PagerProvider>
+      <AppContent />
     </CadNavProvider>
   );
 };

@@ -16,6 +16,7 @@ const TileLayer = leaflet.TileLayer;
 const Marker = leaflet.Marker;
 const CircleMarker = leaflet.CircleMarker;
 const Polyline = leaflet.Polyline;
+const Polygon = leaflet.Polygon;
 const useMap = leaflet.useMap;
 const useMapEvents = leaflet.useMapEvents;
 
@@ -39,6 +40,13 @@ export type MapCanvasProps = {
   userLocation: LatLng | null;
   userHeadingDeg?: number | null;
   grid?: GridConfig;
+  offlineMapMode?: 'online' | 'offline';
+  offlineTileTemplateUri?: string | null;
+  baseMap?: 'osm' | 'esriWorldImagery';
+  initialCenter?: LatLng | null;
+  onCenterChange?: (center: LatLng) => void;
+  mapDownload?: { active: boolean; firstCorner: LatLng | null; secondCorner: LatLng | null };
+  onMapTap?: (coordinate: LatLng) => void;
   placingCheckpoint?: boolean;
   onPlaceCheckpointAt?: (coordinate: LatLng) => void;
   onSelectCheckpoint: (id: string) => void;
@@ -123,20 +131,24 @@ function makeLocationIcon(headingDeg: number | null | undefined) {
 const MapBridge = ({
   onMap,
   onCenter,
+  onMapTap,
   placingCheckpoint,
   onPlaceCheckpointAt,
 }: {
   onMap: (map: any) => void;
   onCenter: (coord: LatLng) => void;
+  onMapTap: ((coordinate: LatLng) => void) | null;
   placingCheckpoint: boolean;
   onPlaceCheckpointAt: ((coordinate: LatLng) => void) | null;
 }) => {
   const map = useMap();
 
   const placingCheckpointRef = useRef(placingCheckpoint);
+  const onMapTapRef = useRef(onMapTap);
   const onPlaceCheckpointAtRef = useRef(onPlaceCheckpointAt);
 
   placingCheckpointRef.current = placingCheckpoint;
+  onMapTapRef.current = onMapTap;
   onPlaceCheckpointAtRef.current = onPlaceCheckpointAt;
 
   useEffect(() => {
@@ -151,12 +163,20 @@ const MapBridge = ({
       onCenter({ latitude: center.lat, longitude: center.lng });
     },
     click: (e: any) => {
+      const ll = e?.latlng;
+      if (!ll) return;
+
+      const tapped = { latitude: ll.lat, longitude: ll.lng };
+      const onTap = onMapTapRef.current;
+      if (onTap) {
+        onTap(tapped);
+        return;
+      }
+
       if (!placingCheckpointRef.current) return;
       const handler = onPlaceCheckpointAtRef.current;
       if (!handler) return;
-      const ll = e?.latlng;
-      if (!ll) return;
-      handler({ latitude: ll.lat, longitude: ll.lng });
+      handler(tapped);
     },
   });
 
@@ -299,6 +319,12 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       userLocation,
       userHeadingDeg = null,
       grid = null,
+      offlineMapMode = 'online',
+      baseMap = 'osm',
+      initialCenter = null,
+      onCenterChange,
+      mapDownload,
+      onMapTap,
       placingCheckpoint = false,
       onPlaceCheckpointAt,
       onSelectCheckpoint,
@@ -316,7 +342,11 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     onSelectCheckpointRef.current = onSelectCheckpoint;
 
     const mapRef = useRef<any | null>(null);
-    const centerRef = useRef<LatLng>(DEFAULT_CENTER);
+    const centerRef = useRef<LatLng>(initialCenter ?? DEFAULT_CENTER);
+    const didInitialCenterOverrideRef = useRef(false);
+    const onCenterChangeRef = useRef<typeof onCenterChange>(onCenterChange);
+
+    onCenterChangeRef.current = onCenterChange;
 
     useImperativeHandle(
       ref,
@@ -331,6 +361,29 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       }),
       []
     );
+
+    useEffect(() => {
+      if (didInitialCenterOverrideRef.current) return;
+      if (!userLocation) return;
+      const map = mapRef.current;
+      if (!map?.setView) return;
+
+      const current = centerRef.current;
+      const isStillDefault =
+        Math.abs(current.latitude - DEFAULT_CENTER.latitude) < 0.0005 &&
+        Math.abs(current.longitude - DEFAULT_CENTER.longitude) < 0.0005;
+
+      if (!isStillDefault) return;
+
+      try {
+        map.setView(toLeafletLatLng(userLocation), map.getZoom?.() ?? DEFAULT_ZOOM, { animate: false });
+        centerRef.current = userLocation;
+        onCenterChangeRef.current?.(userLocation);
+        didInitialCenterOverrideRef.current = true;
+      } catch {
+        // Ignore; map may not be ready yet.
+      }
+    }, [userLocation]);
 
     const locationIcon = useMemo(() => makeLocationIcon(userHeadingDeg), [userHeadingDeg]);
 
@@ -370,18 +423,46 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       return points.length >= 2 ? points : null;
     }, [checkpoints]);
 
+    const downloadPolygon = useMemo(() => {
+      if (!mapDownload?.active) return null;
+      if (!mapDownload.firstCorner || !mapDownload.secondCorner) return null;
+
+      const latMin = Math.min(mapDownload.firstCorner.latitude, mapDownload.secondCorner.latitude);
+      const latMax = Math.max(mapDownload.firstCorner.latitude, mapDownload.secondCorner.latitude);
+      const lonMin = Math.min(mapDownload.firstCorner.longitude, mapDownload.secondCorner.longitude);
+      const lonMax = Math.max(mapDownload.firstCorner.longitude, mapDownload.secondCorner.longitude);
+
+      const tl: [number, number] = [latMax, lonMin];
+      const tr: [number, number] = [latMax, lonMax];
+      const br: [number, number] = [latMin, lonMax];
+      const bl: [number, number] = [latMin, lonMin];
+      return [tl, tr, br, bl] as [number, number][];
+    }, [mapDownload?.active, mapDownload?.firstCorner, mapDownload?.secondCorner]);
+
+    const showBaseLayer = offlineMapMode !== 'offline';
+
     return (
       <View style={styles.root}>
         <MapContainer
-          center={toLeafletLatLng(DEFAULT_CENTER)}
+          center={toLeafletLatLng(initialCenter ?? DEFAULT_CENTER)}
           zoom={DEFAULT_ZOOM}
           style={{ height: '100%', width: '100%' }}
           zoomControl={false}
         >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution="&copy; OpenStreetMap contributors"
-          />
+          {showBaseLayer && (
+            <TileLayer
+              url={
+                baseMap === 'esriWorldImagery'
+                  ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                  : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+              }
+              attribution={
+                baseMap === 'esriWorldImagery'
+                  ? 'Tiles &copy; Esri'
+                  : '&copy; OpenStreetMap contributors'
+              }
+            />
+          )}
 
           <MapBridge
             onMap={(map) => {
@@ -389,12 +470,21 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             }}
             onCenter={(center) => {
               centerRef.current = center;
+              onCenterChangeRef.current?.(center);
             }}
+            onMapTap={onMapTap ?? null}
             placingCheckpoint={placingCheckpoint}
             onPlaceCheckpointAt={onPlaceCheckpointAt ?? null}
           />
 
           <GridOverlay grid={grid} />
+
+          {downloadPolygon && (
+            <Polygon
+              positions={downloadPolygon}
+              pathOptions={{ color: '#16a34a', weight: 2, opacity: 0.95, fillColor: '#16a34a', fillOpacity: 0.18 }}
+            />
+          )}
 
           {userLocation && (
             <Marker position={toLeafletLatLng(userLocation)} icon={locationIcon} />

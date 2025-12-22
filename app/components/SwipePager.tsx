@@ -161,22 +161,28 @@ const SwipePager = forwardRef<SwipePagerHandle, SwipePagerProps>(
 
   return (
     <View style={styles.root} onLayout={onLayout}>
-      <ScrollView
-        ref={scrollRef}
-        horizontal
-        pagingEnabled
-        scrollEnabled={activeSwipeMode === 'full'}
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        onScrollEndDrag={onScrollEndDrag}
-        scrollEventThrottle={16}
-      >
-        {pages.map((page) => (
-          <View key={page.key} style={[styles.page, { width: pageWidth }]}>
-            {page.element}
-          </View>
-        ))}
-      </ScrollView>
+      {activeSwipeMode === 'edge' ? (
+        <View style={[styles.page, { width: pageWidth }]}>
+          {pages[activeIndex]?.element}
+        </View>
+      ) : (
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          scrollEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={onMomentumScrollEnd}
+          onScrollEndDrag={onScrollEndDrag}
+          scrollEventThrottle={16}
+        >
+          {pages.map((page) => (
+            <View key={page.key} style={[styles.page, { width: pageWidth }]}>
+              {page.element}
+            </View>
+          ))}
+        </ScrollView>
+      )}
 
       {activeSwipeMode === 'edge' && (
         <>

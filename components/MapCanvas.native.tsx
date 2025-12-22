@@ -1,6 +1,6 @@
-import React, { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, Polyline, Region } from 'react-native-maps';
+import MapView, { LocalTile, Marker, Polyline, Polygon, Region, UrlTile } from 'react-native-maps';
 import type { LatLng } from '../app/utils/geo';
 import type { GridConfig } from '../app/utils/grid';
 import { computeGrid } from '../app/utils/grid';
@@ -23,6 +23,15 @@ export type MapCanvasProps = {
   userLocation: LatLng | null;
   userHeadingDeg?: number | null;
   grid?: GridConfig;
+  offlineMapMode?: 'online' | 'offline';
+  offlineTileTemplateUri?: string | null;
+  baseMap?: 'osm' | 'esriWorldImagery';
+  initialCenter?: LatLng | null;
+  onCenterChange?: (center: LatLng) => void;
+  minZoomLevel?: number;
+  maxZoomLevel?: number;
+  mapDownload?: { active: boolean; firstCorner: LatLng | null; secondCorner: LatLng | null };
+  onMapTap?: (coordinate: LatLng) => void;
   placingCheckpoint?: boolean;
   onPlaceCheckpointAt?: (coordinate: LatLng) => void;
   onSelectCheckpoint: (id: string) => void;
@@ -47,24 +56,65 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       userLocation,
       userHeadingDeg = null,
       grid = null,
+      offlineMapMode = 'online',
+      offlineTileTemplateUri = null,
+      baseMap = 'osm',
+      initialCenter = null,
+      onCenterChange,
+      minZoomLevel,
+      maxZoomLevel,
+      mapDownload,
+      onMapTap,
       placingCheckpoint = false,
       onPlaceCheckpointAt,
       onSelectCheckpoint,
     },
     ref
   ) => {
+    const initialRegion: Region = useMemo(() => {
+      if (!initialCenter) return DEFAULT_REGION;
+      return {
+        latitude: initialCenter.latitude,
+        longitude: initialCenter.longitude,
+        latitudeDelta: DEFAULT_REGION.latitudeDelta,
+        longitudeDelta: DEFAULT_REGION.longitudeDelta,
+      };
+    }, [initialCenter]);
+
     const mapRef = useRef<MapView | null>(null);
-    const lastRegionRef = useRef<Region>(DEFAULT_REGION);
-    const [regionForGrid, setRegionForGrid] = useState<Region>(DEFAULT_REGION);
+    const lastRegionRef = useRef<Region>(initialRegion);
+    const [regionForGrid, setRegionForGrid] = useState<Region>(() => initialRegion);
     const lastMarkerPressAtRef = useRef<number>(0);
+    const didInitialCenterOverrideRef = useRef(false);
+
+    const onCenterChangeRef = useRef<typeof onCenterChange>(onCenterChange);
+    onCenterChangeRef.current = onCenterChange;
 
     const placingCheckpointRef = useRef(placingCheckpoint);
     const onPlaceCheckpointAtRef = useRef(onPlaceCheckpointAt);
     const onSelectCheckpointRef = useRef(onSelectCheckpoint);
+    const onMapTapRef = useRef(onMapTap);
 
     placingCheckpointRef.current = placingCheckpoint;
     onPlaceCheckpointAtRef.current = onPlaceCheckpointAt;
     onSelectCheckpointRef.current = onSelectCheckpoint;
+    onMapTapRef.current = onMapTap;
+
+    const downloadPolygon = useMemo(() => {
+      if (!mapDownload?.active) return null;
+      if (!mapDownload.firstCorner || !mapDownload.secondCorner) return null;
+
+      const latMin = Math.min(mapDownload.firstCorner.latitude, mapDownload.secondCorner.latitude);
+      const latMax = Math.max(mapDownload.firstCorner.latitude, mapDownload.secondCorner.latitude);
+      const lonMin = Math.min(mapDownload.firstCorner.longitude, mapDownload.secondCorner.longitude);
+      const lonMax = Math.max(mapDownload.firstCorner.longitude, mapDownload.secondCorner.longitude);
+
+      const tl = { latitude: latMax, longitude: lonMin };
+      const tr = { latitude: latMax, longitude: lonMax };
+      const br = { latitude: latMin, longitude: lonMax };
+      const bl = { latitude: latMin, longitude: lonMin };
+      return [tl, tr, br, bl];
+    }, [mapDownload?.active, mapDownload?.firstCorner, mapDownload?.secondCorner]);
 
     useImperativeHandle(
       ref,
@@ -89,6 +139,35 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const locationCoord = userLocation
       ? { latitude: userLocation.latitude, longitude: userLocation.longitude }
       : null;
+
+    const offlinePathTemplate = useMemo(() => {
+      if (typeof offlineTileTemplateUri !== 'string') return null;
+      // LocalTile expects a filesystem path, not a file:// URI.
+      return offlineTileTemplateUri.replace(/^file:\/\//, '');
+    }, [offlineTileTemplateUri]);
+
+    useEffect(() => {
+      if (didInitialCenterOverrideRef.current) return;
+      if (!locationCoord) return;
+      if (!mapRef.current?.animateToRegion) return;
+
+      const current = lastRegionRef.current;
+      const isStillDefault =
+        Math.abs(current.latitude - DEFAULT_REGION.latitude) < 0.0005 &&
+        Math.abs(current.longitude - DEFAULT_REGION.longitude) < 0.0005;
+
+      if (!isStillDefault) return;
+
+      const target: Region = {
+        latitude: locationCoord.latitude,
+        longitude: locationCoord.longitude,
+        latitudeDelta: current.latitudeDelta,
+        longitudeDelta: current.longitudeDelta,
+      };
+
+      mapRef.current.animateToRegion(target, 0);
+      didInitialCenterOverrideRef.current = true;
+    }, [locationCoord]);
 
     const markerGroups = (() => {
       const groups = new Map<string, { coordinate: LatLng; checkpoints: Checkpoint[] }>();
@@ -151,23 +230,68 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
           mapRef.current = r;
         }}
         style={styles.root}
-        initialRegion={DEFAULT_REGION}
+        initialRegion={initialRegion}
         onRegionChangeComplete={(region) => {
           lastRegionRef.current = region;
           setRegionForGrid(region);
+          onCenterChangeRef.current?.({ latitude: region.latitude, longitude: region.longitude });
         }}
         onPress={(e) => {
           if (Date.now() - lastMarkerPressAtRef.current < 250) return;
+
+          const coord = e?.nativeEvent?.coordinate;
+          if (!coord) return;
+
+          const tapped = { latitude: coord.latitude, longitude: coord.longitude };
+          const onTap = onMapTapRef.current;
+          if (onTap) {
+            onTap(tapped);
+            return;
+          }
+
           if (!placingCheckpointRef.current) return;
           const handler = onPlaceCheckpointAtRef.current;
           if (!handler) return;
-          const coord = e?.nativeEvent?.coordinate;
-          if (!coord) return;
-          handler({ latitude: coord.latitude, longitude: coord.longitude });
+          handler(tapped);
         }}
         rotateEnabled
         pitchEnabled
+        mapType={'none'}
+        minZoomLevel={offlineMapMode === 'offline' ? minZoomLevel : undefined}
+        maxZoomLevel={offlineMapMode === 'offline' ? maxZoomLevel : undefined}
       >
+        {offlineMapMode === 'offline' && typeof offlinePathTemplate === 'string' && (
+          <LocalTile pathTemplate={offlinePathTemplate} tileSize={256} />
+        )}
+
+        {offlineMapMode !== 'offline' && baseMap === 'esriWorldImagery' && (
+          <UrlTile
+            urlTemplate="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            maximumZ={19}
+            zIndex={-2}
+            tileSize={256}
+          />
+        )}
+
+        {offlineMapMode !== 'offline' && baseMap === 'osm' && (
+          <UrlTile
+            urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maximumZ={19}
+            zIndex={-2}
+            tileSize={256}
+          />
+        )}
+
+        {downloadPolygon && (
+          <Polygon
+            coordinates={downloadPolygon}
+            strokeColor="rgba(22,163,74,0.95)"
+            fillColor="rgba(22,163,74,0.18)"
+            strokeWidth={2}
+            zIndex={0}
+          />
+        )}
+
         {computedGrid && (
           <>
             {gridDensity.showMinor && (

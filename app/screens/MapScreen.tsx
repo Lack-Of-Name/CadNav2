@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, FC, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, Modal, Linking } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import MapCanvas from '../../components/MapCanvas';
 import CompassOverlay from '../components/CompassOverlay';
 import { MapController, useCadNav } from '../state/CadNavContext';
 import { calculateBearingDegrees } from '../utils/geo';
+import { normalizeBoundsFromCorners } from '../utils/offlineTiles';
 
 const openAppSettings = async () => {
   try {
@@ -21,13 +23,25 @@ const MapScreen: FC = () => {
     location,
     placingCheckpoint,
     grid,
+    mapDownload,
+    offlineMapMode,
+    baseMap,
+    offlineTiles,
     ensureLocationPermission,
     startLocation,
     centerOnMyLocation,
     cancelCheckpointPlacement,
     placeCheckpointAt,
     registerMapController,
+    getMapInitialCenter,
+    setLastMapCenter,
     selectCheckpoint,
+    exitMapDownloadMode,
+    registerMapDownloadTap,
+    resetMapDownloadSelection,
+    saveMapDownloadSelection,
+    downloadOfflineTilesForBounds,
+    setBaseMap,
   } = useCadNav();
 
   const [showPermissionModal, setShowPermissionModal] = useState(false);
@@ -35,7 +49,6 @@ const MapScreen: FC = () => {
 
   const mapControllerRef = useRef<MapController | null>(null);
   const pendingCenterRef = useRef(false);
-  const didAutoCenterRef = useRef(false);
 
   const setMapRef = useCallback(
     (controller: MapController | null) => {
@@ -59,14 +72,12 @@ const MapScreen: FC = () => {
   }, []);
 
   useEffect(() => {
-    if (didAutoCenterRef.current) return;
     if (!pendingCenterRef.current) return;
     if (!mapControllerRef.current) return;
     if (!location.coordinate) return;
 
     centerOnMyLocation();
     pendingCenterRef.current = false;
-    didAutoCenterRef.current = true;
   }, [centerOnMyLocation, location.coordinate]);
 
   useEffect(() => {
@@ -87,7 +98,6 @@ const MapScreen: FC = () => {
     if (mapControllerRef.current && location.coordinate) {
       centerOnMyLocation();
       pendingCenterRef.current = false;
-      didAutoCenterRef.current = true;
     }
   };
 
@@ -99,6 +109,31 @@ const MapScreen: FC = () => {
     selectedCheckpoint?.coordinate ?? null
   );
 
+  const downloadStepText = (() => {
+    if (offlineTiles.status === 'downloading') {
+      return `Downloading maps: ${offlineTiles.completed}/${offlineTiles.total}${offlineTiles.failed ? ` (failed ${offlineTiles.failed})` : ''}`;
+    }
+    if (offlineTiles.status === 'error') {
+      return offlineTiles.error ?? 'Download error';
+    }
+    if (!mapDownload.active) return null;
+    if (!mapDownload.firstCorner) return 'Tap the TOP-LEFT corner of the area';
+    if (!mapDownload.secondCorner) return 'Tap the BOTTOM-RIGHT corner of the area';
+    const label = baseMap === 'esriWorldImagery' ? 'Esri imagery' : 'OSM';
+    return `Area selected. Press SAVE to download ${label}.`;
+  })();
+
+  const canSaveDownload =
+    mapDownload.active && !!mapDownload.firstCorner && !!mapDownload.secondCorner;
+
+  const showDownloadProgressBanner = offlineTiles.status === 'downloading' || offlineTiles.status === 'error';
+  const downloadProgressText =
+    offlineTiles.status === 'downloading'
+      ? `Downloading maps: ${offlineTiles.completed}/${offlineTiles.total}${offlineTiles.failed ? ` (failed ${offlineTiles.failed})` : ''}`
+      : offlineTiles.status === 'error'
+        ? (offlineTiles.error ?? 'Download error')
+        : null;
+
   return (
     <View style={styles.root}>
       <MapCanvas
@@ -108,12 +143,87 @@ const MapScreen: FC = () => {
         userLocation={location.coordinate}
         userHeadingDeg={location.headingDeg ?? null}
         grid={grid}
-        placingCheckpoint={placingCheckpoint}
-        onPlaceCheckpointAt={placeCheckpointAt}
+        offlineMapMode={offlineMapMode}
+        baseMap={baseMap}
+        initialCenter={getMapInitialCenter()}
+        onCenterChange={setLastMapCenter}
+        minZoomLevel={offlineTiles.minZoom}
+        maxZoomLevel={offlineTiles.maxZoom}
+        offlineTileTemplateUri={`${offlineTiles.rootUri}{z}/{x}/{y}.png`}
+        mapDownload={mapDownload}
+        onMapTap={(coord) => {
+          if (!mapDownload.active) return;
+          registerMapDownloadTap(coord);
+        }}
+        placingCheckpoint={placingCheckpoint && !mapDownload.active}
+        onPlaceCheckpointAt={mapDownload.active ? undefined : placeCheckpointAt}
         onSelectCheckpoint={(id: string) => selectCheckpoint(id)}
       />
 
-      {placingCheckpoint && (
+      {mapDownload.active && (
+        <View style={styles.downloadOverlay} pointerEvents="box-none">
+          <View style={styles.downloadActionsRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Save map download selection"
+              disabled={!canSaveDownload}
+              style={({ pressed }) => [
+                styles.downloadSave,
+                (!canSaveDownload || pressed) && styles.downloadSavePressed,
+              ]}
+              onPress={async () => {
+                if (!mapDownload.firstCorner || !mapDownload.secondCorner) return;
+                const bounds = normalizeBoundsFromCorners(mapDownload.firstCorner, mapDownload.secondCorner);
+                saveMapDownloadSelection();
+                void downloadOfflineTilesForBounds(bounds);
+              }}
+            >
+              <Text style={styles.downloadActionText}>SAVE</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reset selection"
+              style={({ pressed }) => [styles.downloadReset, pressed && styles.downloadResetPressed]}
+              onPress={resetMapDownloadSelection}
+            >
+              <MaterialIcons name="redo" size={18} color="#ffffff" />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Toggle download map style"
+              style={({ pressed }) => [styles.downloadReset, pressed && styles.downloadResetPressed]}
+              onPress={() => setBaseMap(baseMap === 'esriWorldImagery' ? 'osm' : 'esriWorldImagery')}
+            >
+              <MaterialIcons name="map" size={18} color="#ffffff" />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Cancel map download selection"
+              style={({ pressed }) => [styles.downloadCancel, pressed && styles.downloadCancelPressed]}
+              onPress={exitMapDownloadMode}
+            >
+              <Text style={styles.downloadActionText}>CANCEL</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.downloadInfo}>
+            <Text style={styles.downloadInfoText}>{downloadStepText}</Text>
+          </View>
+        </View>
+      )}
+
+      {!mapDownload.active && showDownloadProgressBanner && !!downloadProgressText && (
+        <View style={styles.progressBannerWrap} pointerEvents="none">
+          <View style={styles.progressBanner}>
+            <Text style={styles.progressBannerText}>{downloadProgressText}</Text>
+          </View>
+        </View>
+      )}
+
+      {placingCheckpoint && !mapDownload.active && (
         <View style={styles.placingBannerWrap}>
           <Pressable
             accessibilityRole="button"
@@ -126,22 +236,26 @@ const MapScreen: FC = () => {
         </View>
       )}
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Zoom to my location"
-        style={styles.zoomButton}
-        onPress={handleZoomToLocation}
-      >
-        <Text style={styles.zoomButtonText}>LOC</Text>
-      </Pressable>
+      {!mapDownload.active && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Zoom to my location"
+          style={styles.zoomButton}
+          onPress={handleZoomToLocation}
+        >
+          <Text style={styles.zoomButtonText}>LOC</Text>
+        </Pressable>
+      )}
 
-      <CompassOverlay
-        open={compassOpen}
-        onToggle={() => setCompassOpen((v) => !v)}
-        headingDeg={Platform.OS === 'web' ? 0 : (location.headingDeg ?? null)}
-        targetBearingDeg={targetBearingDeg}
-        targetLabel={selectedCheckpoint?.name ?? null}
-      />
+      {!mapDownload.active && (
+        <CompassOverlay
+          open={compassOpen}
+          onToggle={() => setCompassOpen((v) => !v)}
+          headingDeg={Platform.OS === 'web' ? 0 : (location.headingDeg ?? null)}
+          targetBearingDeg={targetBearingDeg}
+          targetLabel={selectedCheckpoint?.name ?? null}
+        />
+      )}
 
       <Modal
         visible={showPermissionModal}
@@ -171,6 +285,86 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#f8fafc'
+  },
+  downloadOverlay: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+  },
+  downloadActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  downloadSave: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#16a34a',
+  },
+  downloadSavePressed: {
+    opacity: 0.85,
+  },
+  downloadCancel: {
+    flex: 1,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc2626',
+  },
+  downloadCancelPressed: {
+    opacity: 0.85,
+  },
+  downloadReset: {
+    width: 46,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(15,23,42,0.92)',
+  },
+  downloadResetPressed: {
+    opacity: 0.85,
+  },
+  downloadActionText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  downloadInfo: {
+    marginTop: 10,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(15,23,42,0.92)',
+  },
+  downloadInfoText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+
+  progressBannerWrap: {
+    position: 'absolute',
+    top: 12,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  progressBanner: {
+    backgroundColor: 'rgba(15,23,42,0.92)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  progressBannerText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   placingBannerWrap: {
     position: 'absolute',
