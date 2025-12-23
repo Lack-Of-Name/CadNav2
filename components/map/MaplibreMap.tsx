@@ -1,11 +1,23 @@
+import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { Camera, MapView } from "@maplibre/maplibre-react-native";
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
 
-const mapStyle = "https://api.maptiler.com/maps/outdoor-v4/style.json?key=";
-
 export default function MapLibreMap() {
+  const { apiKey, loading } = useMapTilerKey();
+
+  if (loading || !apiKey) {
+    return (
+      <ThemedView style={styles.page}>
+        <ActivityIndicator size="large" />
+        <Text style={{ marginTop: 8 }}>Waiting for MapTiler API key...</Text>
+      </ThemedView>
+    );
+  }
+
+  const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
+
   return (
     <ThemedView style={styles.page}>
       <MapView

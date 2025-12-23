@@ -1,18 +1,21 @@
+import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
 
-const mapStyle = "https://api.maptiler.com/maps/outdoor-v4/style.json?key=9Zsr687Ti9MQB0HTAUQo";
-
 export default function MapLibreMap() {
+  const { apiKey, loading } = useMapTilerKey();
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
 
   useEffect(() => {
+    if (loading || !apiKey) return;
     if (map.current) return; // stops map from initializing more than once
     if (!mapContainer.current) return;
+
+    const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
@@ -25,7 +28,15 @@ export default function MapLibreMap() {
       map.current?.remove();
       map.current = null;
     };
-  }, []);
+  }, [apiKey, loading]);
+
+  if (loading || !apiKey) {
+    return (
+      <ThemedView style={styles.container}>
+        <Text>Waiting for MapTiler API key...</Text>
+      </ThemedView>
+    );
+  }
 
   return (
     <ThemedView style={styles.container}>
