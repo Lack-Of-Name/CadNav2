@@ -1,7 +1,8 @@
 import StyledButton from '@/components/ui/StyledButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Modal, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 const STORAGE_KEY = 'MAPTILER_API_KEY';
 
@@ -22,6 +23,7 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
   const [showModal, setShowModal] = useState(false);
   const [input, setInput] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -34,6 +36,11 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
             await AsyncStorage.removeItem(STORAGE_KEY);
             setShowModal(true);
           }
+          // if we have a valid saved key, ensure we have location permission
+          if (saved && ok) {
+            const locOk = await requestLocationPermission();
+            if (!locOk) setLocationModalVisible(true);
+          }
         } else {
           setShowModal(true);
         }
@@ -44,6 +51,46 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
       }
     })();
   }, []);
+
+  // Re-check API key and location permission whenever the app becomes active
+  useEffect(() => {
+    let mounted = true;
+    const handleAppState = (next: AppStateStatus) => {
+      if (next === 'active') {
+        (async () => {
+          try {
+            const saved = await AsyncStorage.getItem(STORAGE_KEY);
+            if (saved) {
+              const ok = await verifyKey(saved);
+              if (!ok) {
+                await AsyncStorage.removeItem(STORAGE_KEY);
+                if (!mounted) return;
+                setApiKey(null);
+                setShowModal(true);
+                return;
+              }
+              if (!mounted) return;
+              setApiKey(saved);
+              if (!locationModalVisible) {
+                const locOk = await requestLocationPermission();
+                if (!locOk && mounted) setLocationModalVisible(true);
+              }
+            } else {
+              if (mounted) setShowModal(true);
+            }
+          } catch (e) {
+            if (mounted) setShowModal(true);
+          }
+        })();
+      }
+    };
+
+    const sub = AppState.addEventListener('change', handleAppState);
+    return () => {
+      mounted = false;
+      sub.remove();
+    };
+  }, [locationModalVisible]);
 
   async function verifyKey(key: string) {
     try {
@@ -68,8 +115,40 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
       await AsyncStorage.setItem(STORAGE_KEY, input.trim());
       setApiKey(input.trim());
       setShowModal(false);
+      // after receiving a valid API key, request location permission
+      const locOk = await requestLocationPermission();
+      if (!locOk) setLocationModalVisible(true);
     } catch (e) {
       Alert.alert('Storage error', 'Failed to save the API key for future launches.');
+    }
+  }
+
+  async function requestLocationPermission(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'web') {
+        if (!('geolocation' in navigator)) return false;
+        return new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            () => resolve(true),
+            () => resolve(false),
+            { timeout: 5000 }
+          );
+        });
+      } else {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        return status === 'granted';
+      }
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function openSettings() {
+    if (Platform.OS === 'web') {
+      // open a help page guiding the user to enable site location permissions
+      Linking.openURL('https://support.google.com/chrome/answer/142065');
+    } else {
+      Linking.openSettings();
     }
   }
 
@@ -97,6 +176,30 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
               <View style={styles.spacer} />
               <StyledButton variant="primary" onPress={onSubmit} disabled={verifying}>
                 {verifying ? <ActivityIndicator color="#fff" /> : 'Verify & Save'}
+              </StyledButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={locationModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.backdrop}>
+          <View style={styles.container}>
+            <Text style={styles.title}>Location Permission Required</Text>
+            <Text style={styles.help}>This app requires location access to function. Please enable location for this app/site.</Text>
+            <View style={styles.row}>
+              <StyledButton variant="secondary" onPress={openSettings}>
+                Open Settings
+              </StyledButton>
+              <View style={styles.spacer} />
+              <StyledButton
+                variant="primary"
+                onPress={async () => {
+                  const ok = await requestLocationPermission();
+                  if (ok) setLocationModalVisible(false);
+                }}
+              >
+                Retry
               </StyledButton>
             </View>
           </View>

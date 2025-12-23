@@ -32,7 +32,15 @@
       "favicon": "./assets/icons/icon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "This app uses location for navigation.",
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "@maplibre/maplibre-react-native"
     ]
   }
 }
