@@ -24,6 +24,8 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
   const [input, setInput] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [orientationModalVisible, setOrientationModalVisible] = useState(false);
+  const [orientationGranted, setOrientationGranted] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -40,6 +42,11 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
           if (saved && ok) {
             const locOk = await requestLocationPermission();
             if (!locOk) setLocationModalVisible(true);
+            else {
+              const orientOk = await requestOrientationPermission();
+              if (!orientOk) setOrientationModalVisible(true);
+              else setOrientationGranted(true);
+            }
           }
         } else {
           setShowModal(true);
@@ -74,6 +81,11 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
               if (!locationModalVisible) {
                 const locOk = await requestLocationPermission();
                 if (!locOk && mounted) setLocationModalVisible(true);
+                else {
+                  const orientOk = await requestOrientationPermission();
+                  if (!orientOk && mounted) setOrientationModalVisible(true);
+                  else if (orientOk) setOrientationGranted(true);
+                }
               }
             } else {
               if (mounted) setShowModal(true);
@@ -143,6 +155,28 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
     }
   }
 
+  async function requestOrientationPermission(): Promise<boolean> {
+    try {
+      if (Platform.OS !== 'web') return true; // orientation permission API is for web/iOS Safari
+      // If DeviceOrientationEvent.requestPermission exists (iOS Safari), call it
+      const dev = window as any;
+      if (!('DeviceOrientationEvent' in window)) return false;
+      const ctor: any = (DeviceOrientationEvent as any);
+      if (typeof ctor.requestPermission === 'function') {
+        try {
+          const result = await ctor.requestPermission();
+          return result === 'granted';
+        } catch (e) {
+          return false;
+        }
+      }
+      // Other browsers do not require explicit permission for deviceorientation
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
   function openSettings() {
     if (Platform.OS === 'web') {
       // open a help page guiding the user to enable site location permissions
@@ -200,6 +234,36 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
                 }}
               >
                 Retry
+              </StyledButton>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={orientationModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.backdrop}>
+          <View style={styles.container}>
+            <Text style={styles.title}>Orientation Permission Required</Text>
+            <Text style={styles.help}>This app needs access to device orientation (compass) to show device heading. Please grant access to continue.</Text>
+            <View style={styles.row}>
+              <StyledButton variant="secondary" onPress={() => { /* guide text only */ }}>
+                Help
+              </StyledButton>
+              <View style={styles.spacer} />
+              <StyledButton
+                variant="primary"
+                onPress={async () => {
+                  const ok = await requestOrientationPermission();
+                  if (ok) {
+                    setOrientationGranted(true);
+                    setOrientationModalVisible(false);
+                  } else {
+                    // keep modal visible; user must grant to continue
+                    setOrientationModalVisible(true);
+                  }
+                }}
+              >
+                Grant
               </StyledButton>
             </View>
           </View>

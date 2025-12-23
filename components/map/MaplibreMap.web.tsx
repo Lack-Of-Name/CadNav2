@@ -13,6 +13,8 @@ export default function MapLibreMap() {
   const markerRef = useRef<HTMLDivElement | null>(null);
   const { lastLocation } = useGPS();
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
+  const [orientation, setOrientation] = useState<number | null>(null);
+  const [mapBearing, setMapBearing] = useState<number>(0);
 
   useEffect(() => {
     if (loading || !apiKey) return;
@@ -27,6 +29,19 @@ export default function MapLibreMap() {
       center: [0, 0],
       zoom: 1
     });
+
+    // Lock map orientation to north-up: disable user rotation and force bearing 0
+    try {
+      if (map.current.dragRotate && typeof map.current.dragRotate.disable === 'function') {
+        map.current.dragRotate.disable();
+      }
+      if (map.current.touchZoomRotate && typeof map.current.touchZoomRotate.disableRotation === 'function') {
+        map.current.touchZoomRotate.disableRotation();
+      }
+      map.current.setBearing(0);
+    } catch (e) {
+      // ignore if methods are unavailable
+    }
 
     return () => {
       map.current?.remove();
@@ -45,13 +60,6 @@ export default function MapLibreMap() {
       setScreenPos(null);
     }
 
-    // center on the user a bit
-    try {
-      map.current.easeTo({ center: [lastLocation.coords.longitude, lastLocation.coords.latitude], zoom: 13 });
-    } catch (e) {
-      // ignore
-    }
-
     // update position when the map moves or zooms
     const update = () => {
       if (!map.current || !lastLocation) return;
@@ -59,6 +67,12 @@ export default function MapLibreMap() {
         const p = map.current.project([lastLocation.coords.longitude, lastLocation.coords.latitude]);
         setScreenPos({ x: p.x, y: p.y });
       } catch (err) {
+        // ignore
+      }
+      try {
+        // Keep bearing locked to north-up
+        setMapBearing(0);
+      } catch (e) {
         // ignore
       }
     };
@@ -71,6 +85,24 @@ export default function MapLibreMap() {
       setScreenPos(null);
     };
   }, [lastLocation]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
+
+    const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
+      const heading = (ev as any).webkitCompassHeading ?? (ev.alpha) ;
+      if (heading == null) return;
+      // heading is in degrees (0-360) relative to the device's Z axis.
+      // Prefer iOS `webkitCompassHeading` when available.
+      setOrientation(heading);
+    };
+
+    // Try to listen for deviceorientation events. Some browsers (iOS Safari)
+    // require a user gesture to grant permission; we simply attach the
+    // listener — the page should prompt if necessary.
+    window.addEventListener('deviceorientation', handler as EventListener);
+    return () => window.removeEventListener('deviceorientation', handler as EventListener);
+  }, []);
 
   if (loading || !apiKey) {
     return (
@@ -86,7 +118,18 @@ export default function MapLibreMap() {
       {screenPos && (
         <div style={{ position: 'absolute', left: screenPos.x - 12, top: screenPos.y - 12, pointerEvents: 'none' }}>
           <div style={{ width: 24, height: 24, borderRadius: 12, background: '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: 10, height: 10, borderRadius: 5, background: 'white' }} />
+            {/**
+             * Compute arrow rotation so it matches Google Maps heading:
+             * - Some devices report `alpha` with the opposite sign, so invert it via (360 - alpha).
+             * - Subtract the map bearing so the arrow is relative to the map orientation.
+             */}
+            {(() => {
+              return (
+                <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
+                  <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
+                </svg>
+              );
+            })()}
           </div>
           <div style={{ position: 'absolute', left: 0, top: 0, width: 24, height: 24, borderRadius: 12, boxShadow: '0 0 0 6px rgba(0,122,255,0.15)', animation: 'pulse 2s infinite' }} />
         </div>

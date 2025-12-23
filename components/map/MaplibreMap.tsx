@@ -26,6 +26,9 @@ export default function MapLibreMap() {
         style={styles.map}
         mapStyle={mapStyle}
         logoEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled={false}
+        compassEnabled={false}
       >
         <Camera
           defaultSettings={{
