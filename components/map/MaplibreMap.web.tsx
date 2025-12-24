@@ -1,5 +1,7 @@
+import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { useGPS } from '@/hooks/gps';
+import { useSettings } from '@/hooks/settings';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import React, { useEffect, useRef, useState } from 'react';
@@ -12,6 +14,7 @@ export default function MapLibreMap() {
   const map = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<HTMLDivElement | null>(null);
   const { lastLocation } = useGPS();
+  const { angleUnit } = useSettings();
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
@@ -133,7 +136,9 @@ export default function MapLibreMap() {
             Heading:{' '}
             {lastLocation.coords.heading == null
               ? '—'
-              : `${lastLocation.coords.heading.toFixed(0)}°`}
+              : angleUnit === 'mils'
+                ? `${Math.round(degreesToMils(lastLocation.coords.heading, { normalize: true }))} mils`
+                : `${lastLocation.coords.heading.toFixed(0)}°`}
           </Text>
         </div>
       )}

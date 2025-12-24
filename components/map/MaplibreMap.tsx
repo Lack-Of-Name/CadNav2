@@ -1,5 +1,7 @@
+import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { useGPS } from '@/hooks/gps';
+import { useSettings } from '@/hooks/settings';
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -9,6 +11,7 @@ import { ThemedView } from '../themed-view';
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation } = useGPS();
+  const { angleUnit } = useSettings();
   const insets = useSafeAreaInsets();
 
   if (loading || !apiKey) {
@@ -72,7 +75,9 @@ export default function MapLibreMap() {
             Heading:{' '}
             {lastLocation.coords.heading == null
               ? '—'
-              : `${lastLocation.coords.heading.toFixed(0)}°`}
+              : angleUnit === 'mils'
+                ? `${Math.round(degreesToMils(lastLocation.coords.heading, { normalize: true }))} mils`
+                : `${lastLocation.coords.heading.toFixed(0)}°`}
           </Text>
         </View>
       ) : null}

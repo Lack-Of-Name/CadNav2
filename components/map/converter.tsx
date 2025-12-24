@@ -17,6 +17,46 @@ function normalizeDeg(deg: number) {
   return v;
 }
 
+function normalizeMils(mils: number, milsPerCircle = 6400) {
+  let v = mils % milsPerCircle;
+  if (v < 0) v += milsPerCircle;
+  return v;
+}
+
+/**
+ * NATO mils per full circle.
+ *
+ * Note: other "mil" definitions exist (e.g., 6000, 6283.185...), but most
+ * land-nav / artillery contexts use 6400.
+ */
+export const MILS_PER_CIRCLE = 6400;
+
+/**
+ * Convert degrees to mils.
+ * Uses $360^\circ = 6400$ mils by default.
+ */
+export function degreesToMils(
+  degrees: number,
+  opts: { normalize?: boolean; milsPerCircle?: number } = {}
+): number {
+  const milsPerCircle = opts.milsPerCircle ?? MILS_PER_CIRCLE;
+  const mils = (degrees * milsPerCircle) / 360;
+  return opts.normalize ? normalizeMils(mils, milsPerCircle) : mils;
+}
+
+/**
+ * Convert mils to degrees.
+ * Uses $6400$ mils $= 360^\circ$ by default.
+ */
+export function milsToDegrees(
+  mils: number,
+  opts: { normalize?: boolean; milsPerCircle?: number } = {}
+): number {
+  const milsPerCircle = opts.milsPerCircle ?? MILS_PER_CIRCLE;
+  const degrees = (mils * 360) / milsPerCircle;
+  return opts.normalize ? normalizeDeg(degrees) : degrees;
+}
+
 /**
  * Convert a bearing between `true`, `magnetic`, and `grid` references.
  *
