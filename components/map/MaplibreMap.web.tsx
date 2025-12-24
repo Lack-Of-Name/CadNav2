@@ -137,7 +137,9 @@ export default function MapLibreMap() {
       {lastLocation && (
         <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
           <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
+          <br />
           <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
+          <br />
           <Text style={styles.locationText}>
             Heading:{' '}
             {lastLocation.coords.heading == null
