@@ -41,6 +41,9 @@
         }
       ],
       "@maplibre/maplibre-react-native"
+    ],
+    "assetBundlePatterns": [
+      "assets/*"
     ]
   }
 }

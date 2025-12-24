@@ -66,6 +66,8 @@ export function convertBearing(
 
 export default convertBearing;
 
+export { getMagneticDeclination } from './declination';
+
 /**
  * Compute grid convergence (degrees) for a given latitude/longitude and UTM zone.
  * If `zone` is omitted the UTM zone for the longitude will be used.
@@ -92,39 +94,4 @@ export function computeGridConvergence(lat: number, lon: number, zone?: number):
  *
  * `date` may be a `Date` or ISO date string. If omitted, current date is used.
  */
-export async function getMagneticDeclination(
-  lat: number,
-  lon: number,
-  date?: Date | string
-): Promise<number> {
-  const dt = date ? new Date(date) : new Date();
-  if (isNaN(dt.getTime())) return 0;
-
-  const year = dt.getUTCFullYear();
-  const month = dt.getUTCMonth() + 1;
-  const day = dt.getUTCDate();
-
-  // NOAA geomag calculator endpoint (returns JSON)
-  const url = `https://www.ngdc.noaa.gov/geomag-web/calculators/calculateDeclination?lat1=${encodeURIComponent(
-    String(lat)
-  )}&lon1=${encodeURIComponent(String(lon))}&resultFormat=json&startYear=${year}&startMonth=${month}&startDay=${day}`;
-
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return 0;
-    const data = await res.json();
-    // response structure varies; try known paths
-    // when successful, `result` array with objects containing `declination` is expected
-    if (data && data.result && Array.isArray(data.result) && data.result.length > 0) {
-      const r = data.result[0];
-      if (typeof r.declination === 'number') return r.declination;
-      if (typeof r.declination_value === 'number') return r.declination_value;
-    }
-    // some endpoints return an object with `declination` at top-level
-    if (typeof data.declination === 'number') return data.declination;
-  } catch (e) {
-    // ignore network / parse errors
-  }
-
-  return 0;
-}
+// declination is provided by components/map/declination.tsx (offline WMMHR model)
