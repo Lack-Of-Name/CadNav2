@@ -86,24 +86,6 @@ export default function MapLibreMap() {
     };
   }, [lastLocation]);
 
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
-
-    const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
-      const heading = (ev as any).webkitCompassHeading ?? (ev.alpha) ;
-      if (heading == null) return;
-      // heading is in degrees (0-360) relative to the device's Z axis.
-      // Prefer iOS `webkitCompassHeading` when available.
-      setOrientation(heading);
-    };
-
-    // Try to listen for deviceorientation events. Some browsers (iOS Safari)
-    // require a user gesture to grant permission; we simply attach the
-    // listener — the page should prompt if necessary.
-    window.addEventListener('deviceorientation', handler as EventListener);
-    return () => window.removeEventListener('deviceorientation', handler as EventListener);
-  }, []);
-
   if (loading || !apiKey) {
     return (
       <ThemedView style={styles.container}>
