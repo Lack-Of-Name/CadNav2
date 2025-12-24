@@ -10,9 +10,12 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
-  const { angleUnit, setSetting } = useSettings();
+  const { angleUnit, mapHeading, setSetting } = useSettings();
 
   const isMils = angleUnit === 'mils';
+  const isTrue = mapHeading === 'true';
+  const switchTrackOn = colorScheme === 'dark' ? 'rgba(255,255,255,0.22)' : Colors[colorScheme].tint;
+  const switchThumb = colorScheme === 'dark' ? Colors.dark.tabIconSelected : Colors[colorScheme].background;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -21,7 +24,6 @@ export default function SettingsScreen() {
 
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Angle Units</ThemedText>
-
           <View style={styles.row}>
             <ThemedText type="defaultSemiBold">Display angles in mils</ThemedText>
             <Switch
@@ -29,14 +31,32 @@ export default function SettingsScreen() {
               onValueChange={(v) => setSetting('angleUnit', v ? 'mils' : 'degrees')}
               trackColor={{
                 false: Colors[colorScheme].tabIconDefault,
-                true: Colors[colorScheme].tint,
+                true: switchTrackOn,
               }}
-              thumbColor={Colors[colorScheme].background}
+              thumbColor={switchThumb}
             />
           </View>
-
           <ThemedText>
             Current: {isMils ? 'Mils (6400)' : 'Degrees (360°)'}
+          </ThemedText>
+        </ThemedView>
+
+        <ThemedView style={styles.section}>
+          <ThemedText type="subtitle">Map Heading</ThemedText>
+          <View style={styles.row}>
+            <ThemedText type="defaultSemiBold">Show heading as true north</ThemedText>
+            <Switch
+              value={isTrue}
+              onValueChange={(v) => setSetting('mapHeading', v ? 'true' : 'magnetic')}
+              trackColor={{
+                false: Colors[colorScheme].tabIconDefault,
+                true: switchTrackOn,
+              }}
+              thumbColor={switchThumb}
+            />
+          </View>
+          <ThemedText>
+            Current: {isTrue ? 'True North' : 'Magnetic North'}
           </ThemedText>
         </ThemedView>
       </ThemedView>

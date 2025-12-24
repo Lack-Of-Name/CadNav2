@@ -41,12 +41,19 @@ const SETTINGS_DEFS = {
     default: 'mils' as AngleUnit,
     parse: (raw: unknown) => (isAngleUnit(raw) ? raw : 'mils'),
   },
-} as const satisfies Record<string, SettingDef<unknown>>;
+  mapHeading: {
+    default: 'true' as 'true' | 'magnetic',
+    parse: (raw: unknown) => (raw === 'magnetic' ? 'magnetic' : 'true'),
+  },
+} as const;
 
 const SETTING_KEYS = Object.keys(SETTINGS_DEFS) as Array<keyof typeof SETTINGS_DEFS>;
 
+export type MapHeading = 'true' | 'magnetic';
+
 export type Settings = {
-  -readonly [K in keyof typeof SETTINGS_DEFS]: (typeof SETTINGS_DEFS)[K] extends SettingDef<infer T> ? T : never;
+  angleUnit: AngleUnit;
+  mapHeading: MapHeading;
 };
 
 type PersistedRecord = Record<string, unknown>;
@@ -59,20 +66,17 @@ type SettingsContextValue = {
 };
 
 function buildDefaultSettings(): Settings {
-  const out = {} as Settings;
-  for (const key of SETTING_KEYS) {
-    out[key] = SETTINGS_DEFS[key].default as Settings[typeof key];
-  }
-  return out;
+  return {
+    angleUnit: SETTINGS_DEFS.angleUnit.default,
+    mapHeading: SETTINGS_DEFS.mapHeading.default,
+  } as Settings;
 }
 
 function hydrateSettings(persisted: PersistedRecord | null): Settings {
-  const out = {} as Settings;
-  for (const key of SETTING_KEYS) {
-    const raw = persisted ? persisted[String(key)] : undefined;
-    out[key] = SETTINGS_DEFS[key].parse(raw) as Settings[typeof key];
-  }
-  return out;
+  return {
+    angleUnit: SETTINGS_DEFS.angleUnit.parse(persisted ? persisted['angleUnit'] : undefined),
+    mapHeading: SETTINGS_DEFS.mapHeading.parse(persisted ? persisted['mapHeading'] : undefined),
+  } as Settings;
 }
 
 /** Read raw settings JSON from storage (may be missing/invalid). */

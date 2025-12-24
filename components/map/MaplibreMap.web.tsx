@@ -14,7 +14,7 @@ export default function MapLibreMap() {
   const map = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<HTMLDivElement | null>(null);
   const { lastLocation } = useGPS();
-  const { angleUnit } = useSettings();
+  const { angleUnit, mapHeading } = useSettings();
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
@@ -134,11 +134,14 @@ export default function MapLibreMap() {
           <br />
           <Text style={styles.locationText}>
             Heading:{' '}
-            {lastLocation.coords.heading == null
-              ? '—'
-              : angleUnit === 'mils'
-                ? `${Math.round(degreesToMils(lastLocation.coords.heading, { normalize: true }))} mils`
-                : `${lastLocation.coords.heading.toFixed(0)}°`}
+            {(() => {
+              const useMag = mapHeading === 'magnetic';
+              const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+              if (h == null) return '—';
+              const formatted = angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`;
+              const indicator = useMag ? 'Magnetic' : 'True';
+              return `${formatted} — ${indicator}`;
+            })()}
           </Text>
         </div>
       )}

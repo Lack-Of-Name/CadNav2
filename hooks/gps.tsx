@@ -9,7 +9,8 @@ export type GPSLocation = {
     longitude: number;
     accuracy?: number | null;
     altitude?: number | null;
-    heading?: number | null;
+    magHeading?: number | null;
+    trueHeading?: number | null;
   };
   timestamp: number;
 };
@@ -21,8 +22,10 @@ export function useGPS() {
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
-  const [heading, setHeading] = useState<number | null>(null);
-  const headingRef = useRef<number | null>(null);
+  const [magHeading, setMagHeading] = useState<number | null>(null);
+  const [trueHeading, setTrueHeading] = useState<number | null>(null);
+  const magHeadingRef = useRef<number | null>(null);
+  const trueHeadingRef = useRef<number | null>(null);
 
   useEffect(() => {
     lastLocationRef.current = lastLocation;
@@ -42,15 +45,15 @@ export function useGPS() {
         const altKm = (altitudeMeters ?? 0) / 1000;
         const decl = await getMagneticDeclination(lat, lon, new Date(), { altitudeKm: altKm });
         const trueH = normalizeDeg(magHeading + decl);
-        headingRef.current = trueH;
-        setHeading(trueH);
+        trueHeadingRef.current = trueH;
+        setTrueHeading(trueH);
         setLastLocation((prev) =>
           prev
             ? {
                 ...prev,
                 coords: {
                   ...prev.coords,
-                  heading: trueH,
+                  trueHeading: trueH,
                 },
               }
             : prev
@@ -72,7 +75,8 @@ export function useGPS() {
           longitude: loc.coords.longitude,
           accuracy: loc.coords.accuracy ?? null,
           altitude: loc.coords.altitude ?? null,
-          heading: headingRef.current,
+          magHeading: magHeadingRef.current,
+          trueHeading: trueHeadingRef.current,
         },
         timestamp: loc.timestamp ?? Date.now(),
       };
@@ -106,15 +110,15 @@ export function useGPS() {
               if (cancelled) return;
               const mag = Number.isFinite(h.magHeading) ? h.magHeading : null;
               // temporarily set magnetic heading; convert to true if we have a location
-              headingRef.current = mag;
-              setHeading(mag);
+              magHeadingRef.current = mag;
+              setMagHeading(mag);
               setLastLocation((prev) =>
                 prev
                   ? {
                       ...prev,
                       coords: {
                         ...prev.coords,
-                        heading: mag,
+                        magHeading: mag,
                       },
                     }
                   : prev
@@ -139,8 +143,8 @@ export function useGPS() {
             const next = toGPSLocation(current);
             setLastLocation(next);
             // If we already have a magnetic heading, convert it to true now that we have coordinates
-            if (headingRef.current != null) {
-              void computeAndSetTrueHeading(headingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+            if (magHeadingRef.current != null) {
+              void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
             }
           }
         } catch {
@@ -160,8 +164,8 @@ export function useGPS() {
             const next = toGPSLocation(loc);
             setLastLocation(next);
             // Convert any existing magnetic heading to true using updated location
-            if (headingRef.current != null) {
-              await computeAndSetTrueHeading(headingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+            if (magHeadingRef.current != null) {
+              await computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
             }
           }
         );
@@ -189,15 +193,15 @@ export function useGPS() {
       const mag = (ev as any).webkitCompassHeading ?? ev.alpha;
       if (mag == null) return;
       // set magnetic value first, then convert if we have a location
-      headingRef.current = mag;
-      setHeading(mag);
+      magHeadingRef.current = mag;
+      setMagHeading(mag);
       setLastLocation((prev) =>
         prev
           ? {
               ...prev,
               coords: {
                 ...prev.coords,
-                heading: mag,
+                magHeading: mag,
               },
             }
           : prev
@@ -213,5 +217,5 @@ export function useGPS() {
     return () => window.removeEventListener('deviceorientation', handler as EventListener);
   }, [computeAndSetTrueHeading]);
 
-  return { lastLocation, setLastLocation, permissionStatus, error } as const;
+  return { lastLocation, setLastLocation, permissionStatus, error, magHeading, trueHeading } as const;
 }

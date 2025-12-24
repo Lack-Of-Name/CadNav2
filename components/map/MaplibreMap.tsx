@@ -4,14 +4,14 @@ import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation } = useGPS();
-  const { angleUnit } = useSettings();
+  const { angleUnit, mapHeading } = useSettings();
   const insets = useSafeAreaInsets();
 
   if (loading || !apiKey) {
@@ -27,6 +27,10 @@ export default function MapLibreMap() {
 
   return (
     <ThemedView style={styles.page}>
+       <StatusBar
+          animated={true}
+          barStyle="dark-content"
+        />
       <MapView
         style={styles.map}
         mapStyle={mapStyle}
@@ -73,11 +77,14 @@ export default function MapLibreMap() {
           </Text>
           <Text style={styles.locationText}>
             Heading:{' '}
-            {lastLocation.coords.heading == null
-              ? '—'
-              : angleUnit === 'mils'
-                ? `${Math.round(degreesToMils(lastLocation.coords.heading, { normalize: true }))} mils`
-                : `${lastLocation.coords.heading.toFixed(0)}°`}
+            {(() => {
+              const useMag = mapHeading === 'magnetic';
+              const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+              if (h == null) return '—';
+              const formatted = angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`;
+              const indicator = useMag ? 'Magnetic' : 'True';
+              return `${formatted} — ${indicator}`;
+            })()}
           </Text>
         </View>
       ) : null}
