@@ -1,5 +1,5 @@
+import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
 
 export type GPSLocation = {
   coords: {
@@ -12,45 +12,80 @@ export type GPSLocation = {
 
 export function useGPS() {
   const [lastLocation, setLastLocation] = useState<GPSLocation | null>(null);
-  const watcherRef = useRef<number | null>(null);
+  const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
 
   useEffect(() => {
-    if (Platform.OS === 'web') {
-      if (!('geolocation' in navigator)) return undefined;
-      const id = navigator.geolocation.watchPosition(
-        (pos) => {
-          setLastLocation({
-            coords: {
-              latitude: pos.coords.latitude,
-              longitude: pos.coords.longitude,
-              accuracy: pos.coords.accuracy,
-            },
-            timestamp: pos.timestamp,
-          });
+    let cancelled = false;
+
+    const toGPSLocation = (loc: Location.LocationObject): GPSLocation => {
+      return {
+        coords: {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          accuracy: loc.coords.accuracy ?? null,
         },
-        () => {},
-        { enableHighAccuracy: true }
-      );
-      watcherRef.current = id as unknown as number;
-      return () => {
-        if (watcherRef.current != null) navigator.geolocation.clearWatch(watcherRef.current);
+        timestamp: loc.timestamp ?? Date.now(),
       };
-    }
-    return undefined;
+    };
+
+    const start = async () => {
+      try {
+        setError(null);
+
+        const servicesEnabled = await Location.hasServicesEnabledAsync();
+        if (cancelled) return;
+        if (!servicesEnabled) {
+          setError('Location services are disabled.');
+          return;
+        }
+
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+
+        setPermissionStatus(status);
+        if (status !== Location.PermissionStatus.GRANTED) {
+          setError('Location permission not granted.');
+          return;
+        }
+
+        // Prime with a current position so UI updates quickly.
+        try {
+          const current = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.BestForNavigation,
+          });
+          if (!cancelled) setLastLocation(toGPSLocation(current));
+        } catch {
+          // Ignore: watchPositionAsync below will still update.
+        }
+
+        subscriptionRef.current?.remove();
+        subscriptionRef.current = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 1,
+            timeInterval: 1000,
+            mayShowUserSettingsDialog: true,
+          },
+          (loc) => {
+            if (cancelled) return;
+            setLastLocation(toGPSLocation(loc));
+          }
+        );
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Failed to start location tracking.');
+      }
+    };
+
+    start();
+    return () => {
+      cancelled = true;
+      subscriptionRef.current?.remove();
+      subscriptionRef.current = null;
+    };
   }, []);
 
-  return { lastLocation, setLastLocation } as const;
+  return { lastLocation, setLastLocation, permissionStatus, error } as const;
 }
-
-// Component that hooks into maplibre-react-native's UserLocation on native.
-// On web the hook above will poll navigator.geolocation, so this renders null.
-type UserLocationMarkerProps = {
-  onLocation?: (loc: GPSLocation) => void;
-};
-
-// Native map view registration can conflict if the native maplibre module
-// is required multiple times. Render `UserLocation` from the native map
-// component inside the native Map component instead of requiring it here.
-
-// We intentionally do not export a native UserLocation component from
-// this file to avoid duplicate native view registration.
