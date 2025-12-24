@@ -1,11 +1,13 @@
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 
 export type GPSLocation = {
   coords: {
     latitude: number;
     longitude: number;
     accuracy?: number | null;
+    heading?: number | null;
   };
   timestamp: number;
 };
@@ -15,6 +17,9 @@ export function useGPS() {
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const [heading, setHeading] = useState<number | null>(null);
+  const headingRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,6 +30,7 @@ export function useGPS() {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
           accuracy: loc.coords.accuracy ?? null,
+          heading: headingRef.current,
         },
         timestamp: loc.timestamp ?? Date.now(),
       };
@@ -50,12 +56,41 @@ export function useGPS() {
           return;
         }
 
+        // Magnetic heading
+        if (Platform.OS !== 'web') {
+          try {
+            headingSubscriptionRef.current?.remove();
+            headingSubscriptionRef.current = await Location.watchHeadingAsync((h) => {
+              if (cancelled) return;
+              const next = Number.isFinite(h.trueHeading) ? h.trueHeading : null;
+              headingRef.current = next;
+              setHeading(next);
+              setLastLocation((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      coords: {
+                        ...prev.coords,
+                        heading: next,
+                      },
+                    }
+                  : prev
+              );
+            });
+          } catch {
+            // Ignore heading errors; location tracking can still work.
+          }
+        }
+
         // Prime with a current position so UI updates quickly.
         try {
           const current = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.BestForNavigation,
           });
-          if (!cancelled) setLastLocation(toGPSLocation(current));
+          if (!cancelled) {
+            const next = toGPSLocation(current);
+            setLastLocation(next);
+          }
         } catch {
           // Ignore: watchPositionAsync below will still update.
         }
@@ -70,7 +105,8 @@ export function useGPS() {
           },
           (loc) => {
             if (cancelled) return;
-            setLastLocation(toGPSLocation(loc));
+            const next = toGPSLocation(loc);
+            setLastLocation(next);
           }
         );
       } catch (e) {
@@ -84,7 +120,35 @@ export function useGPS() {
       cancelled = true;
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
+      headingSubscriptionRef.current?.remove();
+      headingSubscriptionRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
+
+    const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
+      const next = (ev as any).webkitCompassHeading ?? ev.alpha;
+      if (next == null) return;
+      headingRef.current = next;
+      setHeading(next);
+      setLastLocation((prev) =>
+        prev
+          ? {
+              ...prev,
+              coords: {
+                ...prev.coords,
+                heading: next,
+              },
+            }
+          : prev
+      );
+    };
+
+    window.addEventListener('deviceorientation', handler as EventListener);
+    return () => window.removeEventListener('deviceorientation', handler as EventListener);
   }, []);
 
   return { lastLocation, setLastLocation, permissionStatus, error } as const;

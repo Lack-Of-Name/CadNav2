@@ -134,6 +134,18 @@ export default function MapLibreMap() {
           <div style={{ position: 'absolute', left: 0, top: 0, width: 24, height: 24, borderRadius: 12, boxShadow: '0 0 0 6px rgba(0,122,255,0.15)', animation: 'pulse 2s infinite' }} />
         </div>
       )}
+      {lastLocation && (
+        <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
+          <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
+          <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
+          <Text style={styles.locationText}>
+            Heading:{' '}
+            {lastLocation.coords.heading == null
+              ? '—'
+              : `${lastLocation.coords.heading.toFixed(0)}°`}
+          </Text>
+        </div>
+      )}
       <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
     </ThemedView>
   );
@@ -144,5 +156,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+  },
+  locationText: {
+    color: 'white',
+    fontSize: 12,
   },
 });

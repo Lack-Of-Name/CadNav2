@@ -62,6 +62,12 @@ export default function MapLibreMap() {
         >
           <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
           <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
+          <Text style={styles.locationText}>
+            Heading:{' '}
+            {lastLocation.coords.heading == null
+              ? '—'
+              : `${lastLocation.coords.heading.toFixed(0)}°`}
+          </Text>
         </View>
       ) : null}
     </ThemedView>
