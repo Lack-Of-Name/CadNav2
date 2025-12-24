@@ -63,6 +63,12 @@ export default function MapLibreMap() {
           <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
           <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
           <Text style={styles.locationText}>
+            Alt:{' '}
+            {lastLocation.coords.altitude == null
+              ? '—'
+              : `${lastLocation.coords.altitude.toFixed(0)} m`}
+          </Text>
+          <Text style={styles.locationText}>
             Heading:{' '}
             {lastLocation.coords.heading == null
               ? '—'

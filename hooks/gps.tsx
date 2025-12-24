@@ -7,6 +7,7 @@ export type GPSLocation = {
     latitude: number;
     longitude: number;
     accuracy?: number | null;
+    altitude?: number | null;
     heading?: number | null;
   };
   timestamp: number;
@@ -30,6 +31,7 @@ export function useGPS() {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
           accuracy: loc.coords.accuracy ?? null,
+          altitude: loc.coords.altitude ?? null,
           heading: headingRef.current,
         },
         timestamp: loc.timestamp ?? Date.now(),
