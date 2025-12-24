@@ -3,11 +3,13 @@ import { useGPS } from '@/hooks/gps';
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import React from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
-  const { lastLocation, setLastLocation } = useGPS();
+  const { lastLocation } = useGPS();
+  const insets = useSafeAreaInsets();
 
   if (loading || !apiKey) {
     return (
@@ -36,31 +38,28 @@ export default function MapLibreMap() {
             zoomLevel: 1,
           }}
         />
-        {/* UserLocation is rendered natively here to avoid duplicate native view registration. */}
-        {/* @ts-ignore */}
+        {/* Render the native location puck w/ heading indicator. */}
+        {/* @ts-ignore - typing differs across forks */}
         <UserLocation
+          visible={true}
+          animated={true}
+          renderMode="native"
+          androidRenderMode="compass"
           showsUserHeadingIndicator={true}
-          onUpdate={(e: any) => {
-            try {
-              const { coords, timestamp } = e.nativeEvent;
-              const loc = {
-                coords: {
-                  latitude: coords.latitude,
-                  longitude: coords.longitude,
-                  accuracy: coords.accuracy,
-                },
-                timestamp: timestamp ?? Date.now(),
-              } as const;
-              setLastLocation(loc as any);
-            } catch (err) {
-              // ignore
-            }
-          }}
+          androidPreferredFramesPerSecond={60}
         />
       </MapView>
 
       {lastLocation ? (
-        <View style={styles.locationOverlay}>
+        <View
+          style={[
+            styles.locationOverlay,
+            {
+              top: insets.top + 12,
+              right: insets.right + 12,
+            },
+          ]}
+        >
           <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
           <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
         </View>
