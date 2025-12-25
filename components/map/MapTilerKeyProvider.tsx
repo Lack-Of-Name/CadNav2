@@ -24,6 +24,7 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [input, setInput] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
@@ -34,14 +35,14 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
       try {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
         if (saved) {
-          const ok = await verifyKey(saved);
-          if (ok) setApiKey(saved);
+          const res = await verifyKey(saved);
+          if (res.ok) setApiKey(saved);
           else {
             await AsyncStorage.removeItem(STORAGE_KEY);
             setShowModal(true);
           }
           // if we have a valid saved key, ensure we have location permission
-          if (saved && ok) {
+          if (saved && res.ok) {
             const locOk = await requestLocationPermission();
             if (!locOk) setLocationModalVisible(true);
             else {
@@ -70,8 +71,8 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
           try {
             const saved = await AsyncStorage.getItem(STORAGE_KEY);
             if (saved) {
-              const ok = await verifyKey(saved);
-              if (!ok) {
+              const res = await verifyKey(saved);
+              if (!res.ok) {
                 await AsyncStorage.removeItem(STORAGE_KEY);
                 if (!mounted) return;
                 setApiKey(null);
@@ -108,23 +109,31 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
 
   async function verifyKey(key: string) {
     try {
-      const url = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${key}`;
+      // Use a random tile at zoom level 20 to verify the API key.
+      const z = 20;
+      const max = 1 << z; // 2^20 = 1,048,576
+      const x = Math.floor(Math.random() * max);
+      const y = Math.floor(Math.random() * max);
+      const url = `https://api.maptiler.com/maps/outdoor-v4/256/${z}/${x}/${y}.png?key=${key}`;
       const res = await fetch(url, { method: 'GET' });
-      return res.ok;
-    } catch (e) {
-      return false;
+      if (res.ok) return { ok: true };
+      // Provide status info for better debugging when used from the modal
+      return { ok: false, message: `Request failed: ${res.status} ${res.statusText}` };
+    } catch (e: any) {
+      return { ok: false, message: e?.message ?? 'Network error' };
     }
   }
 
   async function onSubmit() {
     if (!input) return Alert.alert('API Key required', 'Please enter your MapTiler API key.');
     setVerifying(true);
-    const ok = await verifyKey(input.trim());
+    const res = await verifyKey(input.trim());
     setVerifying(false);
-    if (!ok) {
-      Alert.alert('Invalid API Key', 'The provided MapTiler API key is invalid. Please check it and try again.');
+    if (!res.ok) {
+      setError(res.message ?? 'The provided MapTiler API key is invalid. Please check it and try again.');
       return;
     }
+    setError(null);
     try {
       await AsyncStorage.setItem(STORAGE_KEY, input.trim());
       setApiKey(input.trim());
@@ -187,10 +196,12 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
     }
     setApiKey(null);
     setInput('');
+    setError(null);
     setShowModal(true);
   }
 
   function promptForKey() {
+    setError(null);
     setShowModal(true);
   }
 
@@ -215,11 +226,15 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
             <TextInput
               placeholder="Enter MapTiler API key"
               value={input}
-              onChangeText={setInput}
+              onChangeText={(t) => {
+                setInput(t);
+                setError(null);
+              }}
               style={styles.input}
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={() => Linking.openURL('https://www.maptiler.com/')}>
                 Get key
@@ -329,6 +344,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   spacer: { width: 12 },
+  error: {
+    color: '#b00020',
+    marginBottom: 12,
+  },
   
 });
 
