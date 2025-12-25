@@ -138,23 +138,44 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
       await AsyncStorage.setItem(STORAGE_KEY, input.trim());
       setApiKey(input.trim());
       setShowModal(false);
-      // after receiving a valid API key, request location permission
-      const locOk = await requestLocationPermission();
+      // after receiving a valid API key, request location permission (prompt user)
+      const locOk = await requestLocationPermission(true);
       if (!locOk) setLocationModalVisible(true);
     } catch (e) {
       Alert.alert('Storage error', 'Failed to save the API key for future launches.');
     }
   }
 
-  async function requestLocationPermission(): Promise<boolean> {
+  // If `forceRequest` is true, actively requests permission (may trigger browser prompt).
+  // If false, only checks current permission state and avoids prompting on web.
+  async function requestLocationPermission(forceRequest = false): Promise<boolean> {
     try {
       if (Platform.OS === 'web') {
         if (!('geolocation' in navigator)) return false;
+
+        // Prefer the Permissions API when available so we can check state without prompting.
+        const perms = (navigator as any).permissions;
+        if (perms && typeof perms.query === 'function') {
+          try {
+            const status = await perms.query({ name: 'geolocation' } as any);
+            if (status.state === 'granted') return true;
+            if (status.state === 'denied') return false;
+            // state === 'prompt'
+            if (!forceRequest) return false; // avoid prompting automatically
+            // fall through to actively request below
+          } catch {
+            // ignore and fall back to getCurrentPosition below
+          }
+        } else if (!forceRequest) {
+          // No Permissions API and not forced: avoid triggering prompt
+          return false;
+        }
+
         return new Promise((resolve) => {
           navigator.geolocation.getCurrentPosition(
             () => resolve(true),
             () => resolve(false),
-            { timeout: 5000 }
+            { timeout: 8000 }
           );
         });
       } else {
@@ -261,7 +282,7 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
               <StyledButton
                 variant="primary"
                 onPress={async () => {
-                  const ok = await requestLocationPermission();
+                  const ok = await requestLocationPermission(true);
                   if (ok) setLocationModalVisible(false);
                 }}
               >
