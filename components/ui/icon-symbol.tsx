@@ -18,6 +18,7 @@ const MAPPING = {
   'gearshape.fill': 'settings',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'location.fill.viewfinder': 'my-location',
 } as IconMapping;
 
 /**

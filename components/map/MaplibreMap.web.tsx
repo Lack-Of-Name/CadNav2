@@ -1,7 +1,10 @@
 import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import React, { useEffect, useRef, useState } from 'react';
@@ -15,9 +18,21 @@ export default function MapLibreMap() {
   const markerRef = useRef<HTMLDivElement | null>(null);
   const { lastLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
+  const colorScheme = useColorScheme() ?? 'light';
+  const iconColor = useThemeColor({}, 'tabIconDefault');
+  const tabIconSelected = useThemeColor({}, 'tabIconSelected');
+  const tint = useThemeColor({}, 'tint');
+  const [following, setFollowing] = useState(false);
+  const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
+
+
+  // Sleep helper function
+  function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
 
   useEffect(() => {
     if (loading || !apiKey) return;
@@ -89,6 +104,30 @@ export default function MapLibreMap() {
     };
   }, [lastLocation]);
 
+  useEffect(() => {
+    if (!following || !lastLocation || !map.current) return;
+    const { latitude, longitude } = lastLocation.coords;
+    try {
+      map.current.flyTo({ center: [longitude, latitude] });
+    } catch (e) {
+      // ignore
+    }
+  }, [lastLocation, following]);
+
+  const handleRecenterPress = async () => {
+    const enabling = !following;
+    if (enabling && lastLocation && map.current) {
+      const { latitude, longitude } = lastLocation.coords;
+      try {
+        map.current.flyTo({ center: [longitude, latitude], zoom: 16, duration: 1000, essential: true });
+      } catch (e) {
+        // ignore
+      }
+    }
+    await sleep(1000)
+    setFollowing(enabling);
+  };
+
   if (loading || !apiKey) {
     return (
       <ThemedView style={styles.container}>
@@ -100,6 +139,29 @@ export default function MapLibreMap() {
   return (
     <ThemedView style={styles.container}>
       <div ref={mapContainer} style={{ width: '100%', height: '100%', position: 'relative' }} />
+      <div
+        onClick={handleRecenterPress}
+        role="button"
+        aria-label="Recenter map"
+        style={{
+          position: 'absolute',
+          bottom: 12,
+          left: 12,
+          padding: 10,
+          borderRadius: 24,
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 50,
+          display: 'flex',
+          cursor: 'pointer',
+          backgroundColor: following
+            ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255)')
+            : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
+          border: following ? `1.5px solid ${String(tint)}` : '1.5px solid transparent',
+        }}
+      >
+        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
+      </div>
       {screenPos && (
         <div style={{ position: 'absolute', left: screenPos.x - 12, top: screenPos.y - 12, pointerEvents: 'none' }}>
           <div style={{ width: 24, height: 24, borderRadius: 12, background: '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -159,5 +221,14 @@ const styles = StyleSheet.create({
   locationText: {
     color: 'white',
     fontSize: 12,
+  },
+  recenterButton: {
+    position: 'absolute',
+    padding: 10,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 50,
+    elevation: 6,
   },
 });

@@ -1,18 +1,54 @@
 import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
-import React from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
+
+// Sleep helper function
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme() ?? 'light';
+  const iconColor = useThemeColor({}, 'tabIconDefault');
+  const tabIconSelected = useThemeColor({}, 'tabIconSelected');
+  const tint = useThemeColor({}, 'tint');
+  const cameraRef = React.useRef<any>(null);
+  const [following, setFollowing] = useState(false);
+  const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
+
+  const handleRecenterPress = async () => {
+    // toggle following mode
+    const enabling = !following;
+    // if enabling, immediately center on current location
+    if (enabling && lastLocation && cameraRef.current) {
+          const { latitude, longitude } = lastLocation.coords;
+          cameraRef.current.zoomTo?.(16, 200);
+          await sleep(200)
+          cameraRef.current.flyTo?.([longitude, latitude], 800);
+    }
+    await sleep(1000)
+    setFollowing(enabling);
+    
+  };
+
+  useEffect(() => {
+    if (!following || !lastLocation || !cameraRef.current) return;
+    const { latitude, longitude } = lastLocation.coords;
+    cameraRef.current.flyTo([longitude, latitude]);
+  }, [lastLocation, following]);
 
   if (loading || !apiKey) {
     return (
@@ -31,6 +67,24 @@ export default function MapLibreMap() {
           animated={true}
           barStyle="dark-content"
         />
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={handleRecenterPress}
+        style={[
+          styles.recenterButton,
+          {
+            bottom: insets.bottom + 12,
+            left: insets.left + 12,
+            backgroundColor: following
+              ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )')
+              : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
+            borderWidth: following ? 1.5 : 1.5,
+            borderColor: following ? String(tint) : 'transparent',
+          },
+        ]}
+      >
+        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
+      </TouchableOpacity>
       <MapView
         style={styles.map}
         mapStyle={mapStyle}
@@ -40,6 +94,7 @@ export default function MapLibreMap() {
         compassEnabled={false}
       >
         <Camera
+          ref={cameraRef}
           defaultSettings={{
             centerCoordinate: [0, 0],
             zoomLevel: 1,
@@ -114,5 +169,14 @@ const styles = StyleSheet.create({
   locationText: {
     color: 'white',
     fontSize: 12,
+  },
+  recenterButton: {
+    position: 'absolute',
+    padding: 10,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 50,
+    elevation: 6,
   },
 });
