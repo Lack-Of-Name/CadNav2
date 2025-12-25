@@ -9,9 +9,11 @@ const STORAGE_KEY = 'MAPTILER_API_KEY';
 type ContextValue = {
   apiKey: string | null;
   loading: boolean;
+  clearApiKey: () => Promise<void>;
+  promptForKey: () => void;
 };
 
-const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true });
+const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true, clearApiKey: async () => {}, promptForKey: () => {} });
 
 export function useMapTilerKey() {
   return useContext(MapTilerKeyContext);
@@ -177,6 +179,21 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
     }
   }
 
+  async function clearApiKey() {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch (e) {
+      // ignore storage errors
+    }
+    setApiKey(null);
+    setInput('');
+    setShowModal(true);
+  }
+
+  function promptForKey() {
+    setShowModal(true);
+  }
+
   function openSettings() {
     if (Platform.OS === 'web') {
       // open a help page guiding the user to enable site location permissions
@@ -187,7 +204,7 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
   }
 
   return (
-    <MapTilerKeyContext.Provider value={{ apiKey, loading }}>
+    <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey }}>
       {children}
 
       <Modal visible={showModal} animationType="slide" transparent={true}>
