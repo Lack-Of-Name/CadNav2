@@ -3,14 +3,16 @@ import { StatusBar } from 'expo-status-bar';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import SwipePager, { SwipePage, SwipePagerHandle } from './components/SwipePager';
-import BottomPageSelector, { PageSelectorItem } from './components/BottomPageSelector';
+import BottomPageSelector, { BOTTOM_PAGE_SELECTOR_CLEARANCE_PX, PageSelectorItem } from './components/BottomPageSelector';
 import MapScreen from './screens/MapScreen';
 import ToolsScreen from './screens/ToolsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { CadNavProvider, useCadNav } from './state/CadNavContext';
 import { PagerProvider } from './state/PagerContext';
+import { useAppTheme } from './state/ThemeContext';
 
 const AppContent: FC = () => {
+  const { theme } = useAppTheme();
   const { mapDownload } = useCadNav();
   const [activeIndex, setActiveIndex] = useState(0);
   const pagerRef = useRef<SwipePagerHandle | null>(null);
@@ -30,7 +32,10 @@ const AppContent: FC = () => {
     {
       key: 'tools',
       element: (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: BOTTOM_PAGE_SELECTOR_CLEARANCE_PX }]}
+          showsVerticalScrollIndicator={false}
+        >
           <ToolsScreen />
         </ScrollView>
       ),
@@ -38,7 +43,10 @@ const AppContent: FC = () => {
     {
       key: 'settings',
       element: (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: BOTTOM_PAGE_SELECTOR_CLEARANCE_PX }]}
+          showsVerticalScrollIndicator={false}
+        >
           <SettingsScreen />
         </ScrollView>
       ),
@@ -57,8 +65,8 @@ const AppContent: FC = () => {
   return (
     <PagerProvider goToPage={goToPage}>
       <SafeAreaProvider>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'right', 'bottom', 'left']}>
-          <View style={styles.root}>
+        <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['top', 'right', 'bottom', 'left']}>
+          <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
             <SwipePager
               ref={pagerRef}
               pages={pages}
@@ -76,7 +84,7 @@ const AppContent: FC = () => {
                 onSelectIndex={setActiveIndex}
               />
             )}
-            <StatusBar style="dark" />
+            <StatusBar style={theme.isDark ? 'light' : 'dark'} />
           </View>
         </SafeAreaView>
       </SafeAreaProvider>
@@ -97,11 +105,9 @@ export default App;
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
   root: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
   scrollContent: {
     flexGrow: 1,

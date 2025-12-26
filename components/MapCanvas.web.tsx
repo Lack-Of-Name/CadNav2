@@ -9,6 +9,7 @@ import { StyleSheet, View } from 'react-native';
 import type { LatLng } from '../app/utils/geo';
 import type { GridConfig } from '../app/utils/grid';
 import { computeGrid } from '../app/utils/grid';
+import { useAppTheme } from '../app/state/ThemeContext';
 
 const leaflet = require('react-leaflet');
 const MapContainer = leaflet.MapContainer;
@@ -86,6 +87,27 @@ function toLeafletLatLng(coord: LatLng) {
   return [coord.latitude, coord.longitude] as [number, number];
 }
 
+function hexToRgba(hex: string, alpha: number) {
+  const trimmed = hex.replace('#', '').trim();
+  const full = trimmed.length === 3 ? trimmed.split('').map((c) => c + c).join('') : trimmed;
+  const parsed = parseInt(full, 16);
+  const r = (parsed >> 16) & 255;
+  const g = (parsed >> 8) & 255;
+  const b = parsed & 255;
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function estimatePillWidthPx(label: string) {
+  // Conservative approximation: digits/letters ~7px, plus padding and border.
+  const base = 22;
+  const perChar = 7;
+  return Math.max(34, Math.min(160, base + label.length * perChar));
+}
+
+function estimatePillHeightPx() {
+  return 22;
+}
+
 function makeFlagIcon(selected: boolean) {
   const stroke = selected ? '#0f172a' : '#64748b';
   const fill = selected ? '#0f172a' : '#ffffff';
@@ -157,6 +179,29 @@ const MapBridge = ({
     onCenter({ latitude: center.lat, longitude: center.lng });
   }, [map, onMap, onCenter]);
 
+  useEffect(() => {
+    // Leaflet needs an explicit invalidateSize when its container changes size
+    // (e.g. window resize, responsive layout, pager width changes).
+    const onResize = () => {
+      try {
+        (map as any)?.invalidateSize?.({ pan: false, animate: false });
+        const center = map.getCenter();
+        map.setView(center, map.getZoom?.() ?? DEFAULT_ZOOM, { animate: false });
+        onCenter({ latitude: center.lat, longitude: center.lng });
+      } catch {
+        // ignore
+      }
+    };
+
+    // Schedule once after mount too (covers initial flex layout pass).
+    const t = setTimeout(onResize, 0);
+    window.addEventListener('resize', onResize);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [map, onCenter]);
+
   useMapEvents({
     moveend: () => {
       const center = map.getCenter();
@@ -183,8 +228,9 @@ const MapBridge = ({
   return null;
 };
 
-const GridOverlay = ({ grid }: { grid: GridConfig | null }) => {
+const GridOverlay = ({ grid, baseMap }: { grid: GridConfig | null; baseMap: 'osm' | 'esriWorldImagery' }) => {
   const map = useMap();
+  const { theme } = useAppTheme();
   const layerRef = useRef<any | null>(null);
 
   useEffect(() => {
@@ -235,8 +281,25 @@ const GridOverlay = ({ grid }: { grid: GridConfig | null }) => {
       const showMinor = majorPx >= 90;
       const showLabels = majorPx >= 55;
 
-      const majorStyle = { color: '#0f172a', weight: 1, opacity: 0.55, interactive: false };
-      const minorStyle = { color: '#0f172a', weight: 1, opacity: 0.14, interactive: false };
+      const mapIsTypicallyDark = baseMap === 'esriWorldImagery';
+      const isRetro = theme.id === 'retroLight' || theme.id === 'retroDark';
+
+      const baseMajor = mapIsTypicallyDark ? '#f8fafc' : '#0f172a';
+      const baseMinor = mapIsTypicallyDark ? '#f8fafc' : '#0f172a';
+      const majorColor = isRetro ? theme.colors.primary : baseMajor;
+      const minorColor = isRetro ? theme.colors.primary : baseMinor;
+
+      const majorStyle = { color: majorColor, weight: 1, opacity: mapIsTypicallyDark ? 0.62 : 0.55, interactive: false };
+      const minorStyle = { color: minorColor, weight: 1, opacity: mapIsTypicallyDark ? 0.20 : 0.14, interactive: false };
+
+      const labelBg = mapIsTypicallyDark ? 'rgba(255,255,255,0.92)' : 'rgba(15,23,42,0.86)';
+      const labelText = mapIsTypicallyDark ? '#0f172a' : '#f8fafc';
+      const labelBorder = hexToRgba(theme.colors.primary, mapIsTypicallyDark ? 0.38 : 0.48);
+
+      const sizePx = map.getSize();
+      const mapW = sizePx?.x ?? 0;
+      const mapH = sizePx?.y ?? 0;
+      const edgePad = 6;
 
       const latPad = Math.max(0, (north - south) * 0.05);
       const lonPad = Math.max(0, (east - west) * 0.05);
@@ -272,9 +335,21 @@ const GridOverlay = ({ grid }: { grid: GridConfig | null }) => {
         ).addTo(layer);
 
         if (showLabels) {
+          const approxW = estimatePillWidthPx(ln.label);
+          const approxH = estimatePillHeightPx();
+          const pt = map.latLngToContainerPoint([north - latPad, ln.lon]);
+
+          // Default: centered above the point.
+          // If near edges, shift the anchor so the pill stays inside.
+          const anchorX = pt.x < approxW / 2 + edgePad ? 0 : pt.x > mapW - (approxW / 2 + edgePad) ? approxW : approxW / 2;
+          const anchorY = 0;
+          const translate = anchorX === 0 ? 'translate(0,0)' : anchorX === approxW ? 'translate(-100%,0)' : 'translate(-50%,0)';
+
           const icon = L.divIcon({
             className: '',
-            html: `<div style="transform:translate(-50%,0); padding:1px 6px; background:rgba(255,255,255,0.92); color:#0f172a; font-weight:900; font-size:11px;">${ln.label}</div>`,
+            html: `<div style="transform:${translate}; padding:2px 7px; min-height:${approxH}px; background:${labelBg}; color:${labelText}; border:1px solid ${labelBorder}; border-radius:8px; font-weight:900; font-size:11px; letter-spacing:0.3px; font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; justify-content:center; line-height:14px; white-space:nowrap;">${ln.label}</div>`,
+            iconSize: [approxW, approxH],
+            iconAnchor: [anchorX, anchorY],
           });
           L.marker([north - latPad, ln.lon], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
         }
@@ -290,9 +365,20 @@ const GridOverlay = ({ grid }: { grid: GridConfig | null }) => {
         ).addTo(layer);
 
         if (showLabels) {
+          const approxW = estimatePillWidthPx(lt.label);
+          const approxH = estimatePillHeightPx();
+          const pt = map.latLngToContainerPoint([lt.lat, west + lonPad]);
+
+          // Default: left-aligned, vertically centered.
+          const anchorX = 0;
+          const anchorY = pt.y < approxH / 2 + edgePad ? 0 : pt.y > mapH - (approxH / 2 + edgePad) ? approxH : approxH / 2;
+          const translate = anchorY === 0 ? 'translate(0,0)' : anchorY === approxH ? 'translate(0,-100%)' : 'translate(0,-50%)';
+
           const icon = L.divIcon({
             className: '',
-            html: `<div style="transform:translate(0,-50%); padding:1px 6px; background:rgba(255,255,255,0.92); color:#0f172a; font-weight:900; font-size:11px;">${lt.label}</div>`,
+            html: `<div style="transform:${translate}; padding:2px 7px; min-height:${approxH}px; background:${labelBg}; color:${labelText}; border:1px solid ${labelBorder}; border-radius:8px; font-weight:900; font-size:11px; letter-spacing:0.3px; font-variant-numeric:tabular-nums; display:inline-flex; align-items:center; justify-content:center; line-height:14px; white-space:nowrap;">${lt.label}</div>`,
+            iconSize: [approxW, approxH],
+            iconAnchor: [anchorX, anchorY],
           });
           L.marker([lt.lat, west + lonPad], { icon, interactive: false, zIndexOffset: 1000 }).addTo(layer);
         }
@@ -302,11 +388,13 @@ const GridOverlay = ({ grid }: { grid: GridConfig | null }) => {
     draw();
     map.on('moveend', draw);
     map.on('zoomend', draw);
+    map.on('resize', draw);
     return () => {
       map.off('moveend', draw);
       map.off('zoomend', draw);
+      map.off('resize', draw);
     };
-  }, [grid, map]);
+  }, [baseMap, grid, map, theme.colors.primary, theme.id]);
 
   return null;
 };
@@ -332,6 +420,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     ref
   ) => {
     useLeafletCss();
+
+    const { theme } = useAppTheme();
 
     const placingCheckpointRef = useRef(placingCheckpoint);
     const onPlaceCheckpointAtRef = useRef(onPlaceCheckpointAt);
@@ -442,7 +532,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     const showBaseLayer = offlineMapMode !== 'offline';
 
     return (
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
         <MapContainer
           center={toLeafletLatLng(initialCenter ?? DEFAULT_CENTER)}
           zoom={DEFAULT_ZOOM}
@@ -477,12 +567,12 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
             onPlaceCheckpointAt={onPlaceCheckpointAt ?? null}
           />
 
-          <GridOverlay grid={grid} />
+          <GridOverlay grid={grid} baseMap={baseMap} />
 
           {downloadPolygon && (
             <Polygon
               positions={downloadPolygon}
-              pathOptions={{ color: '#16a34a', weight: 2, opacity: 0.95, fillColor: '#16a34a', fillOpacity: 0.18 }}
+              pathOptions={{ color: theme.colors.success, weight: 2, opacity: 0.95, fillColor: theme.colors.success, fillOpacity: 0.18 }}
             />
           )}
 

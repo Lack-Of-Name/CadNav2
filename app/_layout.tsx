@@ -1,13 +1,22 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { ThemeProvider } from '@react-navigation/native';
 import { Slot } from 'expo-router';
-import { useColorScheme } from 'react-native';
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+import { AppThemeProvider, useAppTheme } from './state/ThemeContext';
+
+function LayoutInner() {
+  const { theme } = useAppTheme();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={theme.navigationTheme}>
       <Slot />
     </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AppThemeProvider>
+      <LayoutInner />
+    </AppThemeProvider>
   );
 }

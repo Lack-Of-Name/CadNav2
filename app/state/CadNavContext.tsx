@@ -225,9 +225,31 @@ export const CadNavProvider: FC<PropsWithChildren> = ({ children }) => {
 
     // On web, some Expo Location versions throw when removing subscriptions.
     // Keep a single active subscription and don't restart it.
+    const primeOneShotLocation = async () => {
+      try {
+        // Per Expo Location docs, getLastKnownPositionAsync is faster than getCurrentPositionAsync
+        // but may be null/out-of-date. Try it first, then fall back to a one-time fix.
+        const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 15_000, requiredAccuracy: 250 });
+        const pos = lastKnown ?? (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
+        setLocation((prev) => ({
+          ...prev,
+          coordinate: { latitude: pos.coords.latitude, longitude: pos.coords.longitude },
+          accuracyMeters: pos.coords.accuracy ?? null,
+          updatedAt: Date.now(),
+        }));
+      } catch {
+        // Ignore one-shot failures (permissions granted doesn't guarantee a fix is available yet).
+      }
+    };
+
     if (Platform.OS === 'web' && locationSubRef.current) {
+      // Even if we keep the existing watcher, pressing LOC should still have a
+      // best-effort immediate coordinate refresh.
+      await primeOneShotLocation();
       return;
     }
+
+    await primeOneShotLocation();
 
     try {
       locationSubRef.current?.remove();

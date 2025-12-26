@@ -19,6 +19,7 @@ import {
   useWindowDimensions,
   GestureResponderEvent,
 } from 'react-native';
+import { useAppTheme } from '../state/ThemeContext';
 
 export type SwipePage = {
   key: string;
@@ -38,6 +39,7 @@ export type SwipePagerHandle = {
 
 const SwipePager = forwardRef<SwipePagerHandle, SwipePagerProps>(
   ({ pages, activeIndex: activeIndexProp, onActiveIndexChange }, ref) => {
+    const { theme } = useAppTheme();
   const scrollRef = useRef<ScrollView>(null);
   const { width: windowWidth } = useWindowDimensions();
 
@@ -160,7 +162,7 @@ const SwipePager = forwardRef<SwipePagerHandle, SwipePagerProps>(
   }, [activeIndex, activeSwipeMode]);
 
   return (
-    <View style={styles.root} onLayout={onLayout}>
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]} onLayout={onLayout}>
       {activeSwipeMode === 'edge' ? (
         <View style={[styles.page, { width: pageWidth }]}>
           {pages[activeIndex]?.element}
@@ -200,7 +202,6 @@ export default SwipePager;
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
   page: {
     flex: 1,

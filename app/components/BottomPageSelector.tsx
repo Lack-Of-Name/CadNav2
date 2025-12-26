@@ -1,5 +1,8 @@
 import React, { FC } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAppTheme } from '../state/ThemeContext';
+
+export const BOTTOM_PAGE_SELECTOR_CLEARANCE_PX = 110;
 
 export type PageSelectorItem = {
   key: string;
@@ -13,21 +16,25 @@ interface BottomPageSelectorProps {
 }
 
 const BottomPageSelector: FC<BottomPageSelectorProps> = ({ items, activeIndex, onSelectIndex }) => {
+  const { theme } = useAppTheme();
+  const barBg = theme.isDark ? theme.colors.background : theme.colors.surface;
   return (
     <View style={styles.shell} pointerEvents="box-none">
-      <View style={styles.bar}>
+      <View style={[styles.bar, { backgroundColor: barBg, borderColor: theme.colors.border }]}>
         {items.map((item, index) => {
           const active = index === activeIndex;
           return (
             <Pressable
               key={item.key}
-              style={[styles.tab, active && styles.tabActive]}
+              style={[styles.tab, active && { backgroundColor: theme.colors.primary }]}
               onPress={() => onSelectIndex(index)}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
               accessibilityLabel={`Go to ${item.label}`}
             >
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>{item.label}</Text>
+              <Text style={[styles.tabText, { color: theme.colors.text }, active && { color: theme.colors.onPrimary }]}>
+                {item.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -50,9 +57,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.96)',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
     borderRadius: 999,
     padding: 8,
     maxWidth: 460,
@@ -65,15 +70,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabActive: {
-    backgroundColor: '#0f172a',
-  },
   tabText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#0f172a',
-  },
-  tabTextActive: {
-    color: '#ffffff',
   },
 });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, FC, useRef, useState } from 'react';
+import React, { useCallback, useEffect, FC, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, Modal, Linking } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import MapCanvas from '../../components/MapCanvas';
@@ -6,6 +6,8 @@ import CompassOverlay from '../components/CompassOverlay';
 import { MapController, useCadNav } from '../state/CadNavContext';
 import { calculateBearingDegrees } from '../utils/geo';
 import { normalizeBoundsFromCorners } from '../utils/offlineTiles';
+import { AppTheme, useAppTheme } from '../state/ThemeContext';
+import { BOTTOM_PAGE_SELECTOR_CLEARANCE_PX } from '../components/BottomPageSelector';
 
 const openAppSettings = async () => {
   try {
@@ -17,6 +19,8 @@ const openAppSettings = async () => {
 };
 
 const MapScreen: FC = () => {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const {
     checkpoints,
     selectedCheckpointId,
@@ -46,6 +50,7 @@ const MapScreen: FC = () => {
 
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
+  const [mapControllerTick, setMapControllerTick] = useState(0);
 
   const mapControllerRef = useRef<MapController | null>(null);
   const pendingCenterRef = useRef(false);
@@ -54,6 +59,7 @@ const MapScreen: FC = () => {
     (controller: MapController | null) => {
       mapControllerRef.current = controller;
       registerMapController(controller);
+      if (controller) setMapControllerTick((v) => v + 1);
     },
     [registerMapController]
   );
@@ -78,7 +84,7 @@ const MapScreen: FC = () => {
 
     centerOnMyLocation();
     pendingCenterRef.current = false;
-  }, [centerOnMyLocation, location.coordinate]);
+  }, [centerOnMyLocation, location.coordinate, mapControllerTick]);
 
   useEffect(() => {
     return () => registerMapController(null);
@@ -187,7 +193,7 @@ const MapScreen: FC = () => {
               style={({ pressed }) => [styles.downloadReset, pressed && styles.downloadResetPressed]}
               onPress={resetMapDownloadSelection}
             >
-              <MaterialIcons name="redo" size={18} color="#ffffff" />
+              <MaterialIcons name="redo" size={18} color={theme.colors.onOverlay} />
             </Pressable>
 
             <Pressable
@@ -196,7 +202,7 @@ const MapScreen: FC = () => {
               style={({ pressed }) => [styles.downloadReset, pressed && styles.downloadResetPressed]}
               onPress={() => setBaseMap(baseMap === 'esriWorldImagery' ? 'osm' : 'esriWorldImagery')}
             >
-              <MaterialIcons name="map" size={18} color="#ffffff" />
+              <MaterialIcons name="map" size={18} color={theme.colors.onOverlay} />
             </Pressable>
 
             <Pressable
@@ -266,7 +272,10 @@ const MapScreen: FC = () => {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalContent}>
             <Text style={[styles.modalText, {fontSize: 18}]} >Location is not granted.</Text>
-             <Text style={[styles.modalText, {color: 'blue', textDecorationLine: "underline"}]} onPress={openAppSettings}>
+             <Text
+              style={[styles.modalText, { color: theme.colors.primary, textDecorationLine: 'underline' }]}
+              onPress={openAppSettings}
+            >
               Open Settings
             </Text>
             <Pressable style={styles.modalButton} onPress={handlePermissionRetry}>
@@ -281,10 +290,11 @@ const MapScreen: FC = () => {
 
 export default MapScreen;
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#f8fafc'
+    backgroundColor: theme.colors.background,
   },
   downloadOverlay: {
     position: 'absolute',
@@ -302,7 +312,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#16a34a',
+    backgroundColor: theme.colors.success,
   },
   downloadSavePressed: {
     opacity: 0.85,
@@ -313,7 +323,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#dc2626',
+    backgroundColor: theme.colors.danger,
   },
   downloadCancelPressed: {
     opacity: 0.85,
@@ -323,13 +333,13 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.92)',
+    backgroundColor: theme.colors.overlay,
   },
   downloadResetPressed: {
     opacity: 0.85,
   },
   downloadActionText: {
-    color: '#ffffff',
+    color: theme.colors.onOverlay,
     fontSize: 13,
     fontWeight: '900',
     letterSpacing: 0.6,
@@ -339,10 +349,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: 'rgba(15,23,42,0.92)',
+    backgroundColor: theme.colors.overlay,
   },
   downloadInfoText: {
-    color: '#ffffff',
+    color: theme.colors.onOverlay,
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
@@ -356,13 +366,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   progressBanner: {
-    backgroundColor: 'rgba(15,23,42,0.92)',
+    backgroundColor: theme.colors.overlay,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
   },
   progressBannerText: {
-    color: '#ffffff',
+    color: theme.colors.onOverlay,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -377,7 +387,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: 'rgba(15,23,42,0.92)',
+    backgroundColor: theme.colors.overlay,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
@@ -386,27 +396,27 @@ const styles = StyleSheet.create({
     opacity: 0.9,
   },
   placingBannerText: {
-    color: '#ffffff',
+    color: theme.colors.onOverlay,
     fontSize: 12,
     fontWeight: '600',
   },
   zoomButton: {
     position: 'absolute',
     left: 12,
-    bottom: 86,
+    bottom: BOTTOM_PAGE_SELECTOR_CLEARANCE_PX,
     width: 46,
     height: 46,
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
   },
   zoomButtonText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
     letterSpacing: 0.6,
   },
   modalBackdrop: {
@@ -416,7 +426,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   modalContent: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
     paddingHorizontal: 24,
     paddingVertical: 20,
     borderRadius: 12,
@@ -425,7 +435,7 @@ const styles = StyleSheet.create({
   },
   modalText: {
     fontSize: 14,
-    color: '#0f172a',
+    color: theme.colors.text,
     marginBottom: 16,
     textAlign: 'center'
   },
@@ -433,10 +443,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: '#0f172a'
+    backgroundColor: theme.colors.primary,
   },
   modalButtonText: {
-    color: '#ffffff',
+    color: theme.colors.onPrimary,
     fontSize: 14,
     fontWeight: '600'
   }

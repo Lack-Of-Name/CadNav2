@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDime
 import { useCadNav } from '../state/CadNavContext';
 import { usePager } from '../state/PagerContext';
 import { calculateDistanceMeters, formatDistance } from '../utils/geo';
+import { AppTheme, useAppTheme } from '../state/ThemeContext';
 
 interface CardProps {
   title: string;
@@ -10,6 +11,8 @@ interface CardProps {
 }
 
 const Card: FC<CardProps> = ({ title, body }) => {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>{title}</Text>
@@ -19,6 +22,8 @@ const Card: FC<CardProps> = ({ title, body }) => {
 };
 
 const ToolsScreen: FC = () => {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const {
     checkpoints,
     selectedCheckpointId,
@@ -537,6 +542,7 @@ const ToolsScreen: FC = () => {
                       keyboardType="number-pad"
                       inputMode="numeric"
                       placeholder="E"
+                      placeholderTextColor={theme.colors.textSubtle}
                       style={styles.gridCoordInput}
                     />
                     <TextInput
@@ -545,6 +551,7 @@ const ToolsScreen: FC = () => {
                       keyboardType="number-pad"
                       inputMode="numeric"
                       placeholder="N"
+                      placeholderTextColor={theme.colors.textSubtle}
                       style={styles.gridCoordInput}
                     />
                   </View>
@@ -651,10 +658,11 @@ const ToolsScreen: FC = () => {
 
 export default ToolsScreen;
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
   },
   rootContent: {
     padding: 16,
@@ -666,12 +674,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   subtitle: {
     marginTop: 6,
     fontSize: 13,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   grid: {
     marginTop: 16,
@@ -680,9 +688,10 @@ const styles = StyleSheet.create({
   section: {
     marginTop: 16,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
+    backgroundColor: theme.colors.surface,
   },
   quickJumpRow: {
     marginTop: 12,
@@ -692,8 +701,8 @@ const styles = StyleSheet.create({
   },
   quickJumpButton: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
@@ -701,12 +710,12 @@ const styles = StyleSheet.create({
   quickJumpText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   actionsRow: {
     marginTop: 12,
@@ -714,26 +723,26 @@ const styles = StyleSheet.create({
   },
   actionButtonPrimary: {
     borderWidth: 1,
-    borderColor: '#0f172a',
+    borderColor: theme.colors.primary,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: theme.colors.primary,
   },
   actionButtonPrimaryActive: {
-    backgroundColor: '#0f172a',
+    backgroundColor: theme.colors.primaryPressed,
   },
   actionTextPrimary: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#ffffff',
+    color: theme.colors.onPrimary,
   },
   actionSubtextPrimary: {
     marginTop: 4,
     fontSize: 12,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.8)',
+    color: theme.colors.onPrimaryMuted,
   },
   statusRow: {
     marginTop: 10,
@@ -743,12 +752,12 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   emptyText: {
     marginTop: 10,
     fontSize: 12,
-    color: '#64748b',
+    color: theme.colors.textSubtle,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -758,7 +767,7 @@ const styles = StyleSheet.create({
   sectionHeaderMeta: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   checkpointList: {
     marginTop: 10,
@@ -794,10 +803,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   railInactive: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: theme.colors.border,
   },
   railActive: {
-    backgroundColor: '#0f172a',
+    backgroundColor: theme.colors.primary,
   },
   turnConnector: {
     position: 'absolute',
@@ -818,9 +827,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     zIndex: 6,
   },
   distanceLayer: {
@@ -835,9 +844,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
     borderRadius: 999,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     zIndex: 6,
   },
   distanceLabelTop: {
@@ -849,22 +858,22 @@ const styles = StyleSheet.create({
   distanceLabelText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   railDot: {
     width: 12,
     height: 12,
     borderRadius: 999,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
     borderWidth: 3,
-    borderColor: '#94a3b8',
+    borderColor: theme.colors.tick,
   },
   railDotActive: {
-    borderColor: '#0f172a',
+    borderColor: theme.colors.primary,
   },
   railDotSelected: {
-    backgroundColor: '#0f172a',
-    borderColor: '#ffffff',
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.onPrimary,
   },
   stationCard: {
     position: 'absolute',
@@ -872,7 +881,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 14,
-    backgroundColor: '#f8fafc',
+    backgroundColor: theme.colors.surface,
     zIndex: 2,
   },
   stationCardExpanded: {
@@ -880,26 +889,26 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   stationCardPressed: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: theme.colors.surfacePressed,
   },
   stationCardSelected: {
-    backgroundColor: 'rgba(15,23,42,0.06)',
+    backgroundColor: theme.colors.selection,
   },
   stationName: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   stationNameExpanded: {
     fontSize: 14,
   },
   stationNameSelected: {
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   stationMeta: {
     marginTop: 3,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   stationMetaExpanded: {
     marginTop: 4,
@@ -907,19 +916,20 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
+    backgroundColor: theme.colors.surface,
   },
   cardTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   cardBody: {
     marginTop: 4,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
 
   gridRow: {
@@ -938,12 +948,12 @@ const styles = StyleSheet.create({
   gridRowLabel: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   gridHint: {
     marginTop: 8,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   gridToggle: {
     paddingHorizontal: 12,
@@ -952,12 +962,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   gridToggleOn: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
   },
   gridToggleOff: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
+    backgroundColor: theme.colors.background,
+    borderColor: theme.colors.border,
   },
   gridTogglePressed: {
     opacity: 0.92,
@@ -965,10 +975,10 @@ const styles = StyleSheet.create({
   gridToggleText: {
     fontSize: 12,
     fontWeight: '900',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   gridToggleTextOn: {
-    color: '#ffffff',
+    color: theme.colors.onPrimary,
   },
   gridCoordInputs: {
     flexDirection: 'row',
@@ -977,13 +987,13 @@ const styles = StyleSheet.create({
   gridCoordInput: {
     width: 84,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 12,
-    color: '#0f172a',
+    color: theme.colors.text,
     fontWeight: '700',
   },
   gridButtonsRow: {
@@ -999,15 +1009,15 @@ const styles = StyleSheet.create({
   },
   scaleChip: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
   },
   scaleChipActive: {
-    borderColor: '#0f172a',
-    backgroundColor: 'rgba(15,23,42,0.06)',
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.selection,
   },
   scaleChipPressed: {
     opacity: 0.92,
@@ -1015,21 +1025,21 @@ const styles = StyleSheet.create({
   scaleChipText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   scaleChipTextActive: {
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   gridButton: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
   },
   gridButtonPressed: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: theme.colors.surfacePressed,
   },
   gridButtonDisabled: {
     opacity: 0.5,
@@ -1037,12 +1047,12 @@ const styles = StyleSheet.create({
   gridButtonText: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   gridButtonPrimary: {
     borderWidth: 1,
-    borderColor: '#0f172a',
-    backgroundColor: '#0f172a',
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 12,
@@ -1053,11 +1063,11 @@ const styles = StyleSheet.create({
   gridButtonPrimaryText: {
     fontSize: 12,
     fontWeight: '900',
-    color: '#ffffff',
+    color: theme.colors.onPrimary,
   },
   gridStatus: {
     marginTop: 10,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
 });

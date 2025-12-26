@@ -4,6 +4,7 @@ import MapView, { LocalTile, Marker, Polyline, Polygon, Region, UrlTile } from '
 import type { LatLng } from '../app/utils/geo';
 import type { GridConfig } from '../app/utils/grid';
 import { computeGrid } from '../app/utils/grid';
+import { useAppTheme } from '../app/state/ThemeContext';
 
 export type Checkpoint = {
   id: string;
@@ -71,6 +72,45 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
     },
     ref
   ) => {
+    const { theme } = useAppTheme();
+
+    const hexToRgba = (hex: string, alpha: number) => {
+      const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+      if (!m) return hex;
+      const int = Number.parseInt(m[1], 16);
+      const r = (int >> 16) & 255;
+      const g = (int >> 8) & 255;
+      const b = int & 255;
+      return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, alpha))})`;
+    };
+
+    const mapIsTypicallyDark = baseMap === 'esriWorldImagery';
+    const gridMajorColor = useMemo(() => {
+      const isRetro = theme.id === 'retroLight' || theme.id === 'retroDark';
+      if (isRetro) return hexToRgba(theme.colors.primary, mapIsTypicallyDark ? 0.75 : 0.7);
+      return mapIsTypicallyDark ? 'rgba(255,255,255,0.65)' : 'rgba(15,23,42,0.55)';
+    }, [theme.id, theme.colors.primary, mapIsTypicallyDark]);
+
+    const gridMinorColor = useMemo(() => {
+      const isRetro = theme.id === 'retroLight' || theme.id === 'retroDark';
+      if (isRetro) return hexToRgba(theme.colors.primaryPressed, mapIsTypicallyDark ? 0.32 : 0.26);
+      return mapIsTypicallyDark ? 'rgba(255,255,255,0.22)' : 'rgba(15,23,42,0.14)';
+    }, [theme.id, theme.colors.primaryPressed, mapIsTypicallyDark]);
+
+    const gridLabel = useMemo(() => {
+      if (mapIsTypicallyDark) {
+        return {
+          bg: 'rgba(255,255,255,0.92)',
+          border: 'rgba(15,23,42,0.20)',
+          text: '#0f172a',
+        };
+      }
+      return {
+        bg: 'rgba(15,23,42,0.90)',
+        border: 'rgba(255,255,255,0.20)',
+        text: '#ffffff',
+      };
+    }, [mapIsTypicallyDark]);
     const initialRegion: Region = useMemo(() => {
       if (!initialCenter) return DEFAULT_REGION;
       return {
@@ -120,13 +160,32 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
       ref,
       () => ({
         centerOn: (coordinate, options) => {
+          const duration = options?.animated === false ? 0 : 450;
+
+          const cameraZoom = typeof options?.zoom === 'number' ? options.zoom : undefined;
+          const animateCamera = (mapRef.current as any)?.animateCamera as
+            | ((camera: any, opts?: { duration?: number }) => void)
+            | undefined;
+
+          if (animateCamera) {
+            animateCamera(
+              {
+                center: { latitude: coordinate.latitude, longitude: coordinate.longitude },
+                ...(typeof cameraZoom === 'number' ? { zoom: cameraZoom } : null),
+              },
+              { duration }
+            );
+            return;
+          }
+
+          const current = lastRegionRef.current;
           const target: Region = {
             latitude: coordinate.latitude,
             longitude: coordinate.longitude,
-            latitudeDelta: 0.012,
-            longitudeDelta: 0.012,
+            latitudeDelta: current?.latitudeDelta ?? 0.012,
+            longitudeDelta: current?.longitudeDelta ?? 0.012,
           };
-          mapRef.current?.animateToRegion(target, options?.animated === false ? 0 : 450);
+          mapRef.current?.animateToRegion(target, duration);
         },
         getCenter: () => ({
           latitude: lastRegionRef.current.latitude,
@@ -285,8 +344,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
         {downloadPolygon && (
           <Polygon
             coordinates={downloadPolygon}
-            strokeColor="rgba(22,163,74,0.95)"
-            fillColor="rgba(22,163,74,0.18)"
+            strokeColor={hexToRgba(theme.colors.success, 0.95)}
+            fillColor={hexToRgba(theme.colors.success, 0.18)}
             strokeWidth={2}
             zIndex={0}
           />
@@ -303,7 +362,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                       { latitude: regionForGrid.latitude - regionForGrid.latitudeDelta / 2, longitude: lon },
                       { latitude: regionForGrid.latitude + regionForGrid.latitudeDelta / 2, longitude: lon },
                     ]}
-                    strokeColor="rgba(15,23,42,0.14)"
+                    strokeColor={gridMinorColor}
                     strokeWidth={1}
                     zIndex={1}
                   />
@@ -316,7 +375,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                       { latitude: lat, longitude: regionForGrid.longitude - regionForGrid.longitudeDelta / 2 },
                       { latitude: lat, longitude: regionForGrid.longitude + regionForGrid.longitudeDelta / 2 },
                     ]}
-                    strokeColor="rgba(15,23,42,0.14)"
+                    strokeColor={gridMinorColor}
                     strokeWidth={1}
                     zIndex={1}
                   />
@@ -331,7 +390,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                     { latitude: regionForGrid.latitude - regionForGrid.latitudeDelta / 2, longitude: ln.lon },
                     { latitude: regionForGrid.latitude + regionForGrid.latitudeDelta / 2, longitude: ln.lon },
                   ]}
-                  strokeColor="rgba(15,23,42,0.55)"
+                  strokeColor={gridMajorColor}
                   strokeWidth={1}
                   zIndex={2}
                 />
@@ -347,8 +406,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                     anchor={{ x: 0.5, y: 0 }}
                     tracksViewChanges={false}
                   >
-                    <View style={styles.gridLabelPill}>
-                      <Text style={styles.gridLabelText}>{ln.label}</Text>
+                    <View style={[styles.gridLabelPill, { backgroundColor: gridLabel.bg, borderColor: gridLabel.border }]}>
+                      <Text style={[styles.gridLabelText, { color: gridLabel.text }]}>{ln.label}</Text>
                     </View>
                   </Marker>
                 )}
@@ -362,7 +421,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                     { latitude: lt.lat, longitude: regionForGrid.longitude - regionForGrid.longitudeDelta / 2 },
                     { latitude: lt.lat, longitude: regionForGrid.longitude + regionForGrid.longitudeDelta / 2 },
                   ]}
-                  strokeColor="rgba(15,23,42,0.55)"
+                  strokeColor={gridMajorColor}
                   strokeWidth={1}
                   zIndex={2}
                 />
@@ -378,8 +437,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(
                     anchor={{ x: 0, y: 0.5 }}
                     tracksViewChanges={false}
                   >
-                    <View style={styles.gridLabelPill}>
-                      <Text style={styles.gridLabelText}>{lt.label}</Text>
+                    <View style={[styles.gridLabelPill, { backgroundColor: gridLabel.bg, borderColor: gridLabel.border }]}>
+                      <Text style={[styles.gridLabelText, { color: gridLabel.text }]}>{lt.label}</Text>
                     </View>
                   </Marker>
                 )}
@@ -544,11 +603,18 @@ const styles = StyleSheet.create({
   gridLabelPill: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    minHeight: 22,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   gridLabelText: {
     fontSize: 11,
     fontWeight: '900',
-    color: '#0f172a',
+    letterSpacing: 0.4,
+    fontVariant: ['tabular-nums'],
+    lineHeight: 14,
+    includeFontPadding: false,
   },
 });

@@ -2,6 +2,7 @@ import React, { FC, useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useCadNav } from '../state/CadNavContext';
 import { usePager } from '../state/PagerContext';
+import { AppTheme, AppThemeId, useAppTheme } from '../state/ThemeContext';
 
 interface CardProps {
   title: string;
@@ -9,6 +10,8 @@ interface CardProps {
 }
 
 const Card: FC<CardProps> = ({ title, body }) => {
+  const { theme } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   return (
     <View style={styles.card}>
       <Text style={styles.cardTitle}>{title}</Text>
@@ -18,6 +21,8 @@ const Card: FC<CardProps> = ({ title, body }) => {
 };
 
 const SettingsScreen: FC = () => {
+  const { theme, themeId, setThemeId } = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { enterMapDownloadMode, offlineMapMode, setOfflineMapMode, baseMap, setBaseMap, offlineTiles } = useCadNav();
   const { goToPage } = usePager();
 
@@ -27,6 +32,17 @@ const SettingsScreen: FC = () => {
   }, [offlineTiles.completed, offlineTiles.total]);
 
   const [showProgressBar, setShowProgressBar] = useState(false);
+
+  const themeOptions = useMemo(
+    () =>
+      [
+        { id: 'light' as const, label: 'Light' },
+        { id: 'dark' as const, label: 'Dark' },
+        { id: 'retroLight' as const, label: 'Retro Light' },
+        { id: 'retroDark' as const, label: 'Retro Dark' },
+      ],
+    []
+  );
 
   useEffect(() => {
     if (offlineTiles.status === 'downloading') {
@@ -91,7 +107,35 @@ const SettingsScreen: FC = () => {
           <Switch
             value={offlineMapMode === 'offline'}
             onValueChange={(next) => setOfflineMapMode(next ? 'offline' : 'online')}
+            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            thumbColor={offlineMapMode === 'offline' ? theme.colors.onPrimary : undefined}
           />
+        </View>
+
+        <View style={styles.selectorCard}>
+          <Text style={styles.selectorTitle}>Theme</Text>
+          <View style={styles.selectorRowWrap}>
+            {themeOptions.map((opt) => {
+              const active = themeId === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use ${opt.label} theme`}
+                  style={({ pressed }) => [
+                    styles.selectorOptionHalf,
+                    (active || pressed) && styles.selectorOptionActive,
+                  ]}
+                  onPress={() => setThemeId(opt.id as AppThemeId)}
+                >
+                  <Text style={[styles.selectorOptionText, active && styles.selectorOptionTextActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.selectorSubtext}>Light, Dark, and Retro accent variants.</Text>
         </View>
 
         <View style={styles.selectorCard}>
@@ -132,10 +176,11 @@ const SettingsScreen: FC = () => {
 
 export default SettingsScreen;
 
-const styles = StyleSheet.create({
+const createStyles = (theme: AppTheme) =>
+  StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
     padding: 16,
   },
   header: {
@@ -144,12 +189,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   subtitle: {
     marginTop: 6,
     fontSize: 13,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
   grid: {
     marginTop: 16,
@@ -157,40 +202,41 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
+    backgroundColor: theme.colors.surface,
   },
   cardTitle: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   cardBody: {
     marginTop: 4,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
 
   downloadButton: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
-    backgroundColor: '#f8fafc',
+    backgroundColor: theme.colors.surface,
   },
   downloadButtonPressed: {
-    backgroundColor: '#f1f5f9',
+    backgroundColor: theme.colors.surfacePressed,
   },
   downloadButtonText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   downloadButtonSubtext: {
     marginTop: 4,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
 
   switchRow: {
@@ -199,9 +245,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
+    backgroundColor: theme.colors.surface,
   },
   switchTextCol: {
     flex: 1,
@@ -209,51 +256,59 @@ const styles = StyleSheet.create({
   switchTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   switchSubtext: {
     marginTop: 4,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
 
   progressShell: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
+    backgroundColor: theme.colors.surface,
   },
   progressBarTrack: {
     height: 8,
     borderRadius: 999,
     overflow: 'hidden',
-    backgroundColor: '#e2e8f0',
+    backgroundColor: theme.colors.border,
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#16a34a',
+    backgroundColor: theme.colors.success,
   },
   progressText: {
     marginTop: 8,
     fontSize: 12,
     fontWeight: '700',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
 
   selectorCard: {
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: theme.colors.border,
     borderRadius: 14,
     padding: 14,
+    backgroundColor: theme.colors.surface,
   },
   selectorTitle: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   selectorRow: {
     marginTop: 10,
     flexDirection: 'row',
+    gap: 10,
+  },
+  selectorRowWrap: {
+    marginTop: 10,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
   },
   selectorOption: {
@@ -263,24 +318,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+  },
+  selectorOptionHalf: {
+    width: '48%',
+    borderRadius: 999,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
   },
   selectorOptionActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
   },
   selectorOptionText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#0f172a',
+    color: theme.colors.text,
   },
   selectorOptionTextActive: {
-    color: '#ffffff',
+    color: theme.colors.onPrimary,
   },
   selectorSubtext: {
     marginTop: 8,
     fontSize: 12,
-    color: '#475569',
+    color: theme.colors.textMuted,
   },
 });
