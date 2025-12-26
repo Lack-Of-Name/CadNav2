@@ -251,7 +251,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
         <View style={styles.backdrop}>
           <View style={styles.container}>
             <Text style={styles.title}>MapTiler API Key</Text>
-            <Text style={styles.help}>This app needs a free MapTiler API key to load maps.</Text>
+            <Text style={styles.help}>Woah there! This app needs a free MapTiler API key to load maps.</Text>
             <TextInput
               placeholder="Enter MapTiler API key"
               value={input}
@@ -266,7 +266,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={() => Linking.openURL('https://www.maptiler.com/')}>
-                Get key
+                Take Me There!
               </StyledButton>
               <View style={styles.spacer} />
               <StyledButton variant="primary" onPress={onSubmit} disabled={verifying}>

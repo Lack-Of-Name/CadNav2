@@ -2,13 +2,15 @@ import { alert as showAlert } from '@/components/alert';
 import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Colors } from '@/constants/theme';
+import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
 
@@ -17,21 +19,26 @@ export default function MapLibreMap() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapDiv = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
-  const _markerRef = useRef<HTMLDivElement | null>(null);
   const lastLocationRef = useRef<typeof lastLocation | null>(null);
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
+  const { checkpoints, selectedCheckpoint, selectCheckpoint, addCheckpoint } = useCheckpoints();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelected = useThemeColor({}, 'tabIconSelected');
   const tint = useThemeColor({}, 'tint');
+  const markerPole = Colors.light.text;
   const [following, setFollowing] = useState(false);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [placementMode, setPlacementMode] = useState(false);
+  const [compassOpen, setCompassOpen] = useState(false);
+  const placementModeRef = useRef(false);
   
   // Overlay styles and small helpers to keep JSX concise below
   const overlayStyles = {
@@ -53,16 +60,276 @@ export default function MapLibreMap() {
         : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
       border: following ? `1.5px solid ${String(tint)}` : '1.5px solid transparent',
     }) as any,
+    floatingButton: (bottom: number, active: boolean) => ({
+      position: 'absolute' as const,
+      bottom,
+      left: 12,
+      padding: 10,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 50,
+      display: 'flex',
+      cursor: 'pointer',
+      backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)',
+      border: active ? `1.5px solid ${String(tint)}` : '1.5px solid transparent',
+    }) as any,
   };
 
   // Normalize degrees to [0,360)
   const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+  const bearingDegrees = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
+    const phi1 = toRad(fromLat);
+    const phi2 = toRad(toLat);
+    const deltaLambda = toRad(toLon - fromLon);
+    const y = Math.sin(deltaLambda) * Math.cos(phi2);
+    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+    return normalizeDegrees(toDeg(Math.atan2(y, x)));
+  };
+
+  const haversineMeters = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
+    const R = 6371000;
+    const phi1 = toRad(fromLat);
+    const phi2 = toRad(toLat);
+    const deltaPhi = toRad(toLat - fromLat);
+    const deltaLambda = toRad(toLon - fromLon);
+    const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  };
+
+  const currentHeading = (() => {
+    const useMag = mapHeading === 'magnetic';
+    return useMag ? lastLocation?.coords.magHeading : lastLocation?.coords.trueHeading;
+  })();
+
+  const checkpointBearing =
+    lastLocation && selectedCheckpoint
+      ? bearingDegrees(
+          lastLocation.coords.latitude,
+          lastLocation.coords.longitude,
+          selectedCheckpoint.latitude,
+          selectedCheckpoint.longitude
+        )
+      : null;
+
+  const relativeArrowRotation =
+    checkpointBearing == null
+      ? null
+      : normalizeDegrees(checkpointBearing - (currentHeading ?? 0) - mapBearing);
+
+  const checkpointDistanceMeters =
+    lastLocation && selectedCheckpoint
+      ? haversineMeters(
+          lastLocation.coords.latitude,
+          lastLocation.coords.longitude,
+          selectedCheckpoint.latitude,
+          selectedCheckpoint.longitude
+        )
+      : null;
 
   // Small subcomponents keep the return() markup readable
   function RecenterButton({ onPress }: { onPress: () => void }) {
     return (
       <div onClick={onPress} role="button" aria-label="Recenter map" style={overlayStyles.recenter(following)}>
         <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
+      </div>
+    );
+  }
+
+  function CompassButton() {
+    return (
+      <div onClick={() => setCompassOpen((v) => !v)} role="button" aria-label="Compass" style={overlayStyles.floatingButton(12 + 58, compassOpen)}>
+        <IconSymbol size={26} name="location.north.line" color={String(compassOpen ? tabIconSelected : buttonIconColor)} />
+      </div>
+    );
+  }
+
+  function PlacementButton() {
+    return (
+      <div
+        onClick={() => {
+          setPlacementMode((v) => !v);
+          if (!placementModeRef.current) {
+            setCompassOpen(false);
+          }
+        }}
+        role="button"
+        aria-label="Placement mode"
+        style={overlayStyles.floatingButton(12 + 58 + 58, placementMode)}
+      >
+        <IconSymbol size={26} name="flag.fill" color={String(placementMode ? tabIconSelected : buttonIconColor)} />
+      </div>
+    );
+  }
+
+  function CompassOverlay() {
+    if (!compassOpen) return null;
+    const hasTarget = !!(selectedCheckpoint && lastLocation);
+
+    const useMag = mapHeading === 'magnetic';
+    const heading = currentHeading;
+    const headingText =
+      heading == null
+        ? '—'
+        : angleUnit === 'mils'
+          ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
+          : `${heading.toFixed(0)}°`;
+
+    const bearingText =
+      checkpointBearing == null
+        ? '—'
+        : angleUnit === 'mils'
+          ? `${Math.round(degreesToMils(checkpointBearing, { normalize: true }))} mils`
+          : `${checkpointBearing.toFixed(0)}°`;
+
+    const distanceText =
+      checkpointDistanceMeters == null
+        ? '—'
+        : checkpointDistanceMeters >= 1000
+          ? `${(checkpointDistanceMeters / 1000).toFixed(2)} km`
+          : `${Math.round(checkpointDistanceMeters)} m`;
+
+    const bg = colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)';
+    const fg = colorScheme === 'dark' ? 'white' : 'black';
+    const subtle = colorScheme === 'dark' ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
+
+    const dialSize = 220;
+    const center = dialSize / 2;
+
+    const ticks = Array.from({ length: 36 }, (_, i) => i * 10);
+    const ringRotation = heading == null ? 0 : -heading;
+
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: 12 + 58,
+          bottom: 12 + 58,
+          zIndex: 60,
+          padding: 14,
+          borderRadius: 18,
+          border: `1.5px solid ${String(tint)}`,
+          minWidth: 360,
+          backgroundColor: bg,
+          color: fg,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexDirection: 'row' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>Compass</div>
+            <div style={{ marginTop: 2, fontSize: 13, color: subtle, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {hasTarget
+                ? `Target: ${selectedCheckpoint?.label?.trim() ? selectedCheckpoint.label.trim() : 'Checkpoint'}`
+                : 'No checkpoint selected'}
+            </div>
+          </div>
+
+          <div
+            onClick={() => setCompassOpen(false)}
+            role="button"
+            aria-label="Close compass"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 999,
+              border: `1.5px solid ${String(tint)}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              userSelect: 'none',
+              color: fg,
+            }}
+          >
+            <span style={{ fontSize: 22, lineHeight: '22px', marginTop: -2 }}>×</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width={dialSize} height={dialSize} viewBox={`0 0 ${dialSize} ${dialSize}`}>
+            <circle cx={center} cy={center} r={center - 2} fill={bg} stroke={String(tint)} strokeWidth={1.5} />
+
+            <g transform={`rotate(${ringRotation} ${center} ${center})`}>
+              {ticks.map((deg) => {
+                const isCardinal = deg % 90 === 0;
+                const isMajor = deg % 30 === 0;
+                const len = isCardinal ? 16 : isMajor ? 12 : 7;
+                const stroke = isCardinal || isMajor ? fg : subtle;
+                const strokeWidth = isCardinal ? 3 : isMajor ? 2 : 1;
+
+                const label =
+                  deg === 0
+                    ? 'N'
+                    : deg === 90
+                      ? 'E'
+                      : deg === 180
+                        ? 'S'
+                        : deg === 270
+                          ? 'W'
+                          : deg % 30 === 0
+                            ? String(deg)
+                            : null;
+
+                return (
+                  <g key={deg} transform={`rotate(${deg} ${center} ${center})`}>
+                    <line
+                      x1={center}
+                      y1={6}
+                      x2={center}
+                      y2={6 + len}
+                      stroke={stroke}
+                      strokeWidth={strokeWidth}
+                      strokeLinecap="round"
+                    />
+                    {label ? (
+                      <text
+                        x={center}
+                        y={28}
+                        textAnchor="middle"
+                        fontSize={deg % 90 === 0 ? 14 : 10}
+                        fontWeight={800}
+                        fill={deg % 90 === 0 ? fg : subtle}
+                      >
+                        {label}
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
+            </g>
+
+            {/* Fixed north needle */}
+            <line x1={center} y1={center} x2={center} y2={26} stroke={String(tint)} strokeWidth={3} strokeLinecap="round" />
+
+            {/* Target pointer */}
+            {hasTarget && relativeArrowRotation != null ? (
+              <g transform={`rotate(${relativeArrowRotation} ${center} ${center})`}>
+                <path d={`M ${center} 34 L ${center - 10} 54 L ${center} 48 L ${center + 10} 54 Z`} fill={String(tint)} />
+              </g>
+            ) : null}
+          </svg>
+        </div>
+
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: subtle }}>Heading</div>
+              <div style={{ marginTop: 2, fontSize: 16, fontWeight: 800, color: fg }}>{headingText}</div>
+              <div style={{ marginTop: 1, fontSize: 12, fontWeight: 700, color: subtle }}>{useMag ? 'Magnetic' : 'True'}</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: subtle }}>Bearing</div>
+              <div style={{ marginTop: 2, fontSize: 16, fontWeight: 800, color: fg }}>{bearingText}</div>
+            </div>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: subtle }}>Distance</div>
+              <div style={{ marginTop: 2, fontSize: 16, fontWeight: 800, color: fg }}>{distanceText}</div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -113,6 +380,141 @@ export default function MapLibreMap() {
   }
 
   useEffect(() => {
+    placementModeRef.current = placementMode;
+  }, [placementMode]);
+
+  // Manage maplibre-gl Marker instances for checkpoints
+  const checkpointMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+
+  useEffect(() => {
+    if (!map.current) return;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+
+    const applyStyle = (el: HTMLElement, flagColor: string, poleColor: string, selected: boolean, labelText: string | null, showLabel: boolean) => {
+      const svg = el.querySelector('svg[data-checkpoint-flag="1"]') as SVGSVGElement | null;
+      if (!svg) return;
+      const pole = svg.querySelector('#pole') as SVGLineElement | null;
+      const flag = svg.querySelector('#flag') as SVGRectElement | null;
+      const label = el.querySelector('[data-checkpoint-label="1"]') as HTMLDivElement | null;
+      if (pole) pole.setAttribute('stroke', poleColor);
+      if (flag) {
+        flag.setAttribute('fill', flagColor);
+        flag.setAttribute('stroke', 'none');
+      }
+      if (label) {
+        label.textContent = labelText ?? '';
+        label.style.display = showLabel ? 'block' : 'none';
+        label.style.border = selected ? `1.5px solid ${poleColor}` : `1px solid ${poleColor}`;
+      }
+    };
+
+    const markers = checkpointMarkersRef.current;
+    const current = checkpoints;
+    const currentIds = new Set(current.map((c) => c.id));
+
+    // Remove markers that no longer exist
+    for (const [id, marker] of markers.entries()) {
+      if (!currentIds.has(id)) {
+        marker.remove();
+        markers.delete(id);
+      }
+    }
+
+    // Add missing markers
+    for (const cp of current) {
+      if (markers.has(cp.id)) continue;
+
+      const poleColor = String(markerPole);
+      const flagColor = poleColor;
+
+      const labelText = cp.label?.trim() ? cp.label.trim() : null;
+      const showLabel = zoomLevel >= 14 && !!labelText;
+
+      const el = document.createElement('div');
+      el.style.width = '28px';
+      el.style.display = 'flex';
+      el.style.flexDirection = 'column';
+      el.style.alignItems = 'center';
+      el.style.cursor = 'pointer';
+
+      const label = document.createElement('div');
+      label.setAttribute('data-checkpoint-label', '1');
+      label.style.maxWidth = '160px';
+      label.style.padding = '4px 8px';
+      label.style.borderRadius = '8px';
+      label.style.background = 'rgba(0,0,0,1)';
+      label.style.color = 'white';
+      label.style.fontSize = '12px';
+      label.style.fontWeight = '600';
+      label.style.whiteSpace = 'nowrap';
+      label.style.overflow = 'hidden';
+      label.style.textOverflow = 'ellipsis';
+      label.style.marginBottom = '6px';
+      label.style.display = showLabel ? 'block' : 'none';
+      label.textContent = labelText ?? '';
+
+      const svg = document.createElementNS(svgNS, 'svg');
+      svg.setAttribute('data-checkpoint-flag', '1');
+      svg.setAttribute('width', '28');
+      svg.setAttribute('height', '18');
+      svg.setAttribute('viewBox', '0 0 28 18');
+      svg.style.display = 'block';
+
+      const pole = document.createElementNS(svgNS, 'line');
+      pole.setAttribute('id', 'pole');
+      pole.setAttribute('x1', '14');
+      pole.setAttribute('y1', '0');
+      pole.setAttribute('x2', '14');
+      pole.setAttribute('y2', '18');
+      pole.setAttribute('stroke', poleColor);
+      pole.setAttribute('stroke-width', '2');
+      pole.setAttribute('stroke-linecap', 'round');
+
+      // Simple rectangular flag (avoids the "b"-looking curve).
+      const flag = document.createElementNS(svgNS, 'rect');
+      flag.setAttribute('id', 'flag');
+      // Bottom of the flag is at y=18 (matches the marker anchor).
+      flag.setAttribute('x', '14');
+      flag.setAttribute('y', '6');
+      flag.setAttribute('width', '13');
+      flag.setAttribute('height', '12');
+      flag.setAttribute('rx', '2');
+      flag.setAttribute('fill', flagColor);
+
+      svg.appendChild(pole);
+      svg.appendChild(flag);
+      el.appendChild(label);
+      el.appendChild(svg);
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void selectCheckpoint(cp.id);
+        setCompassOpen(true);
+      });
+
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([cp.longitude, cp.latitude])
+        .addTo(map.current!);
+      markers.set(cp.id, marker);
+    }
+
+    // Update styling for existing markers (selection/theme changes)
+    for (const cp of current) {
+      const marker = markers.get(cp.id);
+      if (!marker) continue;
+      const el = marker.getElement();
+      const selected = selectedCheckpoint?.id === cp.id;
+      const poleColor = String(markerPole);
+      const flagColor = poleColor;
+      const labelText = cp.label?.trim() ? cp.label.trim() : null;
+      const showLabel = zoomLevel >= 14 && !!labelText;
+      applyStyle(el, flagColor, poleColor, selected, labelText, showLabel);
+    }
+  }, [checkpoints, selectedCheckpoint?.id, selectCheckpoint, markerPole, zoomLevel]);
+
+  // Placement mode: click map to drop a checkpoint
+  useEffect(() => {
     if (loading || !apiKey) return;
     if (map.current) return; // stops map from initializing more than once
     if (!mapContainer.current) return;
@@ -133,6 +535,8 @@ export default function MapLibreMap() {
       try {
         const b = typeof map.current.getBearing === 'function' ? map.current.getBearing() : 0;
         setMapBearing(b);
+        const z = typeof map.current.getZoom === 'function' ? map.current.getZoom() : 1;
+        if (Number.isFinite(z)) setZoomLevel(z);
       } catch (err) {
         if (!errorReportedRef.current) {
           errorReportedRef.current = true;
@@ -157,6 +561,15 @@ export default function MapLibreMap() {
     map.current.on('load', update);
     map.current.on('move', update);
     map.current.on('zoom', update);
+
+    map.current.on('click', (e) => {
+      if (!placementModeRef.current) return;
+      const lng = e.lngLat?.lng;
+      const lat = e.lngLat?.lat;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      void addCheckpoint(lat, lng);
+      setCompassOpen(true);
+    });
     // initial update
     setTimeout(update, 0);
 
@@ -186,7 +599,66 @@ export default function MapLibreMap() {
       }
       map.current = null;
     };
-  }, [apiKey, loading]);
+  }, [apiKey, loading, addCheckpoint]);
+
+  // Dashed route line between checkpoints
+  useEffect(() => {
+    if (!map.current) return;
+    const m = map.current;
+
+    const sourceId = 'checkpoint-route';
+    const layerId = 'checkpoint-route-line';
+    const data = {
+      type: 'Feature',
+      properties: {},
+      geometry: {
+        type: 'LineString',
+        coordinates: checkpoints.map((cp) => [cp.longitude, cp.latitude]),
+      },
+    } as const;
+
+    const ensure = () => {
+      try {
+        const existing = m.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+        if (!existing) {
+          m.addSource(sourceId, { type: 'geojson', data } as any);
+        } else {
+          existing.setData(data as any);
+        }
+
+        if (!m.getLayer(layerId)) {
+          m.addLayer({
+            id: layerId,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': String(markerPole),
+              'line-width': 2,
+              'line-opacity': 0.9,
+              'line-dasharray': [1.5, 1.5],
+            },
+          } as any);
+        }
+      } catch {
+        // ignore if map not ready yet
+      }
+    };
+
+    if (typeof m.isStyleLoaded === 'function' && !m.isStyleLoaded()) {
+      m.once('load', ensure);
+    } else {
+      ensure();
+    }
+
+    // Hide the line when fewer than 2 checkpoints.
+    try {
+      if (m.getLayer(layerId)) {
+        m.setLayoutProperty(layerId, 'visibility', checkpoints.length >= 2 ? 'visible' : 'none');
+      }
+    } catch {
+      // ignore
+    }
+  }, [checkpoints, markerPole]);
 
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
@@ -294,6 +766,44 @@ export default function MapLibreMap() {
       <div ref={mapContainer} style={{ width: '100%', height: '100%', position: 'relative' }}>
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
         <RecenterButton onPress={handleRecenterPress} />
+        <CompassButton />
+        <PlacementButton />
+        {placementMode ? (
+          <div
+            onClick={() => setPlacementMode(false)}
+            role="button"
+            aria-label="Exit placement mode"
+            style={{
+              position: 'absolute',
+              top: 12,
+              left: 12,
+              right: 12,
+              zIndex: 60,
+              display: 'flex',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              style={{
+                pointerEvents: 'auto',
+                alignSelf: 'center',
+                maxWidth: 360,
+                padding: '10px 12px',
+                borderRadius: 12,
+                border: `1.5px solid ${String(tint)}`,
+                background: colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)',
+                color: colorScheme === 'dark' ? 'white' : 'black',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Placement mode · click map to add checkpoints · tap here to exit
+            </div>
+          </div>
+        ) : null}
+        <CompassOverlay />
         {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
         <InfoBox />
         <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
