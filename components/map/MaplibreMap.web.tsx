@@ -1,3 +1,4 @@
+import { alert as showAlert } from '@/components/alert';
 import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -16,9 +17,10 @@ export default function MapLibreMap() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapDiv = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
-  const markerRef = useRef<HTMLDivElement | null>(null);
+  const _markerRef = useRef<HTMLDivElement | null>(null);
   const lastLocationRef = useRef<typeof lastLocation | null>(null);
   const lastLocationLossTimer = useRef<number | null>(null);
+  const errorReportedRef = useRef(false);
   const { lastLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
   const colorScheme = useColorScheme() ?? 'light';
@@ -131,17 +133,24 @@ export default function MapLibreMap() {
       try {
         const b = typeof map.current.getBearing === 'function' ? map.current.getBearing() : 0;
         setMapBearing(b);
-      } catch (e) {
-        // ignore
+      } catch (err) {
+        if (!errorReportedRef.current) {
+          errorReportedRef.current = true;
+          void showAlert({ title: 'MapLibreMap', message: String(err) });
+        }
       }
       const ll = lastLocationRef.current;
       if (ll && map.current) {
-        try {
-          const p = map.current.project([ll.coords.longitude, ll.coords.latitude]);
-          setScreenPos({ x: p.x, y: p.y });
-        } catch (err) {
-          setScreenPos(null);
-        }
+          try {
+            const p = map.current.project([ll.coords.longitude, ll.coords.latitude]);
+            setScreenPos({ x: p.x, y: p.y });
+          } catch (err) {
+            if (!errorReportedRef.current) {
+              errorReportedRef.current = true;
+              void showAlert({ title: 'MapLibreMap', message: String(err) });
+            }
+            setScreenPos(null);
+          }
       }
     };
 
@@ -160,7 +169,11 @@ export default function MapLibreMap() {
         map.current.touchZoomRotate.disableRotation();
       }
       map.current.setBearing(0);
-    } catch (e) {
+    } catch (err) {
+      if (!errorReportedRef.current) {
+        errorReportedRef.current = true;
+        void showAlert({ title: 'MapLibreMap', message: String(err) });
+      }
       // ignore if methods are unavailable
     }
 
@@ -191,7 +204,11 @@ export default function MapLibreMap() {
       try {
         const p = map.current.project([lastLocation.coords.longitude, lastLocation.coords.latitude]);
         setScreenPos({ x: p.x, y: p.y });
-      } catch (e) {
+      } catch (err) {
+        if (!errorReportedRef.current) {
+          errorReportedRef.current = true;
+          void showAlert({ title: 'MapLibreMap', message: String(err) });
+        }
         // keep previous screenPos rather than clearing immediately
       }
       return;
@@ -219,7 +236,11 @@ export default function MapLibreMap() {
     const { latitude, longitude } = lastLocation.coords;
     try {
       map.current.flyTo({ center: [longitude, latitude] });
-    } catch (e) {
+    } catch (err) {
+      if (!errorReportedRef.current) {
+        errorReportedRef.current = true;
+        void showAlert({ title: 'MapLibreMap', message: String(err) });
+      }
       // ignore
     }
   }, [lastLocation, following]);
@@ -248,7 +269,11 @@ export default function MapLibreMap() {
       const { latitude, longitude } = lastLocation.coords;
       try {
         map.current.flyTo({ center: [longitude, latitude], zoom: 16, duration: 1000, essential: true });
-      } catch (e) {
+      } catch (err) {
+        if (!errorReportedRef.current) {
+          errorReportedRef.current = true;
+          void showAlert({ title: 'MapLibreMap', message: String(err) });
+        }
         // ignore
       }
     }

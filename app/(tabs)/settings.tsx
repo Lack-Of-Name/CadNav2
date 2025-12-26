@@ -1,7 +1,8 @@
 import React from 'react';
-import { Alert, Platform, StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { alert } from '@/components/alert';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -21,21 +22,14 @@ export default function SettingsScreen() {
   const switchThumb = colorScheme === 'dark' ? Colors.dark.tabIconSelected : Colors[colorScheme].background;
 
   async function handleReset() {
-    if (Platform.OS === 'web') {
-      const ok = window.confirm('Delete the stored MapTiler API key and enter a new one?');
-      if (!ok) return;
-      await clearApiKey();
-      return;
-    }
-
-    Alert.alert(
-      'Reset MapTiler API Key',
-      'Delete the stored MapTiler API key and enter a new one?',
-      [
+    await alert({
+      title: 'Reset MapTiler API Key',
+      message: 'Delete the stored MapTiler API key and enter a new one?',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         { text: 'OK', onPress: async () => await clearApiKey() },
-      ]
-    );
+      ],
+    });
   }
 
   return (

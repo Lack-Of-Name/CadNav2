@@ -1,3 +1,4 @@
+import { alert as showAlert } from '@/components/alert';
 import StyledButton from '@/components/ui/StyledButton';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
@@ -19,7 +20,7 @@ export function useMapTilerKey() {
   return useContext(MapTilerKeyContext);
 }
 
-export function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
+function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -28,7 +29,7 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
   const [verifying, setVerifying] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
-  const [orientationGranted, setOrientationGranted] = useState(false);
+  const [_orientationGranted, setOrientationGranted] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -54,8 +55,9 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
         } else {
           setShowModal(true);
         }
-      } catch (e) {
+      } catch (err) {
         setShowModal(true);
+        void showAlert({ title: 'MapTilerKeyProvider', message: String(err) });
       } finally {
         setLoading(false);
       }
@@ -93,8 +95,9 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
             } else {
               if (mounted) setShowModal(true);
             }
-          } catch (e) {
+          } catch (err) {
             if (mounted) setShowModal(true);
+            void showAlert({ title: 'MapTilerKeyProvider', message: String(err) });
           }
         })();
       }
@@ -119,8 +122,9 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
       if (res.ok) return { ok: true };
       // Provide status info for better debugging when used from the modal
       return { ok: false, message: `Request failed: ${res.status} ${res.statusText}` };
-    } catch (e: any) {
-      return { ok: false, message: e?.message ?? 'Network error' };
+    } catch (err: any) {
+      void showAlert({ title: 'MapTiler verifyKey', message: String(err) });
+      return { ok: false, message: err?.message ?? 'Network error' };
     }
   }
 
@@ -141,8 +145,9 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
       // after receiving a valid API key, request location permission (prompt user)
       const locOk = await requestLocationPermission(true);
       if (!locOk) setLocationModalVisible(true);
-    } catch (e) {
+    } catch (err) {
       Alert.alert('Storage error', 'Failed to save the API key for future launches.');
+      void showAlert({ title: 'MapTiler storage error', message: String(err) });
     }
   }
 
@@ -182,7 +187,8 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
         const { status } = await Location.requestForegroundPermissionsAsync();
         return status === 'granted';
       }
-    } catch (e) {
+    } catch (err) {
+      void showAlert({ title: 'MapTiler requestLocationPermission', message: String(err) });
       return false;
     }
   }
@@ -198,13 +204,15 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
         try {
           const result = await ctor.requestPermission();
           return result === 'granted';
-        } catch (e) {
+        } catch (err) {
+          void showAlert({ title: 'MapTiler requestOrientationPermission', message: String(err) });
           return false;
         }
       }
       // Other browsers do not require explicit permission for deviceorientation
       return true;
-    } catch (e) {
+    } catch (err) {
+      void showAlert({ title: 'MapTiler requestOrientationPermission', message: String(err) });
       return false;
     }
   }
@@ -212,8 +220,8 @@ export function MapTilerKeyProvider({ children }: { children: React.ReactNode })
   async function clearApiKey() {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
-    } catch (e) {
-      // ignore storage errors
+    } catch (err) {
+      void showAlert({ title: 'MapTiler clearApiKey', message: String(err) });
     }
     setApiKey(null);
     setInput('');

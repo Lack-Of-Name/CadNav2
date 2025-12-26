@@ -46,7 +46,7 @@ function parseCof(text: string): Model {
   if (!Number.isFinite(epoch)) throw new Error("invalid epoch");
 
   let nmax = 0;
-  const rows: Array<[number, number, number, number, number, number]> = [];
+  const rows: [number, number, number, number, number, number][] = [];
   for (let i = 1; i < lines.length; i++) {
     const s = lines[i];
     if (s.startsWith("99999")) break;
@@ -84,7 +84,6 @@ let cached: Promise<Model> | null = null;
 async function loadModel(): Promise<Model> {
   if (cached) return cached;
   // Statically require the COF so bundlers include it on web/native.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
   const WMMHR_COF = require("../../assets/WMMHR.COF");
   cached = (async () => {
     const text = await readTextAsset(WMMHR_COF as number);
@@ -229,7 +228,6 @@ export async function getMagneticDeclination(lat: number, lon: number, date?: Da
   const cosPhi = Math.cos(phigDeg * RAD);
   if (Math.abs(cosPhi) > 1e-10) by /= cosPhi;
   const psi = (phigDeg - lat) * RAD;
-  const bz_geo = bx * Math.sin(psi) + bz * Math.cos(psi);
   const bx_geo = bx * Math.cos(psi) - bz * Math.sin(psi);
   const by_geo = by;
   const decl = Math.atan2(by_geo, bx_geo) * DEG;
