@@ -14,8 +14,11 @@ import { ThemedView } from '../themed-view';
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const mapContainer = useRef<HTMLDivElement>(null);
+  const mapDiv = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const markerRef = useRef<HTMLDivElement | null>(null);
+  const lastLocationRef = useRef<typeof lastLocation | null>(null);
+  const lastLocationLossTimer = useRef<number | null>(null);
   const { lastLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
   const colorScheme = useColorScheme() ?? 'light';
@@ -27,7 +30,80 @@ export default function MapLibreMap() {
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
+  
+  // Overlay styles and small helpers to keep JSX concise below
+  const overlayStyles = {
+    container: { width: 24, height: 24, borderRadius: 12, background: '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center' } as any,
+    pulse: { position: 'absolute', left: 0, top: 0, width: 24, height: 24, borderRadius: 12, boxShadow: '0 0 0 6px rgba(0,122,255,0.15)', animation: 'pulse 2s infinite' } as any,
+    recenter: (following: boolean) => ({
+      position: 'absolute' as const,
+      bottom: 12,
+      left: 12,
+      padding: 10,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 50,
+      display: 'flex',
+      cursor: 'pointer',
+      backgroundColor: following
+        ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255)')
+        : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
+      border: following ? `1.5px solid ${String(tint)}` : '1.5px solid transparent',
+    }) as any,
+  };
 
+  // Normalize degrees to [0,360)
+  const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;
+
+  // Small subcomponents keep the return() markup readable
+  function RecenterButton({ onPress }: { onPress: () => void }) {
+    return (
+      <div onClick={onPress} role="button" aria-label="Recenter map" style={overlayStyles.recenter(following)}>
+        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
+      </div>
+    );
+  }
+
+  function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
+    return (
+      <div style={{ position: 'absolute', left: x - 12, top: y - 12, pointerEvents: 'none' }}>
+        <div style={overlayStyles.container}>
+          {orientation != null ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
+              <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="5" fill="white" />
+            </svg>
+          )}
+        </div>
+        <div style={overlayStyles.pulse} />
+      </div>
+    );
+  }
+
+  function InfoBox() {
+    if (!lastLocation) return null;
+    const useMag = mapHeading === 'magnetic';
+    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+    const headingText = h == null
+      ? '—'
+      : `${angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`} — ${useMag ? 'Magnetic' : 'True'}`;
+
+    return (
+      <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
+        <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
+        <br />
+        <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
+        <br />
+        <Text style={styles.locationText}>Alt: {lastLocation.coords.altitude == null ? '—' : `${lastLocation.coords.altitude.toFixed(0)} m`}</Text>
+        <br />
+        <Text style={styles.locationText}>Heading: {headingText}</Text>
+      </div>
+    );
+  }
 
   // Sleep helper function
   function sleep(ms: number) {
@@ -38,15 +114,42 @@ export default function MapLibreMap() {
     if (loading || !apiKey) return;
     if (map.current) return; // stops map from initializing more than once
     if (!mapContainer.current) return;
+    if (!mapDiv.current) return;
 
     const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
     map.current = new maplibregl.Map({
-      container: mapContainer.current,
+      container: mapDiv.current,
       style: mapStyle,
       center: [0, 0],
       zoom: 1
     });
+
+    // Update bearing and projected screen position when map events fire
+    const update = () => {
+      if (!map.current) return;
+      try {
+        const b = typeof map.current.getBearing === 'function' ? map.current.getBearing() : 0;
+        setMapBearing(b);
+      } catch (e) {
+        // ignore
+      }
+      const ll = lastLocationRef.current;
+      if (ll && map.current) {
+        try {
+          const p = map.current.project([ll.coords.longitude, ll.coords.latitude]);
+          setScreenPos({ x: p.x, y: p.y });
+        } catch (err) {
+          setScreenPos(null);
+        }
+      }
+    };
+
+    map.current.on('load', update);
+    map.current.on('move', update);
+    map.current.on('zoom', update);
+    // initial update
+    setTimeout(update, 0);
 
     // Lock map orientation to north-up: disable user rotation and force bearing 0
     try {
@@ -62,45 +165,52 @@ export default function MapLibreMap() {
     }
 
     return () => {
-      map.current?.remove();
+      if (map.current) {
+        map.current.off('load', update);
+        map.current.off('move', update);
+        map.current.off('zoom', update);
+        map.current.remove();
+      }
       map.current = null;
     };
   }, [apiKey, loading]);
 
+  // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
-    if (!map.current || !lastLocation) return;
+    lastLocationRef.current = lastLocation;
+  }, [lastLocation]);
 
-    // compute screen position for the user's location and update state
-    try {
-      const p = map.current.project([lastLocation.coords.longitude, lastLocation.coords.latitude]);
-      setScreenPos({ x: p.x, y: p.y });
-    } catch (e) {
-      setScreenPos(null);
-    }
-
-    // update position when the map moves or zooms
-    const update = () => {
-      if (!map.current || !lastLocation) return;
+  useEffect(() => {
+    // If lastLocation is present, cancel any pending clear and update immediately
+    if (lastLocation) {
+      if (lastLocationLossTimer.current) {
+        window.clearTimeout(lastLocationLossTimer.current);
+        lastLocationLossTimer.current = null;
+      }
+      if (!map.current) return;
       try {
         const p = map.current.project([lastLocation.coords.longitude, lastLocation.coords.latitude]);
         setScreenPos({ x: p.x, y: p.y });
-      } catch (err) {
-        // ignore
-      }
-      try {
-        // Keep bearing locked to north-up
-        setMapBearing(0);
       } catch (e) {
-        // ignore
+        // keep previous screenPos rather than clearing immediately
       }
-    };
-    map.current.on('move', update);
-    map.current.on('zoom', update);
+      return;
+    }
+
+    // lastLocation became unavailable — clear the marker after a short delay
+    if (lastLocationLossTimer.current) {
+      window.clearTimeout(lastLocationLossTimer.current);
+    }
+    lastLocationLossTimer.current = window.setTimeout(() => {
+      setScreenPos(null);
+      lastLocationLossTimer.current = null;
+    }, 2000);
 
     return () => {
-      map.current?.off('move', update);
-      map.current?.off('zoom', update);
-      setScreenPos(null);
+      if (lastLocationLossTimer.current) {
+        window.clearTimeout(lastLocationLossTimer.current);
+        lastLocationLossTimer.current = null;
+      }
     };
   }, [lastLocation]);
 
@@ -113,6 +223,24 @@ export default function MapLibreMap() {
       // ignore
     }
   }, [lastLocation, following]);
+
+  // Compute the orientation (degrees) for the arrow based on device heading
+  useEffect(() => {
+    if (!lastLocation) {
+      setOrientation(null);
+      return;
+    }
+    const useMag = mapHeading === 'magnetic';
+    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+    if (h == null) {
+      setOrientation(null);
+      return;
+    }
+    // Use the device heading directly (no inversion) and subtract map bearing
+    const raw = h - mapBearing;
+    const normalized = normalizeDegrees(raw);
+    setOrientation(normalized);
+  }, [lastLocation, mapBearing, mapHeading]);
 
   const handleRecenterPress = async () => {
     const enabling = !following;
@@ -138,76 +266,13 @@ export default function MapLibreMap() {
 
   return (
     <ThemedView style={styles.container}>
-      <div ref={mapContainer} style={{ width: '100%', height: '100%', position: 'relative' }} />
-      <div
-        onClick={handleRecenterPress}
-        role="button"
-        aria-label="Recenter map"
-        style={{
-          position: 'absolute',
-          bottom: 12,
-          left: 12,
-          padding: 10,
-          borderRadius: 24,
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 50,
-          display: 'flex',
-          cursor: 'pointer',
-          backgroundColor: following
-            ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255)')
-            : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
-          border: following ? `1.5px solid ${String(tint)}` : '1.5px solid transparent',
-        }}
-      >
-        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
+      <div ref={mapContainer} style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
+        <RecenterButton onPress={handleRecenterPress} />
+        {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
+        <InfoBox />
+        <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
-      {screenPos && (
-        <div style={{ position: 'absolute', left: screenPos.x - 12, top: screenPos.y - 12, pointerEvents: 'none' }}>
-          <div style={{ width: 24, height: 24, borderRadius: 12, background: '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {/**
-             * Compute arrow rotation so it matches Google Maps heading:
-             * - Some devices report `alpha` with the opposite sign, so invert it via (360 - alpha).
-             * - Subtract the map bearing so the arrow is relative to the map orientation.
-             */}
-            {(() => {
-              return (
-                <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
-                  <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
-                </svg>
-              );
-            })()}
-          </div>
-          <div style={{ position: 'absolute', left: 0, top: 0, width: 24, height: 24, borderRadius: 12, boxShadow: '0 0 0 6px rgba(0,122,255,0.15)', animation: 'pulse 2s infinite' }} />
-        </div>
-      )}
-      {lastLocation && (
-        <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
-          <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
-          <br />
-          <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
-          <br />
-          <Text style={styles.locationText}>
-            Alt:{' '}
-            {lastLocation.coords.altitude == null
-              ? '—'
-              : `${lastLocation.coords.altitude.toFixed(0)} m`}
-          </Text>
-          <br />
-          <Text style={styles.locationText}>
-            Heading:{' '}
-            {(() => {
-              const useMag = mapHeading === 'magnetic';
-              const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
-              if (h == null) return '—';
-              const formatted = angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`;
-              const indicator = useMag ? 'Magnetic' : 'True';
-              return `${formatted} — ${indicator}`;
-            })()}
-          </Text>
-        </div>
-      )}
-      <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
     </ThemedView>
   );
 }
