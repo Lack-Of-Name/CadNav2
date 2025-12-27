@@ -1,111 +1,44 @@
-import CompassOverlay from '@/components/map/CompassOverlay';
-import { degreesToMils } from '@/components/map/converter';
+import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useCheckpoints } from '@/hooks/checkpoints';
+// checkpoints removed — compass kept
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { Camera, LineLayer, MapView, PointAnnotation, ShapeSource, UserLocation } from "@maplibre/maplibre-react-native";
+import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 import { ThemedView } from '../themed-view';
-
-// Sleep helper function
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+import { CompassButton, getCompassHeadingDeg, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
-  const { checkpoints, selectedCheckpoint, selectCheckpoint, addCheckpoint } = useCheckpoints();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelected = useThemeColor({}, 'tabIconSelected');
   const tint = useThemeColor({}, 'tint');
-  const markerPole = Colors.light.text;
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
   const cameraRef = React.useRef<any>(null);
-  const { width: windowWidth } = useWindowDimensions();
   const [following, setFollowing] = useState(false);
-  const [placementMode, setPlacementMode] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
 
-  const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const toDeg = (rad: number) => (rad * 180) / Math.PI;
-
-  const bearingDegrees = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
-    const phi1 = toRad(fromLat);
-    const phi2 = toRad(toLat);
-    const deltaLambda = toRad(toLon - fromLon);
-    const y = Math.sin(deltaLambda) * Math.cos(phi2);
-    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-    return normalizeDegrees(toDeg(Math.atan2(y, x)));
-  };
-
-  const haversineMeters = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
-    const R = 6371000;
-    const phi1 = toRad(fromLat);
-    const phi2 = toRad(toLat);
-    const deltaPhi = toRad(toLat - fromLat);
-    const deltaLambda = toRad(toLon - fromLon);
-    const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
-  };
-
-  const currentHeading = (() => {
-    const useMag = mapHeading === 'magnetic';
-    return useMag ? lastLocation?.coords.magHeading : lastLocation?.coords.trueHeading;
-  })();
-
-  const checkpointBearing =
-    lastLocation && selectedCheckpoint
-      ? bearingDegrees(
-          lastLocation.coords.latitude,
-          lastLocation.coords.longitude,
-          selectedCheckpoint.latitude,
-          selectedCheckpoint.longitude
-        )
-      : null;
-
-  const checkpointDistanceMeters =
-    lastLocation && selectedCheckpoint
-      ? haversineMeters(
-          lastLocation.coords.latitude,
-          lastLocation.coords.longitude,
-          selectedCheckpoint.latitude,
-          selectedCheckpoint.longitude
-        )
-      : null;
+  const currentHeading = getCompassHeadingDeg(lastLocation);
 
   const compassHeadingDeg = currentHeading ?? null;
-  const compassTargetBearingDeg = checkpointBearing ?? null;
-  const compassTargetLabel = selectedCheckpoint?.label?.trim() ? selectedCheckpoint.label.trim() : (selectedCheckpoint ? 'Checkpoint' : null);
-  const compassHeadingRefLabel = mapHeading === 'magnetic' ? 'Magnetic' : 'True';
-
-  const compassBearingText = checkpointBearing == null
-    ? null
-    : angleUnit === 'mils'
-      ? `${Math.round(degreesToMils(checkpointBearing, { normalize: true }))} mils`
-      : `${checkpointBearing.toFixed(0)}°`;
-
-  const compassDistanceText = checkpointDistanceMeters == null
-    ? null
-    : checkpointDistanceMeters >= 1000
-      ? `${(checkpointDistanceMeters / 1000).toFixed(2)} km`
-      : `${Math.round(checkpointDistanceMeters)} m`;
+  const compassTargetBearingDeg = null;
+  const compassTargetLabel = null;
+  const compassHeadingRefLabel = 'Magnetic';
+  const compassBearingText = null;
+  const compassDistanceText = null;
 
   const handleRecenterPress = async () => {
     if (!lastLocation) {
@@ -120,21 +53,13 @@ export default function MapLibreMap() {
           cameraRef.current.zoomTo?.(16, 200);
           await sleep(200)
           cameraRef.current.flyTo?.([longitude, latitude], 800);
+          await sleep(800)
     }
-    await sleep(1000)
     setFollowing(enabling);
     
   };
 
-  const handleMapPress = async (ev: any) => {
-    if (!placementMode) return;
-    const coords = ev?.geometry?.coordinates;
-    if (!Array.isArray(coords) || coords.length < 2) return;
-    const [longitude, latitude] = coords;
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
-    await addCheckpoint(latitude, longitude);
-    setCompassOpen(true);
-  };
+  // map press handler removed (placement/checkpoints removed)
 
   useEffect(() => {
     if (!following || !lastLocation || !cameraRef.current) return;
@@ -153,19 +78,6 @@ export default function MapLibreMap() {
 
   const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
-  const placementBannerMaxWidth = Math.max(220, Math.min(360, windowWidth - (insets.left + insets.right + 24)));
-
-  const routeLineFeature = checkpoints.length >= 2
-    ? {
-        type: 'Feature',
-        properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates: checkpoints.map((cp) => [cp.longitude, cp.latitude]),
-        },
-      }
-    : null;
-
   return (
     <ThemedView style={styles.page}>
       <StatusBar animated={true} barStyle="dark-content" />
@@ -177,7 +89,7 @@ export default function MapLibreMap() {
         rotateEnabled={false}
         pitchEnabled={false}
         compassEnabled={false}
-        onPress={handleMapPress}
+        // checkpoint interaction removed
         onRegionDidChange={(ev: any) => {
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
@@ -191,58 +103,7 @@ export default function MapLibreMap() {
           }}
         />
 
-        {routeLineFeature ? (
-          <ShapeSource id="checkpoint-route" shape={routeLineFeature as any}>
-            <LineLayer
-              id="checkpoint-route-line"
-              style={{
-                lineColor: String(markerPole),
-                lineWidth: 2,
-                lineOpacity: 0.9,
-                lineDasharray: [1.5, 1.5],
-              } as any}
-            />
-          </ShapeSource>
-        ) : null}
-
-        {checkpoints.map((cp) => {
-          const flagColor = markerPole;
-          const showLabel = zoomLevel >= 14 && !!cp.label?.trim();
-          return (
-          <PointAnnotation
-            key={cp.id}
-            id={cp.id}
-            coordinate={[cp.longitude, cp.latitude]}
-            // @ts-ignore - anchor typing differs across forks
-            anchor={{ x: 0.08, y: 1.0 }}
-            onSelected={() => {
-              void selectCheckpoint(cp.id);
-            }}
-          >
-            <View style={styles.checkpointMarker}>
-              {showLabel ? (
-                <View style={styles.checkpointLabelWrap}>
-                  <Text style={styles.checkpointLabelText} numberOfLines={1}>
-                    {cp.label!.trim()}
-                  </Text>
-                </View>
-              ) : null}
-              <View style={styles.checkpointIconWrap}>
-                <Svg
-                  width={32}
-                  height={32}
-                  viewBox="0 0 447.514 447.514"
-                >
-                  <Path
-                    d="M389.183,10.118c-3.536-2.215-7.963-2.455-11.718-0.634l-50.653,24.559c-35.906,17.409-77.917,16.884-113.377-1.418 c-38.094-19.662-83.542-18.72-120.789,2.487V20c0-11.046-8.954-20-20-20s-20,8.954-20,20v407.514c0,11.046,8.954,20,20,20 s20-8.954,20-20V220.861c37.246-21.207,82.694-22.148,120.789-2.487c35.46,18.302,77.47,18.827,113.377,1.418l56.059-27.18 c7.336-3.557,11.995-10.993,11.995-19.146V20.385C394.866,16.212,392.719,12.333,389.183,10.118z"
-                    fill={String(flagColor)}
-                  />
-                </Svg>
-              </View>
-            </View>
-          </PointAnnotation>
-          );
-        })}
+        {/* checkpoints removed */}
 
         {/* Render the native location puck w/ heading indicator. */}
         {/* @ts-ignore - typing differs across forks */}
@@ -256,29 +117,15 @@ export default function MapLibreMap() {
         />
       </MapView>
 
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={handleRecenterPress}
-        style={[
-          styles.recenterButton,
-          {
-            bottom: insets.bottom + 12,
-            left: insets.left + 12,
-            backgroundColor: following
-              ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )')
-              : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
-            borderWidth: 1.5,
-            borderColor: following ? String(tint) : 'transparent',
-          },
-        ]}
-      >
-        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
-      </TouchableOpacity>
+      <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />
+
+      <CompassButton onPress={() => setCompassOpen(true)} style={[styles.recenterButton, { bottom: insets.bottom + 12 + 58, left: insets.left + 12, backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)', borderWidth: 1.5, borderColor: compassOpen ? String(tint) : 'transparent' }]} color={compassOpen ? tabIconSelected : buttonIconColor} active={compassOpen} renderAs="native" />
 
       <CompassOverlay
         open={compassOpen}
         onToggle={() => setCompassOpen((v) => !v)}
         headingDeg={compassHeadingDeg}
+        angleUnit={angleUnit}
         targetBearingDeg={compassTargetBearingDeg}
         targetLabel={compassTargetLabel}
         headingReferenceLabel={compassHeadingDeg == null ? null : compassHeadingRefLabel}
@@ -300,94 +147,12 @@ export default function MapLibreMap() {
         }}
       />
 
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => {
-          setPlacementMode((v) => !v);
-          if (!placementMode) {
-            setCompassOpen(false);
-          }
-        }}
-        style={[
-          styles.recenterButton,
-          {
-            bottom: insets.bottom + 12 + 58 + 58,
-            left: insets.left + 12,
-            backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)',
-            borderWidth: 1.5,
-            borderColor: placementMode ? String(tint) : 'transparent',
-          },
-        ]}
-      >
-        <IconSymbol size={26} name="flag.fill" color={String(placementMode ? tabIconSelected : buttonIconColor)} />
-      </TouchableOpacity>
-
-      {placementMode ? (
-        <View
-          pointerEvents="box-none"
-          style={[
-            styles.placementBannerWrap,
-            {
-              top: insets.top + 12,
-              left: insets.left + 12,
-              right: insets.right + 12,
-            },
-          ]}
-        >
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setPlacementMode(false)}
-            style={[
-              styles.placementBanner,
-              {
-                borderColor: String(tint),
-                backgroundColor: String(background),
-                maxWidth: placementBannerMaxWidth,
-              },
-            ]}
-          >
-            <View style={styles.placementBannerRow}>
-              <IconSymbol size={16} name="flag.fill" color={String(tint)} />
-              <Text style={[styles.placementBannerTitle, { color: String(textColor) }]}>Placement mode</Text>
-              <Text style={[styles.placementBannerHint, { color: String(textColor) }]}>Tap to exit</Text>
-            </View>
-            <Text style={[styles.placementBannerText, { color: String(textColor) }]}>Tap the map to add checkpoints</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
+      {/* placement mode removed */}
 
       {/* Compass overlay replaced by CompassOverlay */}
 
       {lastLocation ? (
-        <View
-          style={[
-            styles.locationOverlay,
-            {
-              top: insets.top + 12 + (placementMode ? 64 : 0),
-              right: insets.right + 12,
-            },
-          ]}
-        >
-          <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
-          <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
-          <Text style={styles.locationText}>
-            Alt:{' '}
-            {lastLocation.coords.altitude == null
-              ? '—'
-              : `${lastLocation.coords.altitude.toFixed(0)} m`}
-          </Text>
-          <Text style={styles.locationText}>
-            Heading:{' '}
-            {(() => {
-              const useMag = mapHeading === 'magnetic';
-              const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
-              if (h == null) return '—';
-              const formatted = angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`;
-              const indicator = useMag ? 'Magnetic' : 'True';
-              return `${formatted} — ${indicator}`;
-            })()}
-          </Text>
-        </View>
+        <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={[styles.locationOverlay, { top: insets.top + 12, right: insets.right + 12 }]} textStyle={styles.locationText} renderAs="native" />
       ) : null}
     </ThemedView>
   );

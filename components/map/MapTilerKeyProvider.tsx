@@ -204,15 +204,26 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
         try {
           const result = await ctor.requestPermission();
           return result === 'granted';
-        } catch (err) {
-          void showAlert({ title: 'MapTiler requestOrientationPermission', message: String(err) });
+        } catch (err: any) {
+          const name = err?.name;
+          const msg = String(err?.message ?? err);
+          // Ignore errors caused by calling requestPermission without a user gesture
+          if (name === 'NotAllowedError' || /user gesture/i.test(msg)) {
+            return false;
+          }
+          void showAlert({ title: 'MapTiler requestOrientationPermission', message: msg });
           return false;
         }
       }
       // Other browsers do not require explicit permission for deviceorientation
       return true;
-    } catch (err) {
-      void showAlert({ title: 'MapTiler requestOrientationPermission', message: String(err) });
+    } catch (err: any) {
+      const name = err?.name;
+      const msg = String(err?.message ?? err);
+      if (name === 'NotAllowedError' || /user gesture/i.test(msg)) {
+        return false;
+      }
+      void showAlert({ title: 'MapTiler requestOrientationPermission', message: msg });
       return false;
     }
   }

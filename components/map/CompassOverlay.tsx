@@ -1,10 +1,13 @@
-import { FC, useMemo } from 'react';
+import { triggerHaptic } from '@/components/haptic-tab';
+import { useEffect, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { degreesToMils } from './converter';
 
 type Props = {
   open: boolean;
   onToggle: () => void;
   headingDeg?: number | null;
+  angleUnit?: 'mils' | 'degrees' | string;
   targetBearingDeg?: number | null;
   targetLabel?: string | null;
   bearingText?: string | null;
@@ -24,21 +27,39 @@ type Props = {
 
 const normalize360 = (value: number) => ((value % 360) + 360) % 360;
 
-const TICKS = Array.from({ length: 36 }, (_, i) => i * 10);
+/**
+ * 24 ticks total (every 15°):
+ * - Major ticks every 45° (N, NE, E, etc.)
+ * - Minor ticks at 15° and 30° between majors
+ */
+const TICKS = Array.from({ length: 24 }, (_, i) => i * 15);
 
-function labelForDeg(deg: number) {
-  if (deg === 0) return 'N';
+const isCardinal = (deg: number) => deg % 90 === 0;
+
+function labelForAngle(deg: number, unit?: string) {
   if (deg === 90) return 'E';
   if (deg === 180) return 'S';
   if (deg === 270) return 'W';
-  if (deg % 30 === 0) return String(deg);
-  return null;
+
+  if (unit === 'mils') {
+    return String(Math.round(degreesToMils(deg, { normalize: true })));
+  }
+
+  return String(deg);
 }
 
-const CompassOverlay: FC<Props> = ({
+// New function for cardinal heading labels below the tick lines
+function headingLabelForAngle(deg: number, unit?: string) {
+  if (!isCardinal(deg)) return '';
+  if (unit === 'mils') return String(Math.round(degreesToMils(deg, { normalize: true })));
+  return String(deg);
+}
+
+export function CompassOverlay({
   open,
   onToggle,
   headingDeg,
+  angleUnit,
   targetBearingDeg,
   targetLabel,
   bearingText,
@@ -54,7 +75,7 @@ const CompassOverlay: FC<Props> = ({
   primary,
   tick,
   tickStrong,
-}) => {
+}: Props) {
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const heading = typeof headingDeg === 'number' ? normalize360(headingDeg) : null;
 
@@ -84,20 +105,55 @@ const CompassOverlay: FC<Props> = ({
     return `${relative}deg`;
   }, [heading, targetBearingDeg]);
 
-  if (!open) {
-    return (
-      <View style={[styles.fabWrap, style]} pointerEvents="box-none">
-        <Pressable
-          style={[styles.fab, { backgroundColor: panelBg, borderColor }]}
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel="Open compass"
-        >
-          <Text style={[styles.fabText, { color: textColor }]}>N</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  // Haptic feedback: light tap when heading passes over any tick line
+  const prevHeadingRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (heading == null) {
+      prevHeadingRef.current = null;
+      return;
+    }
+    // Only provide haptics when the compass panel is open
+    if (!open) {
+      prevHeadingRef.current = heading;
+      return;
+    }
+
+    const prev = prevHeadingRef.current;
+    if (prev == null) {
+      prevHeadingRef.current = heading;
+      return;
+    }
+
+    const curr = heading;
+    // Determine shortest path direction from prev to curr
+    const forward = (curr - prev + 360) % 360;
+    const pathIsForward = forward <= 180;
+    const start = pathIsForward ? prev : curr;
+    const end = pathIsForward ? curr : prev;
+    const span = (end - start + 360) % 360;
+
+    // Determine whether any major (45°) or minor (15°) ticks were crossed
+    let crossedMajor = false;
+    let crossedMinor = false;
+    for (const tick of TICKS) {
+      const rel = (tick - start + 360) % 360;
+      if (rel > 0 && rel <= span) {
+        if (tick % 45 === 0) crossedMajor = true;
+        else crossedMinor = true;
+      }
+      if (crossedMajor && crossedMinor) break;
+    }
+
+    if (crossedMajor) {
+      void triggerHaptic('medium');
+    } else if (crossedMinor) {
+      void triggerHaptic('light');
+    }
+
+    prevHeadingRef.current = curr;
+  }, [heading, open]);
+
+  if (!open) return null;
 
   return (
     <View style={[styles.wrap, style]} pointerEvents="box-none">
@@ -109,6 +165,7 @@ const CompassOverlay: FC<Props> = ({
               {targetLabel ? `Target: ${targetLabel}` : 'No target selected'}
             </Text>
           </View>
+
           <Pressable
             style={[styles.close, { borderColor, backgroundColor: background }]}
             onPress={onToggle}
@@ -122,59 +179,72 @@ const CompassOverlay: FC<Props> = ({
         <View style={[styles.dial, { backgroundColor: background, borderColor, width: dialSize, height: dialSize }]}>
           <View style={[styles.ring, { transform: [{ rotate: ringRotation }] }]}>
             {TICKS.map((deg) => {
-              const cardinal = deg % 90 === 0;
-              const major = deg % 30 === 0;
-              const label = labelForDeg(deg);
+              const isMajor = deg % 45 === 0;
+              const cardinal = isCardinal(deg);
+              const label = isMajor ? labelForAngle(deg, angleUnit) : '';
+              const headingLabel = headingLabelForAngle(deg, angleUnit);
 
-              const tickLen = (cardinal ? 30 : major ? 22 : 12) * scale;
-              const tickWidth = (cardinal ? 3 : major ? 2 : 1) * scale;
-              const tickMarginTop = 14 * scale;
-
-              const labelFontSize = Math.max(9, (cardinal ? 13 : 10) * scale);
-              const labelMarginTop = 2 * scale;
-
-              const nTop = 8 * scale;
               return (
-                <View key={deg} style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}>
+                <View
+                  key={deg}
+                  style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}
+                >
                   <View
                     style={[
                       styles.tick,
-                      {
-                        marginTop: tickMarginTop,
-                        width: tickWidth,
-                        height: tickLen,
-                        backgroundColor: cardinal || major ? tickStrong : tick,
-                      },
+                      cardinal
+                        ? [styles.tickCardinal, { width: 3 * scale, height: 26 * scale, marginTop: 12 * scale }]
+                        : isMajor
+                          ? [styles.tickMajor, { width: 2 * scale, height: 20 * scale, marginTop: 12 * scale }]
+                          : [styles.tickMinor, { width: 1 * scale, height: 12 * scale, marginTop: 18 * scale }],
+                      { backgroundColor: cardinal || isMajor ? tickStrong : tick },
                     ]}
                   />
 
-                  {label ? (
+                  {/* Ring label (only for major ticks) */}
+                  {isMajor ? (
                     <View style={styles.ringLabelWrap}>
                       <Text
                         style={[
                           styles.ringLabel,
-                          { color: cardinal ? tickStrong : textSubtle },
-                          { fontSize: labelFontSize, marginTop: labelMarginTop },
+                          { color: tickStrong },
+                          cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
                         ]}
                       >
                         {label}
                       </Text>
                     </View>
                   ) : null}
-                  {deg === 0 ? (
-                    <View style={[styles.nLabelWrap, { top: nTop }]}>
-                      <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
-                        <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
-                      </View>
+
+                  {/* Heading number label below the tick */}
+                  {cardinal && (
+                    <View style={[styles.headingLabelWrap, { top: 38 * scale }]}>
+                      <Text style={[styles.headingLabel, { color: tickStrong, fontSize: Math.max(7, 8 * scale) }]}>
+                        {headingLabel}
+                      </Text>
                     </View>
-                  ) : null}
+                  )}
                 </View>
               );
             })}
+
+            {/* N marker */}
+            <View style={[styles.nLabelWrap, { top: 6 * scale }]}>
+              <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
+                <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
+              </View>
+            </View>
           </View>
 
-          <View style={[styles.needle, { backgroundColor: primary, height: 112 * scale, top: 22 * scale }]} />
+          {/* Heading needle */}
+          <View
+            style={[
+              styles.needle,
+              { backgroundColor: primary, height: 96 * scale, top: 20 * scale, width: Math.max(1.5, 2 * scale) },
+            ]}
+          />
 
+          {/* Target pointer */}
           {pointerRotation ? (
             <View style={[styles.targetPointerWrap, { transform: [{ rotate: pointerRotation }] }]}>
               <View
@@ -191,60 +261,48 @@ const CompassOverlay: FC<Props> = ({
               />
             </View>
           ) : null}
+        </View>
 
-          <View style={styles.readout}>
-            <View style={styles.readoutRow}>
-              <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]}>
-                  {heading == null ? '—' : `${Math.round(heading)}°`}
+        {/* READOUT */}
+        <View style={styles.readout}>
+          <View style={styles.readoutRow}>
+            <View style={styles.readoutCell}>
+              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
+              <Text style={[styles.readoutValue, { color: textColor }]}>
+                {heading == null
+                  ? '—'
+                  : angleUnit === 'mils'
+                  ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
+                  : `${Math.round(heading)}°`}
+              </Text>
+              {headingReferenceLabel ? (
+                <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
+                  {headingReferenceLabel}
                 </Text>
-                {headingReferenceLabel ? (
-                  <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
-                    {headingReferenceLabel}
-                  </Text>
-                ) : null}
-              </View>
+              ) : null}
+            </View>
 
-              <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
-                  {bearingText ?? '—'}
-                </Text>
-              </View>
+            <View style={styles.readoutCell}>
+              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
+              <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                {bearingText ?? '—'}
+              </Text>
+            </View>
 
-              <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
-                  {distanceText ?? '—'}
-                </Text>
-              </View>
+            <View style={styles.readoutCell}>
+              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
+              <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                {distanceText ?? '—'}
+              </Text>
             </View>
           </View>
         </View>
       </View>
     </View>
   );
-};
-
-export default CompassOverlay;
+}
 
 const styles = StyleSheet.create({
-  fabWrap: {
-    position: 'absolute',
-  },
-  fab: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-  },
-  fabText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
   wrap: {
     position: 'absolute',
     maxWidth: '100%',
@@ -288,8 +346,8 @@ const styles = StyleSheet.create({
   dial: {
     marginTop: 12,
     alignSelf: 'center',
-    width: 280,
-    height: 280,
+    width: 240,
+    height: 240,
     borderRadius: 999,
     borderWidth: 1.5,
     alignItems: 'center',
@@ -312,20 +370,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tick: {
-    marginTop: 14,
+    marginTop: 12,
     borderRadius: 999,
   },
   tickCardinal: {
     width: 3,
-    height: 30,
+    height: 26,
   },
   tickMajor: {
     width: 2,
-    height: 22,
+    height: 20,
   },
   tickMinor: {
     width: 1,
     height: 12,
+    marginTop: 18,
   },
   ringLabelWrap: {
     position: 'absolute',
@@ -335,20 +394,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ringLabel: {
-    marginTop: 2,
     fontWeight: '800',
   },
   ringLabelCardinal: {
-    fontSize: 13,
+    fontSize: 12,
+    marginTop: 6,
+    transform: [{ translateY: -5 }],
   },
   ringLabelDegree: {
-    fontSize: 10,
+    fontSize: 9,
+    marginTop: 2,
   },
+
+  // New heading label style
+  headingLabelWrap: {
+    position: 'absolute',
+    top: 38, // below tick
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  headingLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+  },
+
   nLabelWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: 8,
+    top: 6,
     alignItems: 'center',
   },
   nLabelPill: {
@@ -364,8 +439,8 @@ const styles = StyleSheet.create({
   needle: {
     position: 'absolute',
     width: 2,
-    height: 112,
-    top: 22,
+    height: 96,
+    top: 20,
     borderRadius: 999,
   },
   targetPointerWrap: {
@@ -377,27 +452,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   targetPointer: {
-    marginTop: 18,
+    marginTop: 16,
     width: 0,
     height: 0,
-    borderLeftWidth: 9,
-    borderRightWidth: 9,
-    borderBottomWidth: 18,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 16,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
   readout: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 12,
+    marginTop: 12,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   readoutRow: {
     width: '100%',
     flexDirection: 'row',
-    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: 12,
   },
   readoutCell: {

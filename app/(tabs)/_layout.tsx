@@ -1,9 +1,8 @@
-import { Tabs } from 'expo-router';
-
-import { HapticTab } from '@/components/haptic-tab';
+import { HapticPressable } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Tabs } from 'expo-router';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -13,7 +12,7 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
+          tabBarButton: HapticPressable,
       }}>
       <Tabs.Screen
         name="index"
@@ -24,9 +23,9 @@ export default function TabLayout() {
 
       
       <Tabs.Screen
-        name="checkpoints"
+        name="routes"
         options={{
-          title: 'Checkpoints',
+          title: 'Routes',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.fill" color={color} />,
         }}
       />
@@ -36,6 +35,14 @@ export default function TabLayout() {
         options={{
           title: 'Settings',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
+        }}
+      />
+
+      <Tabs.Screen
+        name="about"
+        options={{
+          title: 'About',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="document.fill" color={color} />,
         }}
       />
     </Tabs>
