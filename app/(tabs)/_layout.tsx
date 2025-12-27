@@ -24,9 +24,9 @@ export default function TabLayout() {
 
       
       <Tabs.Screen
-        name="checkpoints"
+        name="routes"
         options={{
-          title: 'Checkpoints',
+          title: 'Routes',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.fill" color={color} />,
         }}
       />
