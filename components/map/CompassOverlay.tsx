@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { degreesToMils } from './converter';
 
 type Props = {
   open: boolean;
@@ -24,20 +25,6 @@ type Props = {
 };
 
 const normalize360 = (value: number) => ((value % 360) + 360) % 360;
-
-/**
- * Converts degrees to mils (NATO standard: 1 circle = 6400 mils).
- * @param degrees Angle in degrees.
- * @param options Optional normalization.
- * @returns Angle in mils.
- */
-function degreesToMils(degrees: number, options?: { normalize?: boolean }): number {
-  let deg = degrees;
-  if (options?.normalize) {
-    deg = normalize360(deg);
-  }
-  return (deg * 6400) / 360;
-}
 
 const TICKS = Array.from({ length: 36 }, (_, i) => i * 10);
 

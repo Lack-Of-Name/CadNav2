@@ -1,9 +1,9 @@
 import { alert as showAlert } from '@/components/alert';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
-import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { formatHeading, getCompassHeadingDeg, normalizeDegrees, sleep } from './MaplibreMap.general';
 // checkpoints removed — compass kept
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
@@ -78,31 +78,7 @@ export default function MapLibreMap() {
     }) as any,
   };
 
-  // Normalize degrees to [0,360)
-  const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const toDeg = (rad: number) => (rad * 180) / Math.PI;
-
-  const bearingDegrees = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
-    const phi1 = toRad(fromLat);
-    const phi2 = toRad(toLat);
-    const deltaLambda = toRad(toLon - fromLon);
-    const y = Math.sin(deltaLambda) * Math.cos(phi2);
-    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-    return normalizeDegrees(toDeg(Math.atan2(y, x)));
-  };
-
-  const haversineMeters = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
-    const R = 6371000;
-    const phi1 = toRad(fromLat);
-    const phi2 = toRad(toLat);
-    const deltaPhi = toRad(toLat - fromLat);
-    const deltaLambda = toRad(toLon - fromLon);
-    const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
-  };
-
-  const currentHeading = lastLocation?.coords.magHeading;
+  const currentHeading = getCompassHeadingDeg(lastLocation);
 
   // checkpoint-bearing and distance removed
 
@@ -120,12 +96,6 @@ export default function MapLibreMap() {
       <div onClick={() => setCompassOpen(false)} role="button" aria-label="Compass" style={overlayStyles.floatingButton(12 + 58, compassOpen)}>
         <IconSymbol size={26} name="location.north.line" color={String(compassOpen ? tabIconSelected : buttonIconColor)} />
       </div>
-    );
-  }
-
-  function PlacementButton() {
-    return (
-      null
     );
   }
 
@@ -158,11 +128,7 @@ export default function MapLibreMap() {
 
   function InfoBox() {
     if (!lastLocation) return null;
-    const useMag = mapHeading === 'magnetic';
-    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
-    const headingText = h == null
-      ? '—'
-      : `${angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`} — ${useMag ? 'Magnetic' : 'True'}`;
+    const headingText = formatHeading(lastLocation, mapHeading, angleUnit);
 
     return (
       <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
@@ -177,10 +143,7 @@ export default function MapLibreMap() {
     );
   }
 
-  // Sleep helper function
-  function sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
+  // sleep imported from MaplibreMap.general
 
   useEffect(() => {
     // placement mode removed

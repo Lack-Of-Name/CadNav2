@@ -1,5 +1,4 @@
 import { CompassOverlay } from '@/components/map/CompassOverlay';
-import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
@@ -13,11 +12,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-
-// Sleep helper function
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+import { formatHeading, getCompassHeadingDeg, sleep } from './MaplibreMap.general';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
@@ -38,30 +33,7 @@ export default function MapLibreMap() {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
 
-  const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const toDeg = (rad: number) => (rad * 180) / Math.PI;
-
-  const bearingDegrees = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
-    const phi1 = toRad(fromLat);
-    const phi2 = toRad(toLat);
-    const deltaLambda = toRad(toLon - fromLon);
-    const y = Math.sin(deltaLambda) * Math.cos(phi2);
-    const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-    return normalizeDegrees(toDeg(Math.atan2(y, x)));
-  };
-
-  const haversineMeters = (fromLat: number, fromLon: number, toLat: number, toLon: number) => {
-    const R = 6371000;
-    const phi1 = toRad(fromLat);
-    const phi2 = toRad(toLat);
-    const deltaPhi = toRad(toLat - fromLat);
-    const deltaLambda = toRad(toLon - fromLon);
-    const a = Math.sin(deltaPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(a));
-  };
-
-  const currentHeading = lastLocation?.coords.magHeading;
+  const currentHeading = getCompassHeadingDeg(lastLocation);
 
   const compassHeadingDeg = currentHeading ?? null;
   const compassTargetBearingDeg = null;
@@ -229,17 +201,7 @@ export default function MapLibreMap() {
               ? '—'
               : `${lastLocation.coords.altitude.toFixed(0)} m`}
           </Text>
-          <Text style={styles.locationText}>
-            Heading:{' '}
-            {(() => {
-              const useMag = mapHeading === 'magnetic';
-              const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
-              if (h == null) return '—';
-              const formatted = angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`;
-              const indicator = useMag ? 'Magnetic' : 'True';
-              return `${formatted} — ${indicator}`;
-            })()}
-          </Text>
+          <Text style={styles.locationText}>Heading: {formatHeading(lastLocation, mapHeading, angleUnit)}</Text>
         </View>
       ) : null}
     </ThemedView>
