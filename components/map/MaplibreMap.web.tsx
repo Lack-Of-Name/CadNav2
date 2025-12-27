@@ -16,6 +16,7 @@ import { ThemedView } from '../themed-view';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
+  const [webLastLocation, setWebLastLocation] = useState<any | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapDiv = useRef<HTMLDivElement | null>(null);
   const map = useRef<maplibregl.Map | null>(null);
@@ -78,7 +79,8 @@ export default function MapLibreMap() {
     }) as any,
   };
 
-  const currentHeading = getCompassHeadingDeg(lastLocation);
+  const effectiveLastLocation = lastLocation ?? webLastLocation;
+  const currentHeading = getCompassHeadingDeg(effectiveLastLocation);
 
   // checkpoint-bearing and distance removed
 
@@ -203,19 +205,54 @@ export default function MapLibreMap() {
 
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
-    lastLocationRef.current = lastLocation;
-  }, [lastLocation]);
+    lastLocationRef.current = effectiveLastLocation;
+  }, [lastLocation, webLastLocation]);
+
+  // Try a lightweight web-only fallback to seed location quickly when `useGPS` is not returning
+  // a value on some desktop browsers. This will not replace the hook but helps UI appear.
+  useEffect(() => {
+    if (effectiveLastLocation) return;
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return;
+    let mounted = true;
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!mounted) return;
+          setWebLastLocation({
+            coords: {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude,
+              accuracy: pos.coords.accuracy ?? null,
+              altitude: pos.coords.altitude ?? null,
+              magHeading: null,
+              trueHeading: null,
+            },
+            timestamp: pos.timestamp ?? Date.now(),
+          });
+        },
+        () => {
+          /* ignore */
+        },
+        { enableHighAccuracy: true, maximumAge: 60_000, timeout: 8000 }
+      );
+    } catch {
+      // ignore
+    }
+    return () => {
+      mounted = false;
+    };
+  }, [lastLocation, webLastLocation]);
 
   useEffect(() => {
-    // If lastLocation is present, cancel any pending clear and update immediately
-    if (lastLocation) {
+    // If lastLocation (or web fallback) is present, cancel any pending clear and update immediately
+    if (effectiveLastLocation) {
       if (lastLocationLossTimer.current) {
         window.clearTimeout(lastLocationLossTimer.current);
         lastLocationLossTimer.current = null;
       }
       if (!map.current) return;
       try {
-        const p = map.current.project([lastLocation.coords.longitude, lastLocation.coords.latitude]);
+        const p = map.current.project([effectiveLastLocation.coords.longitude, effectiveLastLocation.coords.latitude]);
         setScreenPos({ x: p.x, y: p.y });
       } catch (err) {
         if (!errorReportedRef.current) {
@@ -242,7 +279,7 @@ export default function MapLibreMap() {
         lastLocationLossTimer.current = null;
       }
     };
-  }, [lastLocation]);
+  }, [lastLocation, webLastLocation]);
 
   useEffect(() => {
     if (!following || !lastLocation || !map.current) return;
@@ -256,16 +293,16 @@ export default function MapLibreMap() {
       }
       // ignore
     }
-  }, [lastLocation, following]);
+  }, [lastLocation, webLastLocation, following]);
 
   // Compute the orientation (degrees) for the arrow based on device heading
   useEffect(() => {
-    if (!lastLocation) {
+    if (!effectiveLastLocation) {
       setOrientation(null);
       return;
     }
     const useMag = mapHeading === 'magnetic';
-    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+    const h = useMag ? effectiveLastLocation.coords.magHeading : effectiveLastLocation.coords.trueHeading;
     if (h == null) {
       setOrientation(null);
       return;
