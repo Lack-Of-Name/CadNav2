@@ -21,6 +21,7 @@ const MAPPING = {
   'location.fill.viewfinder': 'my-location',
   'safari.fill': 'explore',
   'flag.fill': 'flag',
+  'document.fill': 'description'
 } as IconMapping;
 
 /**
