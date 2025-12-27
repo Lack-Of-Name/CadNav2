@@ -1,9 +1,8 @@
 import { alert as showAlert } from '@/components/alert';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { formatHeading, getCompassHeadingDeg, normalizeDegrees, sleep } from './MaplibreMap.general';
+import { CompassButton, getCompassHeadingDeg, InfoBox, LocationMarker, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
 // checkpoints removed — compass kept
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
@@ -41,6 +40,7 @@ export default function MapLibreMap() {
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [compassOpen, setCompassOpen] = useState(false);
+  const compassButtonColor = compassOpen ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   
   // Overlay styles and small helpers to keep JSX concise below
   const overlayStyles = {
@@ -82,23 +82,6 @@ export default function MapLibreMap() {
 
   // checkpoint-bearing and distance removed
 
-  // Small subcomponents keep the return() markup readable
-  function RecenterButton({ onPress }: { onPress: () => void }) {
-    return (
-      <div onClick={onPress} role="button" aria-label="Recenter map" style={overlayStyles.recenter(following)}>
-        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
-      </div>
-    );
-  }
-
-  function CompassButton() {
-    return (
-      <div onClick={() => setCompassOpen(false)} role="button" aria-label="Compass" style={overlayStyles.floatingButton(12 + 58, compassOpen)}>
-        <IconSymbol size={26} name="location.north.line" color={String(compassOpen ? tabIconSelected : buttonIconColor)} />
-      </div>
-    );
-  }
-
   // Use shared CompassOverlay component for web as well
   const compassHeadingDeg = currentHeading ?? null;
   const compassTargetBearingDeg = null;
@@ -107,41 +90,7 @@ export default function MapLibreMap() {
   const compassBearingText = null;
   const compassDistanceText = null;
 
-  function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
-    return (
-      <div style={{ position: 'absolute', left: x - 12, top: y - 12, pointerEvents: 'none' }}>
-        <div style={overlayStyles.container}>
-          {orientation != null ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
-              <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
-            </svg>
-          ) : (
-            <svg width="10" height="10" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="5" fill="white" />
-            </svg>
-          )}
-        </div>
-        <div style={overlayStyles.pulse} />
-      </div>
-    );
-  }
-
-  function InfoBox() {
-    if (!lastLocation) return null;
-    const headingText = formatHeading(lastLocation, mapHeading, angleUnit);
-
-    return (
-      <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
-        <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
-        <br />
-        <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
-        <br />
-        <Text style={styles.locationText}>Alt: {lastLocation.coords.altitude == null ? '—' : `${lastLocation.coords.altitude.toFixed(0)} m`}</Text>
-        <br />
-        <Text style={styles.locationText}>Heading: {headingText}</Text>
-      </div>
-    );
-  }
+  
 
   // sleep imported from MaplibreMap.general
 
@@ -349,12 +298,12 @@ export default function MapLibreMap() {
         }}
       >
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
-        <RecenterButton onPress={handleRecenterPress} />
-        <CompassButton />
+        <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
+        <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
         {/* placement UI removed */}
         <CompassOverlay
           open={compassOpen}
-          onToggle={() => setCompassOpen(false)}
+          onToggle={() => setCompassOpen((v) => !v)}
           headingDeg={compassHeadingDeg}
           angleUnit={angleUnit}
           targetBearingDeg={compassTargetBearingDeg}
@@ -376,8 +325,8 @@ export default function MapLibreMap() {
             bottom: 12 + 58,
           }}
         />
-        {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
-        <InfoBox />
+        {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} renderAs="web" />}
+        <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }} textStyle={styles.locationText} renderAs="web" />
         <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
     </ThemedView>

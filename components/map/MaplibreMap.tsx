@@ -1,6 +1,5 @@
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 // checkpoints removed — compass kept
 import { useGPS } from '@/hooks/gps';
@@ -9,10 +8,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { formatHeading, getCompassHeadingDeg, sleep } from './MaplibreMap.general';
+import { CompassButton, getCompassHeadingDeg, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
@@ -117,42 +116,9 @@ export default function MapLibreMap() {
         />
       </MapView>
 
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={handleRecenterPress}
-        style={[
-          styles.recenterButton,
-          {
-            bottom: insets.bottom + 12,
-            left: insets.left + 12,
-            backgroundColor: following
-              ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )')
-              : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'),
-            borderWidth: 1.5,
-            borderColor: following ? String(tint) : 'transparent',
-          },
-        ]}
-      >
-        <IconSymbol size={28} name="location.fill.viewfinder" color={String(buttonIconColor)} />
-      </TouchableOpacity>
+      <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />
 
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={() => setCompassOpen(true)}
-        accessibilityLabel="Compass"
-        style={[
-          styles.recenterButton,
-          {
-            bottom: insets.bottom + 12 + 58,
-            left: insets.left + 12,
-            backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)',
-            borderWidth: 1.5,
-            borderColor: compassOpen ? String(tint) : 'transparent',
-          },
-        ]}
-      >
-        <IconSymbol size={26} name="safari.fill" color={String(compassOpen ? tabIconSelected : buttonIconColor)} />
-      </TouchableOpacity>
+      <CompassButton onPress={() => setCompassOpen(true)} style={[styles.recenterButton, { bottom: insets.bottom + 12 + 58, left: insets.left + 12, backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)', borderWidth: 1.5, borderColor: compassOpen ? String(tint) : 'transparent' }]} color={compassOpen ? tabIconSelected : buttonIconColor} active={compassOpen} renderAs="native" />
 
       <CompassOverlay
         open={compassOpen}
@@ -184,25 +150,7 @@ export default function MapLibreMap() {
       {/* Compass overlay replaced by CompassOverlay */}
 
       {lastLocation ? (
-        <View
-          style={[
-            styles.locationOverlay,
-            {
-              top: insets.top + 12,
-              right: insets.right + 12,
-            },
-          ]}
-        >
-          <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
-          <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
-          <Text style={styles.locationText}>
-            Alt:{' '}
-            {lastLocation.coords.altitude == null
-              ? '—'
-              : `${lastLocation.coords.altitude.toFixed(0)} m`}
-          </Text>
-          <Text style={styles.locationText}>Heading: {formatHeading(lastLocation, mapHeading, angleUnit)}</Text>
-        </View>
+        <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={[styles.locationOverlay, { top: insets.top + 12, right: insets.right + 12 }]} textStyle={styles.locationText} renderAs="native" />
       ) : null}
     </ThemedView>
   );
