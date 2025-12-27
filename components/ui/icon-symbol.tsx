@@ -19,7 +19,7 @@ const MAPPING = {
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
   'location.fill.viewfinder': 'my-location',
-  'location.north.line': 'explore',
+  'safari.fill': 'explore',
   'flag.fill': 'flag',
 } as IconMapping;
 

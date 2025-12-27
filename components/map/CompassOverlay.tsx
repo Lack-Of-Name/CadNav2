@@ -1,10 +1,11 @@
-import { FC, useMemo } from 'react';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 type Props = {
   open: boolean;
   onToggle: () => void;
   headingDeg?: number | null;
+  angleUnit?: 'mils' | 'degrees' | string;
   targetBearingDeg?: number | null;
   targetLabel?: string | null;
   bearingText?: string | null;
@@ -24,6 +25,20 @@ type Props = {
 
 const normalize360 = (value: number) => ((value % 360) + 360) % 360;
 
+/**
+ * Converts degrees to mils (NATO standard: 1 circle = 6400 mils).
+ * @param degrees Angle in degrees.
+ * @param options Optional normalization.
+ * @returns Angle in mils.
+ */
+function degreesToMils(degrees: number, options?: { normalize?: boolean }): number {
+  let deg = degrees;
+  if (options?.normalize) {
+    deg = normalize360(deg);
+  }
+  return (deg * 6400) / 360;
+}
+
 const TICKS = Array.from({ length: 36 }, (_, i) => i * 10);
 
 function labelForDeg(deg: number) {
@@ -35,10 +50,11 @@ function labelForDeg(deg: number) {
   return null;
 }
 
-const CompassOverlay: FC<Props> = ({
+export function CompassOverlay({
   open,
   onToggle,
   headingDeg,
+  angleUnit,
   targetBearingDeg,
   targetLabel,
   bearingText,
@@ -54,7 +70,7 @@ const CompassOverlay: FC<Props> = ({
   primary,
   tick,
   tickStrong,
-}) => {
+}: Props) {
   const heading = typeof headingDeg === 'number' ? normalize360(headingDeg) : null;
 
   const ringRotation = useMemo(() => {
@@ -69,20 +85,8 @@ const CompassOverlay: FC<Props> = ({
     return `${relative}deg`;
   }, [heading, targetBearingDeg]);
 
-  if (!open) {
-    return (
-      <View style={[styles.fabWrap, style]} pointerEvents="box-none">
-        <Pressable
-          style={[styles.fab, { backgroundColor: panelBg, borderColor }]}
-          onPress={onToggle}
-          accessibilityRole="button"
-          accessibilityLabel="Open compass"
-        >
-          <Text style={[styles.fabText, { color: textColor }]}>N</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  if (!open) return null;
+
 
   return (
     <View style={[styles.wrap, style]} pointerEvents="box-none">
@@ -156,7 +160,14 @@ const CompassOverlay: FC<Props> = ({
               <View style={styles.readoutCell}>
                 <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
                 <Text style={[styles.readoutValue, { color: textColor }]}>
-                  {heading == null ? '—' : `${Math.round(heading)}°`}
+                  {heading == null
+                    ? '—'
+                    : (/** show mils when requested */
+                      /* eslint-disable-next-line no-nested-ternary */
+                      (typeof angleUnit === 'string' && angleUnit === 'mils')
+                        ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
+                        : `${Math.round(heading)}°`)
+                  }
                 </Text>
                 {headingReferenceLabel ? (
                   <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
@@ -184,9 +195,7 @@ const CompassOverlay: FC<Props> = ({
       </View>
     </View>
   );
-};
-
-export default CompassOverlay;
+}
 
 const styles = StyleSheet.create({
   fabWrap: {

@@ -9,6 +9,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
 import { Collapsible } from '@/components/ui/collapsible';
+import { Colors } from '@/constants/theme';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string };
 const ROUTES_KEY = 'APP_ROUTES';
@@ -128,8 +129,8 @@ export default function RoutesScreen() {
                         <ThemedText type="title">{item.icon ?? '📍'}</ThemedText>
                       </View>
                       <View style={styles.cardBody}>
-                        <ThemedText type="defaultSemiBold">{item.title}</ThemedText>
-                        {item.subtitle ? <ThemedText>{item.subtitle}</ThemedText> : null}
+                        <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text} type="defaultSemiBold">{item.title}</ThemedText>
+                        {item.subtitle ? <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text}>{item.subtitle}</ThemedText> : null}
                       </View>
                     </View>
                   }
@@ -161,13 +162,13 @@ export default function RoutesScreen() {
                   else setIcon('');
                   setModalError(null);
                 }}
-                style={[styles.input, { color: textColor, borderColor, textAlign: 'left' }]}
+                style={[styles.input, { color: textColor ?? Colors.light.text, borderColor, textAlign: 'left' }]}
                 placeholderTextColor={placeholderColor}
                 maxLength={2}
                 autoCorrect={false}
               />
-              <TextInput placeholder="Title" value={title} onChangeText={(t) => { setTitle(t); setModalError(null); }} style={[styles.input, { color: textColor, borderColor }]} placeholderTextColor={placeholderColor} maxLength={80} />
-              <TextInput placeholder="Subtitle" value={subtitle} onChangeText={(t) => { setSubtitle(t); setModalError(null); }} style={[styles.input, { color: textColor, borderColor }]} placeholderTextColor={placeholderColor} maxLength={120} />
+              <TextInput placeholder="Title" value={title} onChangeText={(t) => { setTitle(t); setModalError(null); }} style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]} placeholderTextColor={placeholderColor} maxLength={80} />
+              <TextInput placeholder="Subtitle" value={subtitle} onChangeText={(t) => { setSubtitle(t); setModalError(null); }} style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]} placeholderTextColor={placeholderColor} maxLength={120} />
               {modalError ? <ThemedText style={styles.error}>{modalError}</ThemedText> : null}
               <View style={styles.modalRow}>
                 <StyledButton variant="secondary" onPress={() => { resetForm(); setModalError(null); setOpen(false); setEditingId(null); }}>Cancel</StyledButton>
