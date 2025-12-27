@@ -26,15 +26,25 @@ type Props = {
 
 const normalize360 = (value: number) => ((value % 360) + 360) % 360;
 
-const TICKS = Array.from({ length: 36 }, (_, i) => i * 10);
+/**
+ * 8 ticks total:
+ * N, NE, E, SE, S, SW, W, NW
+ */
+const TICKS = Array.from({ length: 8 }, (_, i) => i * 45);
 
-function labelForDeg(deg: number) {
+const isCardinal = (deg: number) => deg % 90 === 0;
+
+function labelForAngle(deg: number, unit?: string) {
   if (deg === 0) return 'N';
   if (deg === 90) return 'E';
   if (deg === 180) return 'S';
   if (deg === 270) return 'W';
-  if (deg % 30 === 0) return String(deg);
-  return null;
+
+  if (unit === 'mils') {
+    return String(Math.round(degreesToMils(deg, { normalize: true })));
+  }
+
+  return String(deg);
 }
 
 export function CompassOverlay({
@@ -100,43 +110,40 @@ export function CompassOverlay({
         <View style={[styles.dial, { backgroundColor: background, borderColor }]}>
           <View style={[styles.ring, { transform: [{ rotate: ringRotation }] }]}>
             {TICKS.map((deg) => {
-              const cardinal = deg % 90 === 0;
-              const major = deg % 30 === 0;
-              const label = labelForDeg(deg);
+              const cardinal = isCardinal(deg);
+              const label = labelForAngle(deg, angleUnit);
 
               return (
-                <View key={deg} style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}>
+                <View
+                  key={deg}
+                  style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}
+                >
                   <View
                     style={[
                       styles.tick,
-                      cardinal
-                        ? styles.tickCardinal
-                        : major
-                        ? styles.tickMajor
-                        : styles.tickMinor,
-                      { backgroundColor: cardinal || major ? tickStrong : tick },
+                      cardinal ? styles.tickCardinal : styles.tickMajor,
+                      { backgroundColor: tickStrong },
                     ]}
                   />
 
-                  {label ? (
-                    <View style={styles.ringLabelWrap}>
-                      <Text
-                        style={[
-                          styles.ringLabel,
-                          { color: cardinal ? tickStrong : textSubtle },
-                          cardinal
-                            ? styles.ringLabelCardinal
-                            : styles.ringLabelDegree,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </View>
-                  ) : null}
+                  <View style={styles.ringLabelWrap}>
+                    <Text
+                      style={[
+                        styles.ringLabel,
+                        { color: tickStrong },
+                        cardinal
+                          ? styles.ringLabelCardinal
+                          : styles.ringLabelDegree,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </View>
                 </View>
               );
             })}
 
+            {/* Fixed N marker */}
             <View style={styles.nLabelWrap}>
               <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
                 <Text style={[styles.nLabelText, { color: textColor }]}>N</Text>
@@ -144,8 +151,10 @@ export function CompassOverlay({
             </View>
           </View>
 
+          {/* Heading needle */}
           <View style={[styles.needle, { backgroundColor: primary }]} />
 
+          {/* Target pointer */}
           {pointerRotation ? (
             <View style={[styles.targetPointerWrap, { transform: [{ rotate: pointerRotation }] }]}>
               <View style={[styles.targetPointer, { borderBottomColor: primary }]} />
@@ -153,7 +162,7 @@ export function CompassOverlay({
           ) : null}
         </View>
 
-        {/* READOUT BELOW COMPASS */}
+        {/* READOUT */}
         <View style={styles.readout}>
           <View style={styles.readoutRow}>
             <View style={styles.readoutCell}>
@@ -270,10 +279,6 @@ const styles = StyleSheet.create({
     width: 2,
     height: 20,
   },
-  tickMinor: {
-    width: 1,
-    height: 10,
-  },
   ringLabelWrap: {
     position: 'absolute',
     top: 0,
@@ -282,14 +287,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   ringLabel: {
-    marginTop: 2,
     fontWeight: '800',
   },
   ringLabelCardinal: {
     fontSize: 12,
+    marginTop: 6,
+    transform: [{ translateY: -6 }], // move further out
   },
   ringLabelDegree: {
     fontSize: 9,
+    marginTop: 2,
   },
   nLabelWrap: {
     position: 'absolute',
