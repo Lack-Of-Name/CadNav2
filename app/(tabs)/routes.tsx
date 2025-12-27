@@ -1,5 +1,7 @@
+import { alert as showAlert } from '@/components/alert';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from 'react';
 import { FlatList, Modal, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,6 +10,7 @@ import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string };
+const ROUTES_KEY = 'APP_ROUTES';
 
 export default function RoutesScreen() {
   const [routes, setRoutes] = useState<RouteItem[]>([]);
@@ -51,6 +54,30 @@ export default function RoutesScreen() {
     setModalError(null);
     setOpen(false);
   }
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(ROUTES_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as RouteItem[];
+          if (Array.isArray(parsed)) setRoutes(parsed);
+        }
+      } catch (err) {
+        void showAlert({ title: 'Routes', message: String(err) });
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        await AsyncStorage.setItem(ROUTES_KEY, JSON.stringify(routes));
+      } catch (err) {
+        void showAlert({ title: 'Routes save', message: String(err) });
+      }
+    })();
+  }, [routes]);
 
   const cardBg = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'tabIconDefault');
