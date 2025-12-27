@@ -74,10 +74,10 @@ export function CompassOverlay({
 
   if (!open) return null;
 
-
   return (
     <View style={[styles.wrap, style]} pointerEvents="box-none">
       <View style={[styles.card, { backgroundColor: panelBg, borderColor }]}>
+        {/* HEADER */}
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: textColor }]}>Compass</Text>
@@ -85,6 +85,7 @@ export function CompassOverlay({
               {targetLabel ? `Target: ${targetLabel}` : 'No target selected'}
             </Text>
           </View>
+
           <Pressable
             style={[styles.close, { borderColor, backgroundColor: background }]}
             onPress={onToggle}
@@ -95,18 +96,24 @@ export function CompassOverlay({
           </Pressable>
         </View>
 
+        {/* COMPASS */}
         <View style={[styles.dial, { backgroundColor: background, borderColor }]}>
           <View style={[styles.ring, { transform: [{ rotate: ringRotation }] }]}>
             {TICKS.map((deg) => {
               const cardinal = deg % 90 === 0;
               const major = deg % 30 === 0;
               const label = labelForDeg(deg);
+
               return (
                 <View key={deg} style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}>
                   <View
                     style={[
                       styles.tick,
-                      cardinal ? styles.tickCardinal : major ? styles.tickMajor : styles.tickMinor,
+                      cardinal
+                        ? styles.tickCardinal
+                        : major
+                        ? styles.tickMajor
+                        : styles.tickMinor,
                       { backgroundColor: cardinal || major ? tickStrong : tick },
                     ]}
                   />
@@ -117,7 +124,9 @@ export function CompassOverlay({
                         style={[
                           styles.ringLabel,
                           { color: cardinal ? tickStrong : textSubtle },
-                          cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
+                          cardinal
+                            ? styles.ringLabelCardinal
+                            : styles.ringLabelDegree,
                         ]}
                       >
                         {label}
@@ -127,6 +136,7 @@ export function CompassOverlay({
                 </View>
               );
             })}
+
             <View style={styles.nLabelWrap}>
               <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
                 <Text style={[styles.nLabelText, { color: textColor }]}>N</Text>
@@ -141,41 +151,39 @@ export function CompassOverlay({
               <View style={[styles.targetPointer, { borderBottomColor: primary }]} />
             </View>
           ) : null}
+        </View>
 
-          <View style={styles.readout}>
-            <View style={styles.readoutRow}>
-              <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]}>
-                  {heading == null
-                    ? '—'
-                    : (/** show mils when requested */
-                      /* eslint-disable-next-line no-nested-ternary */
-                      (typeof angleUnit === 'string' && angleUnit === 'mils')
-                        ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
-                        : `${Math.round(heading)}°`)
-                  }
+        {/* READOUT BELOW COMPASS */}
+        <View style={styles.readout}>
+          <View style={styles.readoutRow}>
+            <View style={styles.readoutCell}>
+              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
+              <Text style={[styles.readoutValue, { color: textColor }]}>
+                {heading == null
+                  ? '—'
+                  : angleUnit === 'mils'
+                  ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
+                  : `${Math.round(heading)}°`}
+              </Text>
+              {headingReferenceLabel ? (
+                <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
+                  {headingReferenceLabel}
                 </Text>
-                {headingReferenceLabel ? (
-                  <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
-                    {headingReferenceLabel}
-                  </Text>
-                ) : null}
-              </View>
+              ) : null}
+            </View>
 
-              <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
-                  {bearingText ?? '—'}
-                </Text>
-              </View>
+            <View style={styles.readoutCell}>
+              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
+              <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                {bearingText ?? '—'}
+              </Text>
+            </View>
 
-              <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
-                  {distanceText ?? '—'}
-                </Text>
-              </View>
+            <View style={styles.readoutCell}>
+              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
+              <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                {distanceText ?? '—'}
+              </Text>
             </View>
           </View>
         </View>
@@ -185,21 +193,6 @@ export function CompassOverlay({
 }
 
 const styles = StyleSheet.create({
-  fabWrap: {
-    position: 'absolute',
-  },
-  fab: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-  },
-  fabText: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
   wrap: {
     position: 'absolute',
   },
@@ -242,8 +235,8 @@ const styles = StyleSheet.create({
   dial: {
     marginTop: 12,
     alignSelf: 'center',
-    width: 280,
-    height: 280,
+    width: 240,
+    height: 240,
     borderRadius: 999,
     borderWidth: 1.5,
     alignItems: 'center',
@@ -266,20 +259,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tick: {
-    marginTop: 14,
+    marginTop: 12,
     borderRadius: 999,
   },
   tickCardinal: {
     width: 3,
-    height: 30,
+    height: 26,
   },
   tickMajor: {
     width: 2,
-    height: 22,
+    height: 20,
   },
   tickMinor: {
     width: 1,
-    height: 12,
+    height: 10,
   },
   ringLabelWrap: {
     position: 'absolute',
@@ -293,16 +286,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   ringLabelCardinal: {
-    fontSize: 13,
+    fontSize: 12,
   },
   ringLabelDegree: {
-    fontSize: 10,
+    fontSize: 9,
   },
   nLabelWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: 8,
+    top: 6,
     alignItems: 'center',
   },
   nLabelPill: {
@@ -318,8 +311,8 @@ const styles = StyleSheet.create({
   needle: {
     position: 'absolute',
     width: 2,
-    height: 112,
-    top: 22,
+    height: 96,
+    top: 20,
     borderRadius: 999,
   },
   targetPointerWrap: {
@@ -331,27 +324,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   targetPointer: {
-    marginTop: 18,
+    marginTop: 16,
     width: 0,
     height: 0,
-    borderLeftWidth: 9,
-    borderRightWidth: 9,
-    borderBottomWidth: 18,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 16,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
   readout: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 12,
+    marginTop: 12,
+    paddingHorizontal: 12,
     alignItems: 'center',
   },
   readoutRow: {
     width: '100%',
     flexDirection: 'row',
-    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     gap: 12,
   },
   readoutCell: {
