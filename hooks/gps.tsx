@@ -20,8 +20,11 @@ export function useGPS() {
   const lastLocationRef = useRef<GPSLocation | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [restartToken, setRestartToken] = useState(0);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
+  const retryCountRef = useRef(0);
   const [magHeading, setMagHeading] = useState<number | null>(null);
   const [trueHeading, setTrueHeading] = useState<number | null>(null);
   const magHeadingRef = useRef<number | null>(null);
@@ -86,21 +89,42 @@ export function useGPS() {
       try {
         setError(null);
 
-        const servicesEnabled = await Location.hasServicesEnabledAsync();
-        if (cancelled) return;
-        if (!servicesEnabled) {
-          setError('Location services are disabled.');
-          return;
+        // On web, hasServicesEnabledAsync can prevent the permission prompt from ever
+        // showing (browser-controlled). Prefer requesting permission first.
+        if (Platform.OS !== 'web') {
+          const servicesEnabled = await Location.hasServicesEnabledAsync();
+          if (cancelled) return;
+          if (!servicesEnabled) {
+            setError('Location services are disabled.');
+            // One retry: some devices report disabled briefly during startup/resume.
+            if (retryCountRef.current < 1) {
+              retryCountRef.current += 1;
+              retryTimerRef.current = setTimeout(() => {
+                if (!cancelled) void start();
+              }, 2000) as unknown as number;
+            }
+            return;
+          }
         }
 
-        const { status } = await Location.requestForegroundPermissionsAsync();
+        const existing = await Location.getForegroundPermissionsAsync();
         if (cancelled) return;
+        setPermissionStatus(existing.status);
 
-        setPermissionStatus(status);
+        let status = existing.status;
+        if (status !== Location.PermissionStatus.GRANTED) {
+          const requested = await Location.requestForegroundPermissionsAsync();
+          if (cancelled) return;
+          status = requested.status;
+          setPermissionStatus(status);
+        }
+
         if (status !== Location.PermissionStatus.GRANTED) {
           setError('Location permission not granted.');
           return;
         }
+
+        retryCountRef.current = 0;
 
         // Magnetic heading
         if (Platform.OS !== 'web') {
@@ -178,12 +202,16 @@ export function useGPS() {
     start();
     return () => {
       cancelled = true;
+      if (retryTimerRef.current != null) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       subscriptionRef.current?.remove();
       subscriptionRef.current = null;
       headingSubscriptionRef.current?.remove();
       headingSubscriptionRef.current = null;
     };
-  }, [computeAndSetTrueHeading]);
+  }, [computeAndSetTrueHeading, restartToken]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -217,5 +245,11 @@ export function useGPS() {
     return () => window.removeEventListener('deviceorientation', handler as EventListener);
   }, [computeAndSetTrueHeading]);
 
-  return { lastLocation, setLastLocation, permissionStatus, error, magHeading, trueHeading } as const;
+  const requestLocation = useCallback(() => {
+    // Force the startup effect to run again; useful when permission/services change
+    // or when the user taps a UI control to request location.
+    setRestartToken((t) => t + 1);
+  }, []);
+
+  return { lastLocation, setLastLocation, permissionStatus, error, magHeading, trueHeading, requestLocation } as const;
 }

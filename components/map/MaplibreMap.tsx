@@ -10,8 +10,9 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { Camera, LineLayer, MapView, PointAnnotation, ShapeSource, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import { ThemedView } from '../themed-view';
 
 // Sleep helper function
@@ -21,7 +22,7 @@ function sleep(ms: number) {
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
-  const { lastLocation } = useGPS();
+  const { lastLocation, requestLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
   const { checkpoints, selectedCheckpoint, selectCheckpoint, addCheckpoint } = useCheckpoints();
   const insets = useSafeAreaInsets();
@@ -34,6 +35,7 @@ export default function MapLibreMap() {
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
   const cameraRef = React.useRef<any>(null);
+  const { width: windowWidth } = useWindowDimensions();
   const [following, setFollowing] = useState(false);
   const [placementMode, setPlacementMode] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
@@ -106,6 +108,10 @@ export default function MapLibreMap() {
       : `${Math.round(checkpointDistanceMeters)} m`;
 
   const handleRecenterPress = async () => {
+    if (!lastLocation) {
+      requestLocation();
+      return;
+    }
     // toggle following mode
     const enabling = !following;
     // if enabling, immediately center on current location
@@ -146,6 +152,8 @@ export default function MapLibreMap() {
   }
 
   const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
+
+  const placementBannerMaxWidth = Math.max(220, Math.min(360, windowWidth - (insets.left + insets.right + 24)));
 
   const routeLineFeature = checkpoints.length >= 2
     ? {
@@ -198,7 +206,6 @@ export default function MapLibreMap() {
         ) : null}
 
         {checkpoints.map((cp) => {
-          const selected = selectedCheckpoint?.id === cp.id;
           const flagColor = markerPole;
           const showLabel = zoomLevel >= 14 && !!cp.label?.trim();
           return (
@@ -207,10 +214,9 @@ export default function MapLibreMap() {
             id={cp.id}
             coordinate={[cp.longitude, cp.latitude]}
             // @ts-ignore - anchor typing differs across forks
-            anchor={{ x: 0.5, y: 1.0 }}
+            anchor={{ x: 0.08, y: 1.0 }}
             onSelected={() => {
               void selectCheckpoint(cp.id);
-              setCompassOpen(true);
             }}
           >
             <View style={styles.checkpointMarker}>
@@ -221,17 +227,18 @@ export default function MapLibreMap() {
                   </Text>
                 </View>
               ) : null}
-              <View style={[styles.checkpointPole, { backgroundColor: String(markerPole) }]} />
-              <View
-                style={[
-                  styles.checkpointFlag,
-                  {
-                    backgroundColor: String(flagColor),
-                    borderColor: String(markerPole),
-                    borderWidth: selected ? 0 : 0,
-                  },
-                ]}
-              />
+              <View style={styles.checkpointIconWrap}>
+                <Svg
+                  width={32}
+                  height={32}
+                  viewBox="0 0 447.514 447.514"
+                >
+                  <Path
+                    d="M389.183,10.118c-3.536-2.215-7.963-2.455-11.718-0.634l-50.653,24.559c-35.906,17.409-77.917,16.884-113.377-1.418 c-38.094-19.662-83.542-18.72-120.789,2.487V20c0-11.046-8.954-20-20-20s-20,8.954-20,20v407.514c0,11.046,8.954,20,20,20 s20-8.954,20-20V220.861c37.246-21.207,82.694-22.148,120.789-2.487c35.46,18.302,77.47,18.827,113.377,1.418l56.059-27.18 c7.336-3.557,11.995-10.993,11.995-19.146V20.385C394.866,16.212,392.719,12.333,389.183,10.118z"
+                    fill={String(flagColor)}
+                  />
+                </Svg>
+              </View>
             </View>
           </PointAnnotation>
           );
@@ -288,6 +295,7 @@ export default function MapLibreMap() {
         tickStrong={String(textColor)}
         style={{
           left: insets.left + 12,
+          right: insets.right + 12,
           bottom: insets.bottom + 12 + 58,
         }}
       />
@@ -334,6 +342,7 @@ export default function MapLibreMap() {
               {
                 borderColor: String(tint),
                 backgroundColor: String(background),
+                maxWidth: placementBannerMaxWidth,
               },
             ]}
           >
@@ -354,7 +363,7 @@ export default function MapLibreMap() {
           style={[
             styles.locationOverlay,
             {
-              top: insets.top + 12,
+              top: insets.top + 12 + (placementMode ? 64 : 0),
               right: insets.right + 12,
             },
           ]}
@@ -444,33 +453,21 @@ const styles = StyleSheet.create({
   },
   checkpointMarker: {
     position: 'relative',
-    width: 28,
-    height: 56,
+    width: 32,
+    height: 48,
   },
-  checkpointPole: {
+  checkpointIconWrap: {
     position: 'absolute',
-    left: 13,
+    left: 0,
     bottom: 0,
-    width: 2,
-    height: 28,
-    borderRadius: 1,
-  },
-  checkpointFlag: {
-    position: 'absolute',
-    left: 14,
-    bottom: 0,
-    width: 14,
-    height: 12,
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
-    borderTopLeftRadius: 1,
-    borderBottomLeftRadius: 1,
+    width: 32,
+    height: 32,
   },
   checkpointLabelWrap: {
     position: 'absolute',
     left: 10,
     right: -110,
-    bottom: 18,
+    bottom: 34,
     maxWidth: 140,
     paddingHorizontal: 8,
     paddingVertical: 4,

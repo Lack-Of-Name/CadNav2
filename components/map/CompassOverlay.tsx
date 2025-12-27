@@ -1,5 +1,5 @@
 import { FC, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
 
 type Props = {
   open: boolean;
@@ -55,7 +55,22 @@ const CompassOverlay: FC<Props> = ({
   tick,
   tickStrong,
 }) => {
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const heading = typeof headingDeg === 'number' ? normalize360(headingDeg) : null;
+
+  const cardWidth = useMemo(() => {
+    const max = Math.max(260, Math.min(360, windowWidth - 24));
+    return max;
+  }, [windowWidth]);
+
+  const dialSize = useMemo(() => {
+    // Rough vertical budgeting: header + padding + readout ~= 200px.
+    const maxByWidth = cardWidth - 80;
+    const maxByHeight = windowHeight - 220;
+    return Math.max(180, Math.min(280, maxByWidth, maxByHeight));
+  }, [cardWidth, windowHeight]);
+
+  const scale = useMemo(() => dialSize / 280, [dialSize]);
 
   const ringRotation = useMemo(() => {
     if (heading == null) return '0deg';
@@ -86,7 +101,7 @@ const CompassOverlay: FC<Props> = ({
 
   return (
     <View style={[styles.wrap, style]} pointerEvents="box-none">
-      <View style={[styles.card, { backgroundColor: panelBg, borderColor }]}>
+      <View style={[styles.card, { backgroundColor: panelBg, borderColor, width: cardWidth, maxWidth: '100%' }]}>
         <View style={styles.header}>
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: textColor }]}>Compass</Text>
@@ -104,19 +119,32 @@ const CompassOverlay: FC<Props> = ({
           </Pressable>
         </View>
 
-        <View style={[styles.dial, { backgroundColor: background, borderColor }]}>
+        <View style={[styles.dial, { backgroundColor: background, borderColor, width: dialSize, height: dialSize }]}>
           <View style={[styles.ring, { transform: [{ rotate: ringRotation }] }]}>
             {TICKS.map((deg) => {
               const cardinal = deg % 90 === 0;
               const major = deg % 30 === 0;
               const label = labelForDeg(deg);
+
+              const tickLen = (cardinal ? 30 : major ? 22 : 12) * scale;
+              const tickWidth = (cardinal ? 3 : major ? 2 : 1) * scale;
+              const tickMarginTop = 14 * scale;
+
+              const labelFontSize = Math.max(9, (cardinal ? 13 : 10) * scale);
+              const labelMarginTop = 2 * scale;
+
+              const nTop = 8 * scale;
               return (
                 <View key={deg} style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}>
                   <View
                     style={[
                       styles.tick,
-                      cardinal ? styles.tickCardinal : major ? styles.tickMajor : styles.tickMinor,
-                      { backgroundColor: cardinal || major ? tickStrong : tick },
+                      {
+                        marginTop: tickMarginTop,
+                        width: tickWidth,
+                        height: tickLen,
+                        backgroundColor: cardinal || major ? tickStrong : tick,
+                      },
                     ]}
                   />
 
@@ -126,28 +154,41 @@ const CompassOverlay: FC<Props> = ({
                         style={[
                           styles.ringLabel,
                           { color: cardinal ? tickStrong : textSubtle },
-                          cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
+                          { fontSize: labelFontSize, marginTop: labelMarginTop },
                         ]}
                       >
                         {label}
                       </Text>
                     </View>
                   ) : null}
+                  {deg === 0 ? (
+                    <View style={[styles.nLabelWrap, { top: nTop }]}>
+                      <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
+                        <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
               );
             })}
-            <View style={styles.nLabelWrap}>
-              <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
-                <Text style={[styles.nLabelText, { color: textColor }]}>N</Text>
-              </View>
-            </View>
           </View>
 
-          <View style={[styles.needle, { backgroundColor: primary }]} />
+          <View style={[styles.needle, { backgroundColor: primary, height: 112 * scale, top: 22 * scale }]} />
 
           {pointerRotation ? (
             <View style={[styles.targetPointerWrap, { transform: [{ rotate: pointerRotation }] }]}>
-              <View style={[styles.targetPointer, { borderBottomColor: primary }]} />
+              <View
+                style={[
+                  styles.targetPointer,
+                  {
+                    marginTop: 18 * scale,
+                    borderLeftWidth: 9 * scale,
+                    borderRightWidth: 9 * scale,
+                    borderBottomWidth: 18 * scale,
+                    borderBottomColor: primary,
+                  },
+                ]}
+              />
             </View>
           ) : null}
 
@@ -206,6 +247,7 @@ const styles = StyleSheet.create({
   },
   wrap: {
     position: 'absolute',
+    maxWidth: '100%',
   },
   card: {
     width: 360,

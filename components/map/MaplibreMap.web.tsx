@@ -2,7 +2,7 @@ import { alert as showAlert } from '@/components/alert';
 import { degreesToMils } from '@/components/map/converter';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
@@ -22,7 +22,7 @@ export default function MapLibreMap() {
   const lastLocationRef = useRef<typeof lastLocation | null>(null);
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
-  const { lastLocation } = useGPS();
+  const { lastLocation, requestLocation } = useGPS();
   const { angleUnit, mapHeading } = useSettings();
   const { checkpoints, selectedCheckpoint, selectCheckpoint, addCheckpoint } = useCheckpoints();
   const colorScheme = useColorScheme() ?? 'light';
@@ -39,6 +39,15 @@ export default function MapLibreMap() {
   const [placementMode, setPlacementMode] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
   const placementModeRef = useRef(false);
+  const [viewport, setViewport] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const updateViewport = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
   
   // Overlay styles and small helpers to keep JSX concise below
   const overlayStyles = {
@@ -196,8 +205,14 @@ export default function MapLibreMap() {
     const fg = colorScheme === 'dark' ? 'white' : 'black';
     const subtle = colorScheme === 'dark' ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)';
 
-    const dialSize = 220;
+    const vw = viewport.w || (typeof window !== 'undefined' ? window.innerWidth : 9999);
+    const vh = viewport.h || (typeof window !== 'undefined' ? window.innerHeight : 9999);
+    const panelWidth = Math.max(240, Math.min(360, vw - 24));
+
+    const dialSize = Math.max(160, Math.min(220, panelWidth - 140, vh - 240));
     const center = dialSize / 2;
+    const scale = dialSize / 220;
+    const outerPad = 6 * scale;
 
     const ticks = Array.from({ length: 36 }, (_, i) => i * 10);
     const ringRotation = heading == null ? 0 : -heading;
@@ -206,15 +221,17 @@ export default function MapLibreMap() {
       <div
         style={{
           position: 'absolute',
-          left: 12 + 58,
+          left: vw < 420 ? 12 : 12 + 58,
+          right: vw < 420 ? 12 : undefined,
           bottom: 12 + 58,
           zIndex: 60,
           padding: 14,
           borderRadius: 18,
           border: `1.5px solid ${String(tint)}`,
-          minWidth: 360,
+          width: panelWidth,
           backgroundColor: bg,
           color: fg,
+          fontFamily: String(Fonts.sans),
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexDirection: 'row' }}>
@@ -249,16 +266,21 @@ export default function MapLibreMap() {
         </div>
 
         <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width={dialSize} height={dialSize} viewBox={`0 0 ${dialSize} ${dialSize}`}>
+          <svg
+            width={dialSize}
+            height={dialSize}
+            viewBox={`0 0 ${dialSize} ${dialSize}`}
+            style={{ fontFamily: String(Fonts.sans) }}
+          >
             <circle cx={center} cy={center} r={center - 2} fill={bg} stroke={String(tint)} strokeWidth={1.5} />
 
             <g transform={`rotate(${ringRotation} ${center} ${center})`}>
               {ticks.map((deg) => {
                 const isCardinal = deg % 90 === 0;
                 const isMajor = deg % 30 === 0;
-                const len = isCardinal ? 16 : isMajor ? 12 : 7;
+                const len = (isCardinal ? 16 : isMajor ? 12 : 7) * scale;
                 const stroke = isCardinal || isMajor ? fg : subtle;
-                const strokeWidth = isCardinal ? 3 : isMajor ? 2 : 1;
+                const strokeWidth = (isCardinal ? 3 : isMajor ? 2 : 1) * scale;
 
                 const label =
                   deg === 0
@@ -277,9 +299,9 @@ export default function MapLibreMap() {
                   <g key={deg} transform={`rotate(${deg} ${center} ${center})`}>
                     <line
                       x1={center}
-                      y1={6}
+                      y1={outerPad}
                       x2={center}
-                      y2={6 + len}
+                      y2={outerPad + len}
                       stroke={stroke}
                       strokeWidth={strokeWidth}
                       strokeLinecap="round"
@@ -287,9 +309,9 @@ export default function MapLibreMap() {
                     {label ? (
                       <text
                         x={center}
-                        y={28}
+                        y={28 * scale}
                         textAnchor="middle"
-                        fontSize={deg % 90 === 0 ? 14 : 10}
+                        fontSize={(deg % 90 === 0 ? 14 : 10) * scale}
                         fontWeight={800}
                         fill={deg % 90 === 0 ? fg : subtle}
                       >
@@ -302,12 +324,12 @@ export default function MapLibreMap() {
             </g>
 
             {/* Fixed north needle */}
-            <line x1={center} y1={center} x2={center} y2={26} stroke={String(tint)} strokeWidth={3} strokeLinecap="round" />
+            <line x1={center} y1={center} x2={center} y2={26 * scale} stroke={String(tint)} strokeWidth={3 * scale} strokeLinecap="round" />
 
             {/* Target pointer */}
             {hasTarget && relativeArrowRotation != null ? (
               <g transform={`rotate(${relativeArrowRotation} ${center} ${center})`}>
-                <path d={`M ${center} 34 L ${center - 10} 54 L ${center} 48 L ${center + 10} 54 Z`} fill={String(tint)} />
+                <path d={`M ${center} ${34 * scale} L ${center - 10 * scale} ${54 * scale} L ${center} ${48 * scale} L ${center + 10 * scale} ${54 * scale} Z`} fill={String(tint)} />
               </g>
             ) : null}
           </svg>
@@ -362,7 +384,7 @@ export default function MapLibreMap() {
       : `${angleUnit === 'mils' ? `${Math.round(degreesToMils(h, { normalize: true }))} mils` : `${h.toFixed(0)}°`} — ${useMag ? 'Magnetic' : 'True'}`;
 
     return (
-      <div style={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
+      <div style={{ position: 'absolute', top: placementMode ? 72 : 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }}>
         <Text style={styles.locationText}>Lat: {lastLocation.coords.latitude.toFixed(6)}</Text>
         <br />
         <Text style={styles.locationText}>Lon: {lastLocation.coords.longitude.toFixed(6)}</Text>
@@ -385,6 +407,7 @@ export default function MapLibreMap() {
 
   // Manage maplibre-gl Marker instances for checkpoints
   const checkpointMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const CHECKPOINT_MARKER_VERSION = '5';
 
   useEffect(() => {
     if (!map.current) return;
@@ -394,10 +417,8 @@ export default function MapLibreMap() {
     const applyStyle = (el: HTMLElement, flagColor: string, poleColor: string, selected: boolean, labelText: string | null, showLabel: boolean) => {
       const svg = el.querySelector('svg[data-checkpoint-flag="1"]') as SVGSVGElement | null;
       if (!svg) return;
-      const pole = svg.querySelector('#pole') as SVGLineElement | null;
-      const flag = svg.querySelector('#flag') as SVGRectElement | null;
+      const flag = svg.querySelector('#flag') as SVGPathElement | null;
       const label = el.querySelector('[data-checkpoint-label="1"]') as HTMLDivElement | null;
-      if (pole) pole.setAttribute('stroke', poleColor);
       if (flag) {
         flag.setAttribute('fill', flagColor);
         flag.setAttribute('stroke', 'none');
@@ -413,9 +434,11 @@ export default function MapLibreMap() {
     const current = checkpoints;
     const currentIds = new Set(current.map((c) => c.id));
 
-    // Remove markers that no longer exist
+    // Remove markers that no longer exist (or that were rendered with an older layout/anchor)
     for (const [id, marker] of markers.entries()) {
-      if (!currentIds.has(id)) {
+      const el = marker.getElement();
+      const version = el?.getAttribute('data-checkpoint-marker-version');
+      if (!currentIds.has(id) || version !== CHECKPOINT_MARKER_VERSION) {
         marker.remove();
         markers.delete(id);
       }
@@ -432,10 +455,16 @@ export default function MapLibreMap() {
       const showLabel = zoomLevel >= 14 && !!labelText;
 
       const el = document.createElement('div');
-      el.style.width = '28px';
-      el.style.display = 'flex';
-      el.style.flexDirection = 'column';
-      el.style.alignItems = 'center';
+      el.setAttribute('data-checkpoint-marker-version', CHECKPOINT_MARKER_VERSION);
+      el.style.width = '32px';
+      el.style.height = '32px';
+      // IMPORTANT: don't override the `position: absolute` styling from maplibre-gl's
+      // `.maplibregl-marker` class. If we set `position: relative` here, the marker
+      // participates in normal layout and each additional marker can shift others.
+      // `position: absolute` also works as a containing block for our absolutely-positioned
+      // children.
+      el.style.position = 'absolute';
+      el.style.display = 'block';
       el.style.cursor = 'pointer';
 
       const label = document.createElement('div');
@@ -450,39 +479,28 @@ export default function MapLibreMap() {
       label.style.whiteSpace = 'nowrap';
       label.style.overflow = 'hidden';
       label.style.textOverflow = 'ellipsis';
-      label.style.marginBottom = '6px';
+      label.style.position = 'absolute';
+      // Place label above and to the right of the pole base.
+      label.style.left = '22px';
+      label.style.bottom = '24px';
       label.style.display = showLabel ? 'block' : 'none';
       label.textContent = labelText ?? '';
 
       const svg = document.createElementNS(svgNS, 'svg');
       svg.setAttribute('data-checkpoint-flag', '1');
-      svg.setAttribute('width', '28');
-      svg.setAttribute('height', '18');
-      svg.setAttribute('viewBox', '0 0 28 18');
+      svg.setAttribute('width', '32');
+      svg.setAttribute('height', '32');
+      svg.setAttribute('viewBox', '0 0 447.514 447.514');
       svg.style.display = 'block';
+      svg.style.position = 'absolute';
+      svg.style.left = '0';
+      svg.style.bottom = '0';
 
-      const pole = document.createElementNS(svgNS, 'line');
-      pole.setAttribute('id', 'pole');
-      pole.setAttribute('x1', '14');
-      pole.setAttribute('y1', '0');
-      pole.setAttribute('x2', '14');
-      pole.setAttribute('y2', '18');
-      pole.setAttribute('stroke', poleColor);
-      pole.setAttribute('stroke-width', '2');
-      pole.setAttribute('stroke-linecap', 'round');
-
-      // Simple rectangular flag (avoids the "b"-looking curve).
-      const flag = document.createElementNS(svgNS, 'rect');
+      const flag = document.createElementNS(svgNS, 'path');
       flag.setAttribute('id', 'flag');
-      // Bottom of the flag is at y=18 (matches the marker anchor).
-      flag.setAttribute('x', '14');
-      flag.setAttribute('y', '6');
-      flag.setAttribute('width', '13');
-      flag.setAttribute('height', '12');
-      flag.setAttribute('rx', '2');
+      flag.setAttribute('d', 'M389.183,10.118c-3.536-2.215-7.963-2.455-11.718-0.634l-50.653,24.559c-35.906,17.409-77.917,16.884-113.377-1.418c-38.094-19.662-83.542-18.72-120.789,2.487V20c0-11.046-8.954-20-20-20s-20,8.954-20,20v407.514c0,11.046,8.954,20,20,20s20-8.954,20-20V220.861c37.246-21.207,82.694-22.148,120.789-2.487c35.46,18.302,77.47,18.827,113.377,1.418l56.059-27.18c7.336-3.557,11.995-10.993,11.995-19.146V20.385C394.866,16.212,392.719,12.333,389.183,10.118z');
       flag.setAttribute('fill', flagColor);
 
-      svg.appendChild(pole);
       svg.appendChild(flag);
       el.appendChild(label);
       el.appendChild(svg);
@@ -490,10 +508,9 @@ export default function MapLibreMap() {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         void selectCheckpoint(cp.id);
-        setCompassOpen(true);
       });
 
-      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+      const marker = new maplibregl.Marker({ element: el, anchor: 'bottom-left', offset: [-4, 0] as any })
         .setLngLat([cp.longitude, cp.latitude])
         .addTo(map.current!);
       markers.set(cp.id, marker);
@@ -736,6 +753,10 @@ export default function MapLibreMap() {
   }, [lastLocation, mapBearing, mapHeading]);
 
   const handleRecenterPress = async () => {
+    if (!lastLocation) {
+      requestLocation();
+      return;
+    }
     const enabling = !following;
     if (enabling && lastLocation && map.current) {
       const { latitude, longitude } = lastLocation.coords;
@@ -788,12 +809,13 @@ export default function MapLibreMap() {
               style={{
                 pointerEvents: 'auto',
                 alignSelf: 'center',
-                maxWidth: 360,
+                maxWidth: Math.max(260, Math.min(360, (viewport.w || 9999) - 24)),
                 padding: '10px 12px',
                 borderRadius: 12,
                 border: `1.5px solid ${String(tint)}`,
                 background: colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)',
                 color: colorScheme === 'dark' ? 'white' : 'black',
+                fontFamily: String(Fonts.sans),
                 fontSize: 12,
                 fontWeight: 600,
                 cursor: 'pointer',
