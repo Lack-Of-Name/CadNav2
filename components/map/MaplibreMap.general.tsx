@@ -107,23 +107,3 @@ export function InfoBox({ lastLocation, mapHeading, angleUnit, containerStyle, t
     </RNView>
   );
 }
-
-export function LocationMarker({ x, y, orientation, renderAs = 'web', containerStyle }: { x: number; y: number; orientation: number | null; renderAs?: RenderAs; containerStyle?: any }) {
-  if (renderAs !== 'web') return null;
-  return (
-    <div style={{ position: 'absolute', left: x - 12, top: y - 12, pointerEvents: 'none', ...containerStyle }}>
-      <div style={{ width: 24, height: 24, borderRadius: 12, background: '#007AFF', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {orientation != null ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
-            <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
-          </svg>
-        ) : (
-          <svg width="10" height="10" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="5" fill="white" />
-          </svg>
-        )}
-      </div>
-      <div style={{ position: 'absolute', left: 0, top: 0, width: 24, height: 24, borderRadius: 12, boxShadow: '0 0 0 6px rgba(0,122,255,0.15)', animation: 'pulse 2s infinite' }} />
-    </div>
-  );
-}

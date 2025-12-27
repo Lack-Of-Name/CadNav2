@@ -50,8 +50,8 @@ export default function MapLibreMap() {
           cameraRef.current.zoomTo?.(16, 200);
           await sleep(200)
           cameraRef.current.flyTo?.([longitude, latitude], 800);
+          await sleep(800)
     }
-    await sleep(1000)
     setFollowing(enabling);
     
   };

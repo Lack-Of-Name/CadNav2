@@ -35,7 +35,6 @@ const TICKS = Array.from({ length: 8 }, (_, i) => i * 45);
 const isCardinal = (deg: number) => deg % 90 === 0;
 
 function labelForAngle(deg: number, unit?: string) {
-  if (deg === 0) return 'N';
   if (deg === 90) return 'E';
   if (deg === 180) return 'S';
   if (deg === 270) return 'W';
@@ -292,8 +291,9 @@ const styles = StyleSheet.create({
   ringLabelCardinal: {
     fontSize: 12,
     marginTop: 6,
-    transform: [{ translateY: -6 }], // move further out
+    transform: [{ translateY: -5 }], // move further out
   },
+
   ringLabelDegree: {
     fontSize: 9,
     marginTop: 2,

@@ -2,7 +2,7 @@ import { alert as showAlert } from '@/components/alert';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { Colors } from '@/constants/theme';
-import { CompassButton, getCompassHeadingDeg, InfoBox, LocationMarker, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
+import { CompassButton, getCompassHeadingDeg, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
 // checkpoints removed — compass kept
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
@@ -90,7 +90,24 @@ export default function MapLibreMap() {
   const compassBearingText = null;
   const compassDistanceText = null;
 
-  
+  function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
+    return (
+      <div style={{ position: 'absolute', left: x - 12, top: y - 12, pointerEvents: 'none', zIndex: 20 }}>
+        <div style={overlayStyles.container}>
+          {orientation != null ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
+              <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
+            </svg>
+          ) : (
+            <svg width="10" height="10" viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="5" fill="white" />
+            </svg>
+          )}
+        </div>
+        <div style={overlayStyles.pulse} />
+      </div>
+    );
+  }
 
   // sleep imported from MaplibreMap.general
 
@@ -265,6 +282,7 @@ export default function MapLibreMap() {
       const { latitude, longitude } = lastLocation.coords;
       try {
         map.current.flyTo({ center: [longitude, latitude], zoom: 16, duration: 1000, essential: true });
+        await sleep(1000)
       } catch (err) {
         if (!errorReportedRef.current) {
           errorReportedRef.current = true;
@@ -273,7 +291,6 @@ export default function MapLibreMap() {
         // ignore
       }
     }
-    await sleep(1000)
     setFollowing(enabling);
   };
 
@@ -323,9 +340,10 @@ export default function MapLibreMap() {
           style={{
             left: 12 + 58,
             bottom: 12 + 58,
+            zIndex: 70,
           }}
         />
-        {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} renderAs="web" />}
+        {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
         <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }} textStyle={styles.locationText} renderAs="web" />
         <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
