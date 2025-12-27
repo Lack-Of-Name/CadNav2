@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { triggerHaptic } from '@/components/haptic-tab';
+import { useEffect, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { degreesToMils } from './converter';
 
@@ -27,10 +28,11 @@ type Props = {
 const normalize360 = (value: number) => ((value % 360) + 360) % 360;
 
 /**
- * 8 ticks total:
- * N, NE, E, SE, S, SW, W, NW
+ * 24 ticks total (every 15°):
+ * - Major ticks every 45° (N, NE, E, etc.)
+ * - Minor ticks at 15° and 30° between majors
  */
-const TICKS = Array.from({ length: 8 }, (_, i) => i * 45);
+const TICKS = Array.from({ length: 24 }, (_, i) => i * 15);
 
 const isCardinal = (deg: number) => deg % 90 === 0;
 
@@ -43,6 +45,13 @@ function labelForAngle(deg: number, unit?: string) {
     return String(Math.round(degreesToMils(deg, { normalize: true })));
   }
 
+  return String(deg);
+}
+
+// New function for cardinal heading labels below the tick lines
+function headingLabelForAngle(deg: number, unit?: string) {
+  if (!isCardinal(deg)) return '';
+  if (unit === 'mils') return String(Math.round(degreesToMils(deg, { normalize: true })));
   return String(deg);
 }
 
@@ -81,6 +90,54 @@ export function CompassOverlay({
     return `${relative}deg`;
   }, [heading, targetBearingDeg]);
 
+  // Haptic feedback: light tap when heading passes over any tick line
+  const prevHeadingRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (heading == null) {
+      prevHeadingRef.current = null;
+      return;
+    }
+    // Only provide haptics when the compass panel is open
+    if (!open) {
+      prevHeadingRef.current = heading;
+      return;
+    }
+
+    const prev = prevHeadingRef.current;
+    if (prev == null) {
+      prevHeadingRef.current = heading;
+      return;
+    }
+
+    const curr = heading;
+    // Determine shortest path direction from prev to curr
+    const forward = (curr - prev + 360) % 360;
+    const pathIsForward = forward <= 180;
+    const start = pathIsForward ? prev : curr;
+    const end = pathIsForward ? curr : prev;
+    const span = (end - start + 360) % 360;
+
+    // Determine whether any major (45°) or minor (15°) ticks were crossed
+    let crossedMajor = false;
+    let crossedMinor = false;
+    for (const tick of TICKS) {
+      const rel = (tick - start + 360) % 360;
+      if (rel > 0 && rel <= span) {
+        if (tick % 45 === 0) crossedMajor = true;
+        else crossedMinor = true;
+      }
+      if (crossedMajor && crossedMinor) break;
+    }
+
+    if (crossedMajor) {
+      void triggerHaptic('medium');
+    } else if (crossedMinor) {
+      void triggerHaptic('light');
+    }
+
+    prevHeadingRef.current = curr;
+  }, [heading, open]);
+
   if (!open) return null;
 
   return (
@@ -109,8 +166,10 @@ export function CompassOverlay({
         <View style={[styles.dial, { backgroundColor: background, borderColor }]}>
           <View style={[styles.ring, { transform: [{ rotate: ringRotation }] }]}>
             {TICKS.map((deg) => {
+              const isMajor = deg % 45 === 0;
               const cardinal = isCardinal(deg);
-              const label = labelForAngle(deg, angleUnit);
+              const label = isMajor ? labelForAngle(deg, angleUnit) : '';
+              const headingLabel = headingLabelForAngle(deg, angleUnit);
 
               return (
                 <View
@@ -120,24 +179,34 @@ export function CompassOverlay({
                   <View
                     style={[
                       styles.tick,
-                      cardinal ? styles.tickCardinal : styles.tickMajor,
+                      cardinal ? styles.tickCardinal : isMajor ? styles.tickMajor : styles.tickMinor,
                       { backgroundColor: tickStrong },
                     ]}
                   />
 
-                  <View style={styles.ringLabelWrap}>
-                    <Text
-                      style={[
-                        styles.ringLabel,
-                        { color: tickStrong },
-                        cardinal
-                          ? styles.ringLabelCardinal
-                          : styles.ringLabelDegree,
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                  </View>
+                  {/* Ring label (only for major ticks) */}
+                  {isMajor && (
+                    <View style={styles.ringLabelWrap}>
+                      <Text
+                        style={[
+                          styles.ringLabel,
+                          { color: tickStrong },
+                          cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Heading number label below the tick */}
+                  {cardinal && (
+                    <View style={styles.headingLabelWrap}>
+                      <Text style={[styles.headingLabel, { color: tickStrong }]}> 
+                        {headingLabel}
+                      </Text>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -278,6 +347,11 @@ const styles = StyleSheet.create({
     width: 2,
     height: 20,
   },
+  tickMinor: {
+    width: 1,
+    height: 12,
+    marginTop: 18,
+  },
   ringLabelWrap: {
     position: 'absolute',
     top: 0,
@@ -291,13 +365,26 @@ const styles = StyleSheet.create({
   ringLabelCardinal: {
     fontSize: 12,
     marginTop: 6,
-    transform: [{ translateY: -5 }], // move further out
+    transform: [{ translateY: -5 }],
   },
-
   ringLabelDegree: {
     fontSize: 9,
     marginTop: 2,
   },
+
+  // New heading label style
+  headingLabelWrap: {
+    position: 'absolute',
+    top: 38, // below tick
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  headingLabel: {
+    fontSize: 8,
+    fontWeight: '700',
+  },
+
   nLabelWrap: {
     position: 'absolute',
     left: 0,
