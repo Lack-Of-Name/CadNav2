@@ -342,7 +342,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 onPress={async () => {
                   const ok = await requestOrientationPermission();
                   if (ok) {
-                    setOrientationGranted(true);
                     setOrientationModalVisible(false);
                   } else {
                     // keep modal visible; user must grant to continue
