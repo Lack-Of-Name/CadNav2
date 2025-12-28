@@ -39,6 +39,7 @@ export default function MapLibreMap() {
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [gridScreenPoints, setGridScreenPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [gridLines, setGridLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
+  const [gridSubLines, setGridSubLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
   const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
@@ -203,7 +204,58 @@ export default function MapLibreMap() {
               return linePts.join(' ');
             });
 
+            // build a quick lookup for points by e,n for fast interpolation
+            const key = (e: number, n: number) => `${e}:${n}`;
+            const ptMap = new Map<string, { x: number; y: number; e: number; n: number }>();
+            for (const p of pts) ptMap.set(key(p.e, p.n), p);
+
+            // Generate subdivision lines (9 subdivisions between main lines => 10 equal parts)
+            const verticalSub: string[] = [];
+            const horizontalSub: string[] = [];
+
+            if (es.length >= 2 && ns.length >= 2) {
+              const parts = 10;
+              // vertical subdivisions between each adjacent easting pair
+              for (let i = 0; i < es.length - 1; i++) {
+                const eA = es[i];
+                const eB = es[i + 1];
+                for (let k = 1; k < parts; k++) {
+                  const t = k / parts;
+                  const linePts: string[] = [];
+                  for (const n of ns) {
+                    const a = ptMap.get(key(eA, n));
+                    const b = ptMap.get(key(eB, n));
+                    if (!a || !b) continue;
+                    const x = a.x + (b.x - a.x) * t;
+                    const y = a.y + (b.y - a.y) * t;
+                    linePts.push(`${x},${y}`);
+                  }
+                  if (linePts.length) verticalSub.push(linePts.join(' '));
+                }
+              }
+
+              // horizontal subdivisions between each adjacent northing pair
+              for (let j = 0; j < ns.length - 1; j++) {
+                const nA = ns[j];
+                const nB = ns[j + 1];
+                for (let k = 1; k < parts; k++) {
+                  const t = k / parts;
+                  const linePts: string[] = [];
+                  for (const e of es) {
+                    const a = ptMap.get(key(e, nA));
+                    const b = ptMap.get(key(e, nB));
+                    if (!a || !b) continue;
+                    const x = a.x + (b.x - a.x) * t;
+                    const y = a.y + (b.y - a.y) * t;
+                    linePts.push(`${x},${y}`);
+                  }
+                  if (linePts.length) horizontalSub.push(linePts.join(' '));
+                }
+              }
+            }
+
             setGridLines({ vertical, horizontal });
+            setGridSubLines({ vertical: verticalSub, horizontal: horizontalSub });
           } else {
             setGridScreenPoints([]);
             setGridLines({ vertical: [], horizontal: [] });
