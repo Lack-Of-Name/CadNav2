@@ -38,6 +38,8 @@ export default function MapLibreMap() {
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [gridScreenPoints, setGridScreenPoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [gridLines, setGridLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
+  const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [compassOpen, setCompassOpen] = useState(false);
@@ -139,8 +141,16 @@ export default function MapLibreMap() {
           setScreenPos({ x: p.x, y: p.y });
         }
 
-        // compute grid points and project to screen coordinates only at zoom >= 12
+        // compute origin screen point and grid points; grid visible only at zoom >= 12
         try {
+          // project origin to screen (if available)
+          try {
+            const originForProj = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
+            const op = map.current.project([originForProj.longitude, originForProj.latitude]);
+            setOriginScreenPoint({ x: op.x, y: op.y });
+          } catch {
+            setOriginScreenPoint(null);
+          }
           const zoom = typeof map.current.getZoom === 'function' ? map.current.getZoom() : 0;
           if (zoom >= 12) {
             const bounds = map.current.getBounds();
@@ -155,19 +165,49 @@ export default function MapLibreMap() {
             );
 
             const intersections = generateGridIntersections(gridOffsets.offsets, 1000);
-            const pts: Array<{ x: number; y: number }> = [];
+
+            // map each intersection to screen points (if inside projection)
+            const pts: Array<{ x: number; y: number; e: number; n: number }> = [];
             for (const [easting, northing] of intersections) {
               const ll = gridOffsetMetersToLatLon(origin, easting, northing);
               try {
                 const p = map.current.project([ll.longitude, ll.latitude]);
-                pts.push({ x: p.x, y: p.y });
+                pts.push({ x: p.x, y: p.y, e: easting, n: northing });
               } catch {
                 // skip
               }
             }
-            setGridScreenPoints(pts);
+            setGridScreenPoints(pts.map((p) => ({ x: p.x, y: p.y })));
+
+            // Build polylines for vertical (constant easting) and horizontal (constant northing) grid lines
+            const es = Array.from(new Set(pts.map((p) => p.e))).sort((a, b) => a - b);
+            const ns = Array.from(new Set(pts.map((p) => p.n))).sort((a, b) => a - b);
+
+            const vertical: string[] = es.map((e) => {
+              const linePts = ns
+                .map((n) => {
+                  const p = pts.find((q) => q.e === e && q.n === n);
+                  return p ? `${p.x},${p.y}` : null;
+                })
+                .filter(Boolean) as string[];
+              return linePts.join(' ');
+            });
+
+            const horizontal: string[] = ns.map((n) => {
+              const linePts = es
+                .map((e) => {
+                  const p = pts.find((q) => q.e === e && q.n === n);
+                  return p ? `${p.x},${p.y}` : null;
+                })
+                .filter(Boolean) as string[];
+              return linePts.join(' ');
+            });
+
+            setGridLines({ vertical, horizontal });
           } else {
             setGridScreenPoints([]);
+            setGridLines({ vertical: [], horizontal: [] });
+            setOriginScreenPoint(null);
           }
         } catch (gErr) {
           console.error('grid computation failed', gErr);
@@ -384,22 +424,32 @@ export default function MapLibreMap() {
         }}
       >
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
-        {gridScreenPoints.map((pt, idx) => (
+        <svg style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 59 }}>
+          {gridLines.vertical.map((pts, i) => (
+            <polyline key={`v-${i}`} points={pts} stroke="#000" strokeWidth={1} fill="none" />
+          ))}
+          {gridLines.horizontal.map((pts, i) => (
+            <polyline key={`h-${i}`} points={pts} stroke="#000" strokeWidth={1} fill="none" />
+          ))}
+        </svg>
+        {/* red point markers removed */}
+        {originScreenPoint ? (
           <div
-            key={`grid-point-${idx}`}
+            key="grid-origin"
             style={{
               position: 'absolute',
-              left: pt.x - 4,
-              top: pt.y - 4,
-              width: 8,
-              height: 8,
-              borderRadius: 4,
-              background: 'rgba(255,0,0,0.9)',
+              left: originScreenPoint.x - 10,
+              top: originScreenPoint.y - 10,
+              width: 20,
+              height: 20,
+              borderRadius: 10,
+              background: 'rgba(0,0,0,0.9)',
+              border: '2px solid white',
               pointerEvents: 'none',
-              zIndex: 60,
+              zIndex: 61,
             }}
           />
-        ))}
+        ) : null}
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
         {/* placement UI removed */}
