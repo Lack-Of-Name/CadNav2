@@ -25,7 +25,7 @@ export default function MapLibreMap() {
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled } = useSettings();
+  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled } = useSettings();
   // checkpoints removed
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -356,8 +356,10 @@ export default function MapLibreMap() {
             map={map.current}
             origin={mapGridOrigin ?? { latitude: effectiveLastLocation.coords.latitude, longitude: effectiveLastLocation.coords.longitude }}
             subdivisionsEnabled={mapGridSubdivisionsEnabled}
+            numbersEnabled={mapGridNumbersEnabled}
           />
         )}
+        <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6, zIndex: 100 }} textStyle={styles.locationText} renderAs="web" />
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
         {/* placement UI removed */}
@@ -387,7 +389,6 @@ export default function MapLibreMap() {
           }}
         />
         {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
-        <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }} textStyle={styles.locationText} renderAs="web" />
         <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
     </ThemedView>

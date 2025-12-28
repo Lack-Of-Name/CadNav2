@@ -9,16 +9,19 @@ export default function GridOverlay({
   origin,
   minZoom = 12,
   subdivisionsEnabled = true,
+  numbersEnabled = false,
 }: {
   map: maplibregl.Map | null | undefined;
   origin: Origin;
   minZoom?: number;
   subdivisionsEnabled?: boolean;
+  numbersEnabled?: boolean;
 }) {
   const [gridLines, setGridLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
   const [gridSubLines, setGridSubLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
   const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
   const [showGrid, setShowGrid] = useState(false);
+  const [cellCenters, setCellCenters] = useState<Array<{ x: number; y: number; e: number; n: number }>>([]);
 
   useEffect(() => {
     if (!map) return;
@@ -41,6 +44,7 @@ export default function GridOverlay({
         if (!gridVisible) {
           setGridLines({ vertical: [], horizontal: [] });
           setGridSubLines({ vertical: [], horizontal: [] });
+          setCellCenters([]);
           return;
         }
 
@@ -131,6 +135,32 @@ export default function GridOverlay({
           }
         }
 
+        // Compute cell centers for grid numbers
+        const centers: Array<{ x: number; y: number; e: number; n: number }> = [];
+        if (es.length >= 2 && ns.length >= 2) {
+          for (let i = 0; i < es.length - 1; i++) {
+            for (let j = 0; j < ns.length - 1; j++) {
+              // bottom left intersection
+              const e0 = es[i];
+              const n0 = ns[j];
+              const e1 = es[i + 1];
+              const n1 = ns[j + 1];
+              // center in e/n
+              const ec = (e0 + e1) / 2;
+              const nc = (n0 + n1) / 2;
+              // get lat/lon and project to screen
+              const ll = gridOffsetMetersToLatLon(originPt, ec, nc);
+              try {
+                const p = map.project([ll.longitude, ll.latitude]);
+                centers.push({ x: p.x, y: p.y, e: e0, n: n0 });
+              } catch {
+                // skip
+              }
+            }
+          }
+        }
+        setCellCenters(centers);
+
         setGridLines({ vertical, horizontal });
         setGridSubLines({ vertical: verticalSub, horizontal: horizontalSub });
       } catch (err) {
@@ -165,6 +195,29 @@ export default function GridOverlay({
         {gridLines.horizontal.map((pts, i) => (
           <polyline key={`h-${i}`} points={pts} stroke="#000" strokeWidth={1} fill="none" />
         ))}
+        {numbersEnabled && cellCenters.map((c, i) => {
+          const eNum = c.e / 1000;
+          const nNum = c.n / 1000;
+          if (eNum > 99 || nNum > 99) return null;
+          return (
+            <text
+              key={`num-${c.e}-${c.n}`}
+              x={c.x}
+              y={c.y}
+              textAnchor="middle"
+              alignmentBaseline="middle"
+              fontSize="13"
+              fontWeight="bold"
+              fill="#000"
+              stroke="#fff"
+              strokeWidth="2"
+              paintOrder="stroke"
+              style={{ pointerEvents: 'none', userSelect: 'none' }}
+            >
+              {`${eNum},${nNum}`}
+            </text>
+          );
+        })}
       </svg>
       {showGrid && originScreenPoint ? (
         <div
