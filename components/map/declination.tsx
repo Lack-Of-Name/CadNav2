@@ -84,6 +84,7 @@ let cached: Promise<Model> | null = null;
 async function loadModel(): Promise<Model> {
   if (cached) return cached;
   // Statically require the COF so bundlers include it on web/native.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const WMMHR_COF = require("../../assets/WMMHR.COF");
   cached = (async () => {
     const text = await readTextAsset(WMMHR_COF as number);

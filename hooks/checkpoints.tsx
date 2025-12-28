@@ -16,17 +16,32 @@ export type SavedRoute = {
   checkpoints: Checkpoint[];
 };
 
+export type SavedLocation = {
+  id: string;
+  name: string;
+  description?: string;
+  latitude: number;
+  longitude: number;
+  createdAt: number;
+};
+
 type PersistedRoutes = {
   routes: SavedRoute[];
 };
 
+type PersistedLocations = {
+  locations: SavedLocation[];
+};
+
 const ROUTES_KEY = 'cadnav2.routes.v1';
+const LOCATIONS_KEY = 'cadnav2.locations.v1';
 const LEGACY_CHECKPOINTS_KEY = 'cadnav2.checkpoints.v1';
 
 type StoreState = {
   checkpoints: Checkpoint[];
   selectedId: string | null;
   savedRoutes: SavedRoute[];
+  savedLocations: SavedLocation[];
   isLoaded: boolean;
   placementModeRequested: boolean;
 };
@@ -35,6 +50,7 @@ let store: StoreState = {
   checkpoints: [],
   selectedId: null,
   savedRoutes: [],
+  savedLocations: [],
   isLoaded: false,
   placementModeRequested: false,
 };
@@ -58,6 +74,10 @@ async function persistRoutes(next: PersistedRoutes) {
   await AsyncStorage.setItem(ROUTES_KEY, JSON.stringify(next));
 }
 
+async function persistLocations(next: PersistedLocations) {
+  await AsyncStorage.setItem(LOCATIONS_KEY, JSON.stringify(next));
+}
+
 let initPromise: Promise<void> | null = null;
 async function initStore() {
   if (store.isLoaded) return;
@@ -65,16 +85,25 @@ async function initStore() {
 
   initPromise = (async () => {
     // Load saved routes (active route is ephemeral unless explicitly saved).
-    const raw = await AsyncStorage.getItem(ROUTES_KEY);
+    const rawRoutes = await AsyncStorage.getItem(ROUTES_KEY);
+    const rawLocations = await AsyncStorage.getItem(LOCATIONS_KEY);
 
-    let parsed: unknown = null;
+    let parsedRoutes: unknown = null;
     try {
-      parsed = raw ? (JSON.parse(raw) as unknown) : null;
+      parsedRoutes = rawRoutes ? (JSON.parse(rawRoutes) as unknown) : null;
     } catch {
-      parsed = null;
+      parsedRoutes = null;
     }
 
-    const hydratedRoutes = normalizePersistedRoutes(parsed);
+    let parsedLocations: unknown = null;
+    try {
+      parsedLocations = rawLocations ? (JSON.parse(rawLocations) as unknown) : null;
+    } catch {
+      parsedLocations = null;
+    }
+
+    const hydratedRoutes = normalizePersistedRoutes(parsedRoutes);
+    const hydratedLocations = normalizePersistedLocations(parsedLocations);
 
     // One-time migration: previous versions persisted active checkpoints under LEGACY_CHECKPOINTS_KEY.
     // We now only persist saved routes, so we import legacy checkpoints as a saved route once.
@@ -105,10 +134,18 @@ async function initStore() {
       }
     }
 
-    setStore({ checkpoints: [], selectedId: null, savedRoutes: hydratedRoutes.routes, isLoaded: true, placementModeRequested: false });
+    setStore({ 
+      checkpoints: [], 
+      selectedId: null, 
+      savedRoutes: hydratedRoutes.routes, 
+      savedLocations: hydratedLocations.locations,
+      isLoaded: true, 
+      placementModeRequested: false 
+    });
 
     // Ensure storage is initialized with normalized shape.
     await persistRoutes(hydratedRoutes);
+    await persistLocations(hydratedLocations);
   })().finally(() => {
     initPromise = null;
   });
@@ -140,6 +177,19 @@ function isSavedRoute(value: unknown): value is SavedRoute {
   );
 }
 
+function isSavedLocation(value: unknown): value is SavedLocation {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as any;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    (v.description === undefined || typeof v.description === 'string') &&
+    typeof v.latitude === 'number' &&
+    typeof v.longitude === 'number' &&
+    typeof v.createdAt === 'number'
+  );
+}
+
 function normalizePersistedRoutes(raw: unknown): PersistedRoutes {
   if (!raw || typeof raw !== 'object') {
     return { routes: [] };
@@ -148,6 +198,16 @@ function normalizePersistedRoutes(raw: unknown): PersistedRoutes {
   const r = raw as any;
   const routes = Array.isArray(r.routes) ? r.routes.filter(isSavedRoute) : [];
   return { routes };
+}
+
+function normalizePersistedLocations(raw: unknown): PersistedLocations {
+  if (!raw || typeof raw !== 'object') {
+    return { locations: [] };
+  }
+
+  const r = raw as any;
+  const locations = Array.isArray(r.locations) ? r.locations.filter(isSavedLocation) : [];
+  return { locations };
 }
 
 function normalizeLegacyCheckpoints(raw: unknown): { checkpoints: Checkpoint[] } {
@@ -241,6 +301,33 @@ export function useCheckpoints() {
     setStore({ ...store, checkpoints: [], selectedId: null });
   }, []);
 
+  const saveLocation = useCallback(async (name: string, latitude: number, longitude: number, description?: string) => {
+    const trimmed = name.trim();
+    if (trimmed.length === 0) throw new Error('Location name is required');
+
+    const location: SavedLocation = {
+      id: makeId(),
+      name: trimmed,
+      description: description?.trim(),
+      latitude,
+      longitude,
+      createdAt: Date.now(),
+    };
+
+    const nextLocations = [location, ...store.savedLocations];
+    const nextPersisted: PersistedLocations = { locations: nextLocations };
+    setStore({ ...store, savedLocations: nextLocations });
+    await persistLocations(nextPersisted);
+    return location;
+  }, []);
+
+  const deleteLocation = useCallback(async (locationId: string) => {
+    const nextLocations = store.savedLocations.filter((l) => l.id !== locationId);
+    const nextPersisted: PersistedLocations = { locations: nextLocations };
+    setStore({ ...store, savedLocations: nextLocations });
+    await persistLocations(nextPersisted);
+  }, []);
+
   const saveRoute = useCallback(async (name: string) => {
     const trimmed = name.trim();
     if (trimmed.length === 0) throw new Error('Route name is required');
@@ -285,6 +372,7 @@ export function useCheckpoints() {
     selectedId: snapshot.selectedId,
     selectedCheckpoint,
     savedRoutes: snapshot.savedRoutes,
+    savedLocations: snapshot.savedLocations,
     isLoaded: snapshot.isLoaded,
     placementModeRequested: snapshot.placementModeRequested,
     addCheckpoint,
@@ -295,6 +383,8 @@ export function useCheckpoints() {
     saveRoute,
     loadRoute,
     deleteRoute,
+    saveLocation,
+    deleteLocation,
     requestPlacementMode,
     consumePlacementModeRequest,
   } as const;

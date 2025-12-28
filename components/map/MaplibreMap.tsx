@@ -34,6 +34,7 @@ export default function MapLibreMap() {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
+  const initialZoomDone = React.useRef(false);
 
   const currentHeading = getCompassHeadingDeg(lastLocation);
 
@@ -47,7 +48,7 @@ export default function MapLibreMap() {
   const centerOnLocation = async (loc: any) => {
     if (!loc || !cameraRef.current) return;
     const { latitude, longitude } = loc.coords;
-    cameraRef.current.zoomTo?.(16, 200);
+    cameraRef.current.zoomTo?.(12, 200);
     await sleep(200);
     cameraRef.current.flyTo?.([longitude, latitude], 800);
     await sleep(800)
@@ -71,6 +72,14 @@ export default function MapLibreMap() {
   };
 
   // map press handler removed (placement/checkpoints removed)
+
+  useEffect(() => {
+    if (lastLocation && !initialZoomDone.current && cameraRef.current) {
+      initialZoomDone.current = true;
+      void centerOnLocation(lastLocation);
+      setFollowing(true);
+    }
+  }, [lastLocation]);
 
   useEffect(() => {
     if (!following || !lastLocation || !cameraRef.current) return;

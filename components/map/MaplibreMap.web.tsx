@@ -40,9 +40,9 @@ export default function MapLibreMap() {
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [compassOpen, setCompassOpen] = useState(false);
   const compassButtonColor = compassOpen ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
+  const initialZoomDone = useRef(false);
   
   // Overlay styles and small helpers to keep JSX concise below
   const overlayStyles = {
@@ -131,9 +131,6 @@ export default function MapLibreMap() {
       try {
         const bearing = typeof map.current.getBearing === 'function' ? map.current.getBearing() : 0;
         setMapBearing(bearing);
-
-        const z = typeof map.current.getZoom === 'function' ? map.current.getZoom() : 1;
-        if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
 
         const ll = lastLocationRef.current;
         if (ll) {
@@ -393,7 +390,7 @@ export default function MapLibreMap() {
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
     lastLocationRef.current = effectiveLastLocation;
-  }, [lastLocation, webLastLocation]);
+  }, [effectiveLastLocation]);
 
   // Try a lightweight web-only fallback to seed location quickly when `useGPS` is not returning
   // a value on some desktop browsers. This will not replace the hook but helps UI appear.
@@ -428,7 +425,16 @@ export default function MapLibreMap() {
     return () => {
       mounted = false;
     };
-  }, [lastLocation, webLastLocation]);
+  }, [effectiveLastLocation]);
+
+  useEffect(() => {
+    if (effectiveLastLocation && !initialZoomDone.current && map.current) {
+      initialZoomDone.current = true;
+      const { latitude, longitude } = effectiveLastLocation.coords;
+      map.current.flyTo({ center: [longitude, latitude], zoom: 12 });
+      setFollowing(true);
+    }
+  }, [effectiveLastLocation]);
 
   useEffect(() => {
     // If lastLocation (or web fallback) is present, cancel any pending clear and update immediately
@@ -466,7 +472,7 @@ export default function MapLibreMap() {
         lastLocationLossTimer.current = null;
       }
     };
-  }, [lastLocation, webLastLocation]);
+  }, [effectiveLastLocation]);
 
   useEffect(() => {
     if (!following || !effectiveLastLocation || !map.current) return;
@@ -498,7 +504,7 @@ export default function MapLibreMap() {
     const raw = h - mapBearing;
     const normalized = normalizeDegrees(raw);
     setOrientation(normalized);
-  }, [lastLocation, mapBearing, mapHeading]);
+  }, [effectiveLastLocation, mapBearing, mapHeading]);
 
   const handleRecenterPress = async () => {
     // Dual behavior:

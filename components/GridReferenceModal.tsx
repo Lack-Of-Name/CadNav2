@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import { useSettings } from '@/hooks/settings';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useState } from 'react';
 import { Modal, StyleSheet, TextInput, View } from 'react-native';
+import { gridOffsetMetersToLatLon } from './map/mapGrid';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import StyledButton from './ui/StyledButton';
-import { useSettings } from '@/hooks/settings';
-import { gridOffsetMetersToLatLon } from './map/mapGrid';
-import { useThemeColor } from '@/hooks/use-theme-color';
 
 type GridReferenceModalProps = {
   visible: boolean;
@@ -22,7 +22,6 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({}, 'icon');
   const borderColor = useThemeColor({}, 'tabIconDefault');
-  const backgroundColor = useThemeColor({}, 'background');
 
   function handleAdd() {
     setError(null);

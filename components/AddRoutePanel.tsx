@@ -1,9 +1,8 @@
-import React from 'react';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
-import { useThemeColor } from '@/hooks/use-theme-color';
 
 type AddRoutePanelProps = {
   visible: boolean;
@@ -12,10 +11,34 @@ type AddRoutePanelProps = {
 };
 
 const OPTIONS = [
-  { id: 'reference', label: 'Reference', icon: 'book.fill' },
-  { id: 'project', label: 'Project', icon: 'folder.fill' },
-  { id: 'place', label: 'Place', icon: 'mappin.and.ellipse' },
-  { id: 'saved', label: 'Saved', icon: 'star.fill' },
+  { 
+    id: 'place', 
+    label: 'Place', 
+    desc: 'Drop pin on map', 
+    color: '#34C759', // Green
+    icon: 'mappin.and.ellipse' 
+  },
+  { 
+    id: 'reference', 
+    label: 'Reference', 
+    desc: 'Enter grid coords', 
+    color: '#007AFF', // Blue
+    icon: 'square.grid.3x3' 
+  },
+  { 
+    id: 'project', 
+    label: 'Project', 
+    desc: 'Bearing & distance', 
+    color: '#AF52DE', // Purple
+    icon: 'safari.fill' 
+  },
+  { 
+    id: 'saved', 
+    label: 'Saved', 
+    desc: 'Load saved route', 
+    color: '#FF9500', // Orange
+    icon: 'folder.fill' 
+  },
 ] as const;
 
 export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps) {
@@ -53,11 +76,15 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
                         key={opt.id} 
                         style={[styles.option, { backgroundColor: cardColor }]} 
                         onPress={() => onSelect(opt.id)}
+                        activeOpacity={0.7}
                     >
-                        <View style={styles.iconContainer}>
-                             <IconSymbol name={opt.icon as any} size={32} color={iconColor} />
+                        <View style={[styles.iconCircle, { backgroundColor: opt.color }]}>
+                             <IconSymbol name={opt.icon as any} size={24} color="#fff" />
                         </View>
-                        <ThemedText style={styles.optionLabel}>{opt.label}</ThemedText>
+                        <View style={styles.textContainer}>
+                            <ThemedText style={styles.optionLabel}>{opt.label}</ThemedText>
+                            <ThemedText style={styles.optionDesc}>{opt.desc}</ThemedText>
+                        </View>
                     </TouchableOpacity>
                 ))}
             </View>
@@ -75,42 +102,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   panel: {
-    borderRadius: 20,
+    borderRadius: 24,
     padding: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 16,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   closeButton: {
     padding: 4,
+    opacity: 0.7,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: 12,
   },
   option: {
-    width: '47%',
-    aspectRatio: 1.2,
+    width: '48%',
     borderRadius: 16,
+    padding: 16,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    minHeight: 110,
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 12,
-  },
-  iconContainer: {
     marginBottom: 12,
   },
+  textContainer: {
+    width: '100%',
+  },
   optionLabel: {
-    fontWeight: '600',
+    fontWeight: '700',
     fontSize: 16,
+    marginBottom: 2,
+  },
+  optionDesc: {
+    fontSize: 12,
+    opacity: 0.6,
+    lineHeight: 16,
   },
 });

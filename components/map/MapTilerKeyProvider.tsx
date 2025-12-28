@@ -29,7 +29,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const [verifying, setVerifying] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
-  const [_orientationGranted, setOrientationGranted] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -49,7 +48,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
             else {
               const orientOk = await requestOrientationPermission();
               if (!orientOk) setOrientationModalVisible(true);
-              else setOrientationGranted(true);
             }
           }
         } else {
@@ -89,7 +87,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 else {
                   const orientOk = await requestOrientationPermission();
                   if (!orientOk && mounted) setOrientationModalVisible(true);
-                  else if (orientOk) setOrientationGranted(true);
                 }
               }
             } else {
@@ -190,10 +187,9 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
               try {
                 // Prompt user to enable high-accuracy network provider (Google Play services).
                 // Resolves when the user accepts; rejects if denied or unavailable.
-                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
                 // @ts-ignore: may not exist on all SDK versions
                 await Location.enableNetworkProviderAsync();
-              } catch (err: any) {
+              } catch {
                 // Show the location modal so user can open settings or retry.
                 setLocationModalVisible(true);
                 void showAlert({
@@ -217,7 +213,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
     try {
       if (Platform.OS !== 'web') return true; // orientation permission API is for web/iOS Safari
       // If DeviceOrientationEvent.requestPermission exists (iOS Safari), call it
-      const dev = window as any;
       if (!('DeviceOrientationEvent' in window)) return false;
       const ctor: any = (DeviceOrientationEvent as any);
       if (typeof ctor.requestPermission === 'function') {

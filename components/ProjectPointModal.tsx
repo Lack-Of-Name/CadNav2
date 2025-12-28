@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { Modal, StyleSheet, TextInput, View, Switch } from 'react-native';
+import { useCheckpoints } from '@/hooks/checkpoints';
+import { useGPS } from '@/hooks/gps';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useState } from 'react';
+import { Modal, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import StyledButton from './ui/StyledButton';
-import { useGPS } from '@/hooks/gps';
-import { useCheckpoints } from '@/hooks/checkpoints';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import * as geolib from 'geolib'; // Assuming geolib is available or I need to implement projection
 // If geolib is not available, I'll implement a simple projection function.
 // Checking package.json... I don't see geolib. I'll implement a simple spherical projection.
 

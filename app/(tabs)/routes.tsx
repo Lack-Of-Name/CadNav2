@@ -1,22 +1,23 @@
 import { alert as showAlert } from '@/components/alert';
-import { useCheckpoints } from '@/hooks/checkpoints';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { AddRoutePanel } from '@/components/AddRoutePanel';
+import { EditRouteModal } from '@/components/EditRouteModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { SavedRoutesModal } from '@/components/SavedRoutesModal';
-import StyledButton from '@/components/ui/StyledButton';
-import { SavedRoute } from '@/hooks/checkpoints';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import { Collapsible } from '@/components/ui/collapsible';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import StyledButton from '@/components/ui/StyledButton';
 import { Colors } from '@/constants/theme';
+import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 
@@ -30,13 +31,10 @@ export default function RoutesScreen() {
   const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting } = useSettings();
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState('');
-  const [subtitle, setSubtitle] = useState('');
-  const [icon, setIcon] = useState('📍');
-  const [modalError, setModalError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<RouteItem | null>(null);
+  
   const [addPanelVisible, setAddPanelVisible] = useState(false);
-  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [referenceModalVisible, setReferenceModalVisible] = useState(false);
   const [projectModalVisible, setProjectModalVisible] = useState(false);
   const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
@@ -47,7 +45,6 @@ export default function RoutesScreen() {
     if (option === 'place') {
         void requestPlacementMode();
         router.push('/');
-        setActiveRouteId(null);
     } else if (option === 'reference') {
         setReferenceModalVisible(true);
     } else if (option === 'project') {
@@ -58,10 +55,9 @@ export default function RoutesScreen() {
   }
 
   function handleAddPoint(location: { latitude: number; longitude: number }) {
-      addCheckpoint(location);
+      addCheckpoint(location.latitude, location.longitude);
       setReferenceModalVisible(false);
       setProjectModalVisible(false);
-      setActiveRouteId(null);
       router.push('/');
   }
 
@@ -74,60 +70,29 @@ export default function RoutesScreen() {
       });
       
       setSavedRoutesModalVisible(false);
-      setActiveRouteId(null);
       router.push('/');
   }
 
-  
-
-  function resetForm() {
-    setTitle('');
-    setSubtitle('');
-    setIcon('📍');
+  function handleAddSavedLocation(location: SavedLocation) {
+      addCheckpoint(location.latitude, location.longitude);
+      setSavedRoutesModalVisible(false);
+      router.push('/');
   }
 
-  function extractEmoji(s: string) {
-    try {
-      const m = s.match(/\p{Extended_Pictographic}/u);
-      return m ? m[0] : '';
-    } catch (_e) {
-      // Fallback: basic emoji-ish characters (digits, punctuation removed)
-      return s.replace(/[\w\d\s]/g, '').slice(0, 2);
-    }
-  }
-
-  function handleAdd() {
-    // Save new or edited route
-    setModalError(null);
-    const t = title.trim();
-    const ic = icon.trim();
-    if (!t) {
-      setModalError('Title is required');
-      return;
-    }
-    if (!ic) {
-      setModalError('Icon is required');
-      return;
-    }
-
+  function handleSaveRoute(title: string, subtitle: string, icon: string) {
     if (editingId) {
-      setRoutes((r) => r.map((it) => (it.id === editingId ? { ...it, title: t, subtitle: subtitle.trim() || undefined, icon: ic || undefined } : it)));
+      setRoutes((r) => r.map((it) => (it.id === editingId ? { ...it, title, subtitle: subtitle || undefined, icon: icon || undefined } : it)));
     } else {
-      const item: RouteItem = { id: String(Date.now()), title: t, subtitle: subtitle.trim() || undefined, icon: ic || undefined };
+      const item: RouteItem = { id: String(Date.now()), title, subtitle: subtitle || undefined, icon: icon || undefined };
       setRoutes((r) => [item, ...r]);
     }
-
-    resetForm();
-    setEditingId(null);
-    setModalError(null);
     setOpen(false);
+    setEditingId(null);
+    setEditingItem(null);
   }
 
   function handleEdit(item: RouteItem) {
-    setModalError(null);
-    setTitle(item.title);
-    setSubtitle(item.subtitle ?? '');
-    setIcon(item.icon ?? '📍');
+    setEditingItem(item);
     setEditingId(item.id);
     setOpen(true);
   }
@@ -162,8 +127,6 @@ export default function RoutesScreen() {
 
   const cardBg = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'tabIconDefault');
-  const textColor = useThemeColor({}, 'text');
-  const placeholderColor = useThemeColor({}, 'icon');
   const safeBg = useThemeColor({}, 'background');
 
   const gridOriginLabel = useMemo(() => {
@@ -176,16 +139,20 @@ export default function RoutesScreen() {
       <ThemedView style={styles.container}>
         <View style={styles.headerRow}>
           <ThemedText type="title">Routes</ThemedText>
-          <StyledButton variant="primary" onPress={() => { resetForm(); setEditingId(null); setOpen(true); }}>Add</StyledButton>
+          <StyledButton variant="primary" onPress={() => { setEditingId(null); setEditingItem(null); setOpen(true); }}>Add</StyledButton>
         </View>
 
         <View style={[styles.card, { backgroundColor: cardBg, borderColor, borderWidth: 1, alignSelf: 'center', width: '98%' }]}>
           <Collapsible
             header={
-                <View style={{ flexDirection: 'column', justifyContent: 'center', minHeight: 48, paddingVertical: 2 }}>
-                  <ThemedText type="defaultSemiBold" style={{ lineHeight: 22 }}>Grid</ThemedText>
-                  <ThemedText style={{ lineHeight: 20 }}>Map grid overlays and origin</ThemedText>
-                  <ThemedText style={{ lineHeight: 20 }}>(Will not show until zoomed in enough)</ThemedText>
+                <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingVertical: 2 }}>
+                  <View style={{ width: 40, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
+                    <IconSymbol name="square.grid.3x3" size={24} color={Colors.light.icon} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText type="defaultSemiBold">Grid Settings</ThemedText>
+                    <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Overlays & Origin</ThemedText>
+                  </View>
                 </View>
             }
           >
@@ -254,31 +221,31 @@ export default function RoutesScreen() {
           <FlatList
             data={routes}
             keyExtractor={(i) => i.id}
-            renderItem={({ item, index }) => (
-              <View style={[styles.card, { backgroundColor: cardBg, marginTop: index === 0 ? 0 : -8, zIndex: routes.length - index, borderColor, borderWidth: 1, alignSelf: 'center', width: '98%' }]}> 
+            contentContainerStyle={{ paddingBottom: 20 }}
+            renderItem={({ item }) => (
+              <View style={[styles.card, { backgroundColor: cardBg, marginBottom: 12, borderColor, borderWidth: 1, alignSelf: 'center', width: '98%' }]}> 
                 <Collapsible
                   header={
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
                       <View style={styles.cardLeft}>
-                        <ThemedText type="title">{item.icon ?? '📍'}</ThemedText>
+                        <ThemedText style={{ fontSize: 28 }}>{item.icon ?? '📍'}</ThemedText>
                       </View>
                       <View style={styles.cardBody}>
                         <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text} type="defaultSemiBold">{item.title}</ThemedText>
-                        {item.subtitle ? <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text}>{item.subtitle}</ThemedText> : null}
+                        {item.subtitle ? <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text} style={{ opacity: 0.7, fontSize: 13 }}>{item.subtitle}</ThemedText> : null}
                       </View>
                     </View>
                   }
                 >
-                  <View style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 12 }}>
+                  <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 12 }}>
                     <StyledButton
                       variant="primary"
                       onPress={() => {
-                        setActiveRouteId(item.id);
                         setAddPanelVisible(true);
                       }}
                       style={{ marginBottom: 8 }}
                     >
-                      Add
+                      Add Point
                     </StyledButton>
                     <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={{ marginBottom: 8 }}>Edit</StyledButton>
                     <StyledButton variant="secondary" onPress={() => handleRemove(item.id)} style={{ marginBottom: 8 }}>Remove</StyledButton>
@@ -286,62 +253,48 @@ export default function RoutesScreen() {
                 </Collapsible>
               </View>
             )}
-            ListEmptyComponent={<ThemedText>No routes yet — tap Add to create one.</ThemedText>}
+            ListEmptyComponent={
+                <View style={styles.emptyState}>
+                    <ThemedText style={{ opacity: 0.5, textAlign: 'center', marginBottom: 8 }}>No routes yet</ThemedText>
+                    <StyledButton variant="secondary" onPress={() => { setEditingId(null); setEditingItem(null); setOpen(true); }}>Create your first route</StyledButton>
+                </View>
+            }
           />
         </View>
 
-        <Modal visible={open} animationType="slide" transparent={true}>
-            <View style={styles.modalBackdrop}>
-            <View style={[styles.modalContainer, { backgroundColor: cardBg, borderColor, borderWidth: 1 }]}> 
-              <ThemedText type="title">{editingId ? 'Edit Route' : 'New Route'}</ThemedText>
-              <TextInput
-                placeholder="Emoji (e.g. 🧭)"
-                value={icon}
-                onChangeText={(t) => {
-                  const e = extractEmoji(t);
-                  if (e) setIcon(e);
-                  else setIcon('');
-                  setModalError(null);
-                }}
-                style={[styles.input, { color: textColor ?? Colors.light.text, borderColor, textAlign: 'left' }]}
-                placeholderTextColor={placeholderColor}
-                maxLength={2}
-                autoCorrect={false}
-              />
-              <TextInput placeholder="Title" value={title} onChangeText={(t) => { setTitle(t); setModalError(null); }} style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]} placeholderTextColor={placeholderColor} maxLength={80} />
-              <TextInput placeholder="Subtitle" value={subtitle} onChangeText={(t) => { setSubtitle(t); setModalError(null); }} style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]} placeholderTextColor={placeholderColor} maxLength={120} />
-              {modalError ? <ThemedText style={styles.error}>{modalError}</ThemedText> : null}
-              <View style={styles.modalRow}>
-                <StyledButton variant="secondary" onPress={() => { resetForm(); setModalError(null); setOpen(false); setEditingId(null); }}>Cancel</StyledButton>
-                <View style={{ width: 12 }} />
-                <StyledButton variant="primary" onPress={handleAdd} disabled={!title.trim() || !icon.trim()}>{editingId ? 'Save' : 'Add'}</StyledButton>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        <EditRouteModal 
+            visible={open} 
+            onClose={() => setOpen(false)} 
+            onSave={handleSaveRoute}
+            initialTitle={editingItem?.title}
+            initialSubtitle={editingItem?.subtitle}
+            initialIcon={editingItem?.icon}
+            isEditing={!!editingId}
+        />
 
         <AddRoutePanel 
           visible={addPanelVisible} 
-          onClose={() => { setAddPanelVisible(false); setActiveRouteId(null); }} 
+          onClose={() => { setAddPanelVisible(false); }} 
           onSelect={handleAddPanelSelect} 
         />
 
         <GridReferenceModal 
             visible={referenceModalVisible} 
-            onClose={() => { setReferenceModalVisible(false); setActiveRouteId(null); }}
+            onClose={() => { setReferenceModalVisible(false); }}
             onAdd={handleAddPoint}
         />
 
         <ProjectPointModal 
             visible={projectModalVisible} 
-            onClose={() => { setProjectModalVisible(false); setActiveRouteId(null); }}
+            onClose={() => { setProjectModalVisible(false); }}
             onAdd={handleAddPoint}
         />
 
         <SavedRoutesModal 
             visible={savedRoutesModalVisible} 
-            onClose={() => { setSavedRoutesModalVisible(false); setActiveRouteId(null); }}
-            onSelect={handleAddSavedRoute}
+            onClose={() => { setSavedRoutesModalVisible(false); }}
+            onSelectRoute={handleAddSavedRoute}
+            onSelectLocation={handleAddSavedLocation}
         />
       </ThemedView>
     </SafeAreaView>
@@ -356,9 +309,5 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 12, borderRadius: 8, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
   cardLeft: { width: 48, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1 },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  modalContainer: { width: '90%', backgroundColor: 'white', padding: 16, borderRadius: 8 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, marginTop: 8 },
-  modalRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
-  error: { color: 'red', marginTop: 8, marginBottom: 4 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
 });
