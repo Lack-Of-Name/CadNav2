@@ -198,7 +198,6 @@ export default function SettingsScreen() {
               style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
               placeholder="e.g. -1.23"
               placeholderTextColor={String(placeholderColor)}
-              keyboardType="numeric"
               value={inputConvergence}
               onChangeText={setInputConvergence}
               autoFocus

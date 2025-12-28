@@ -109,26 +109,6 @@ export default convertBearing;
 export { getMagneticDeclination } from './declination';
 
 /**
- * Compute grid convergence (degrees) for a given latitude/longitude and UTM zone.
- * If `zone` is omitted the UTM zone for the longitude will be used.
- *
- * Formula (approximate, suitable for small areas):
- *   convergence = atan( sin(lambda - lambda0) * tan(phi) )
- * where lambda/lambda0 are longitudes (radians) and phi is latitude (radians).
- */
-export function computeGridConvergence(lat: number, lon: number, zone?: number): number {
-  // determine UTM zone if not provided
-  const z = zone ?? Math.floor((lon + 180) / 6) + 1;
-  const lambda = (lon * Math.PI) / 180;
-  const lambda0Deg = z * 6 - 183; // central meridian
-  const lambda0 = (lambda0Deg * Math.PI) / 180;
-  const phi = (lat * Math.PI) / 180;
-
-  const gamma = Math.atan(Math.sin(lambda - lambda0) * Math.tan(phi));
-  return (gamma * 180) / Math.PI;
-}
-
-/**
  * Query magnetic declination (degrees) at the given location and date.
  * Attempts to use NOAA's Geomag web service. Returns 0 on failure.
  *
