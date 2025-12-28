@@ -135,12 +135,11 @@ export default function RoutesScreen() {
         <View style={[styles.card, { backgroundColor: cardBg, borderColor, borderWidth: 1, alignSelf: 'center', width: '98%' }]}>
           <Collapsible
             header={
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
-                <View style={{ flex: 1 }}>
-                  <ThemedText type="defaultSemiBold">Grid</ThemedText>
-                  <ThemedText>Map grid overlays and origin</ThemedText>
+                <View style={{ flexDirection: 'column', justifyContent: 'center', minHeight: 48, paddingVertical: 2 }}>
+                  <ThemedText type="defaultSemiBold" style={{ lineHeight: 22 }}>Grid</ThemedText>
+                  <ThemedText style={{ lineHeight: 20 }}>Map grid overlays and origin</ThemedText>
+                  <ThemedText style={{ lineHeight: 20 }}>(Will not show until zoomed in enough)</ThemedText>
                 </View>
-              </View>
             }
           >
             <View style={styles.gridRow}>
@@ -171,7 +170,7 @@ export default function RoutesScreen() {
               <ThemedText>{gridOriginLabel}</ThemedText>
             </View>
 
-            <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+            <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 12 }}>
               <StyledButton
                 variant="secondary"
                 onPress={() => {
@@ -182,11 +181,10 @@ export default function RoutesScreen() {
                   void setSetting('mapGridOrigin', { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude });
                 }}
                 disabled={!mapGridEnabled}
+                style={{ marginBottom: 8 }}
               >
                 Use current
               </StyledButton>
-
-              <View style={{ width: 12 }} />
 
               <StyledButton
                 variant="secondary"
@@ -195,18 +193,9 @@ export default function RoutesScreen() {
                   void setSetting('mapGridOrigin', { latitude: selectedCheckpoint.latitude, longitude: selectedCheckpoint.longitude });
                 }}
                 disabled={!mapGridEnabled || !selectedCheckpoint}
+                style={{ marginBottom: 8 }}
               >
-                Use selected
-              </StyledButton>
-
-              <View style={{ width: 12 }} />
-
-              <StyledButton
-                variant="secondary"
-                onPress={() => void setSetting('mapGridOrigin', null)}
-                disabled={!mapGridEnabled || !mapGridOrigin}
-              >
-                Clear
+                Select point
               </StyledButton>
             </View>
 
@@ -233,20 +222,19 @@ export default function RoutesScreen() {
                     </View>
                   }
                 >
-                  <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  <View style={{ marginTop: 8, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 12 }}>
                     <StyledButton
                       variant="primary"
                       onPress={() => {
                         void requestPlacementMode();
                         router.push('/');
                       }}
+                      style={{ marginBottom: 8 }}
                     >
                       Add
                     </StyledButton>
-                    <View style={{ width: 12 }} />
-                    <StyledButton variant="secondary" onPress={() => handleEdit(item)}>Edit</StyledButton>
-                    <View style={{ width: 12 }} />
-                    <StyledButton variant="secondary" onPress={() => handleRemove(item.id)}>Remove</StyledButton>
+                    <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={{ marginBottom: 8 }}>Edit</StyledButton>
+                    <StyledButton variant="secondary" onPress={() => handleRemove(item.id)} style={{ marginBottom: 8 }}>Remove</StyledButton>
                   </View>
                 </Collapsible>
               </View>
