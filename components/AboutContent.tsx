@@ -95,7 +95,7 @@ export default function AboutContent() {
       <View style={styles.section}>
         <ThemedText style={styles.sectionTitle}>Authors</ThemedText>
         <Pressable onPress={() => open('https://github.com/Lack-Of-Name')}>
-          <ThemedText type="link" style={styles.link}>Lack-Of-Name — https://github.com/Lack-Of-Name</ThemedText>
+          <ThemedText type="link" style={styles.link}>Scott Webster — https://github.com/Lack-Of-Name</ThemedText>
         </Pressable>
         <Pressable onPress={() => open('https://github.com/aellul27')}>
           <ThemedText type="link" style={styles.link}>Alexander Ellul — https://github.com/aellul27</ThemedText>
