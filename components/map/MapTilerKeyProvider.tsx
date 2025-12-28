@@ -184,8 +184,28 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
           );
         });
       } else {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        return status === 'granted';
+          const { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            if (Platform.OS === 'android') {
+              try {
+                // Prompt user to enable high-accuracy network provider (Google Play services).
+                // Resolves when the user accepts; rejects if denied or unavailable.
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore: may not exist on all SDK versions
+                await Location.enableNetworkProviderAsync();
+              } catch (err: any) {
+                // Show the location modal so user can open settings or retry.
+                setLocationModalVisible(true);
+                void showAlert({
+                  title: 'High accuracy location',
+                  message:
+                    'Enabling high accuracy (Google Play services) improves location quality. Please enable it in settings or retry.',
+                });
+              }
+            }
+            return true;
+          }
+          return false;
       }
     } catch (err) {
       void showAlert({ title: 'MapTiler requestLocationPermission', message: String(err) });

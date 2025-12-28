@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import AboutContent from '@/components/AboutContent';
 import { alert } from '@/components/alert';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import AboutContent from '@/components/AboutContent';
 import StyledButton from '@/components/ui/StyledButton';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
@@ -16,11 +16,19 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
-  const { angleUnit, mapHeading, setSetting } = useSettings();
+  const safeBg = useThemeColor({}, 'background');
+  const { angleUnit, mapHeading, gridConvergence, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
   const [infoOpen, setInfoOpen] = useState(false);
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const placeholderColor = useThemeColor({}, 'icon');
+
+  const [inputConvergence, setInputConvergence] = useState<string>('');
+  useEffect(() => {
+    setInputConvergence(gridConvergence != null ? String(gridConvergence) : '');
+  }, [gridConvergence]);
 
   const isMils = angleUnit === 'mils';
   const isTrue = mapHeading === 'true';
@@ -39,8 +47,8 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ThemedView style={styles.container}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: safeBg }]}> 
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <View style={styles.headerRow}>
           <ThemedText type="title">Settings</ThemedText>
           <Pressable
@@ -53,7 +61,7 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
 
-        <ThemedView style={styles.section}>
+          <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Angle Units</ThemedText>
           <View style={styles.row}>
             <ThemedText type="defaultSemiBold">Display angles in mils</ThemedText>
@@ -69,6 +77,45 @@ export default function SettingsScreen() {
           </View>
           <ThemedText>
             Current: {isMils ? 'Mils (6400)' : 'Degrees (360°)'}
+          </ThemedText>
+        </ThemedView>
+
+        <ThemedView style={styles.section}>
+          <ThemedText type="subtitle">Grid Convergence</ThemedText>
+          <ThemedText>
+            Grid convergence is the angle between true north and grid north for a map sheet. You can
+            usually find it printed on the back of your topographic map. Enter the convergence in
+            degrees (positive when grid north is east of true north) and save — the value will be
+            used to convert between grid and magnetic bearings.
+          </ThemedText>
+          <View style={[styles.row, { marginTop: 8 }]}>
+            <TextInput
+              style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
+              placeholder="e.g. -1.23"
+              placeholderTextColor={String(placeholderColor)}
+              keyboardType="numeric"
+              value={typeof inputConvergence === 'string' ? inputConvergence : inputConvergence}
+              onChangeText={setInputConvergence}
+            />
+            <StyledButton
+              variant="primary"
+              onPress={async () => {
+                const v = inputConvergence.trim();
+                const n = parseFloat(v);
+                if (!v) {
+                  await setSetting('gridConvergence', null);
+                } else if (!Number.isFinite(n)) {
+                  await alert({ title: 'Invalid', message: 'Please enter a valid number for convergence.' });
+                } else {
+                  await setSetting('gridConvergence', n);
+                }
+              }}
+            >
+              Save
+            </StyledButton>
+          </View>
+          <ThemedText>
+            Current: {gridConvergence != null ? `${gridConvergence}°` : 'Not set'}
           </ThemedText>
         </ThemedView>
 
@@ -115,7 +162,7 @@ export default function SettingsScreen() {
             </ThemedView>
           </View>
         </Modal>
-      </ThemedView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -125,7 +172,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    flex: 1,
     padding: 16,
     gap: 16,
   },
@@ -138,9 +184,19 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 16,
   },
+  scroll: {
+    flex: 1,
+  },
   section: {
     paddingVertical: 12,
     gap: 10,
+  },
+  input: {
+    borderWidth: 1,
+    padding: 8,
+    borderRadius: 6,
+    minWidth: 120,
+    marginRight: 8,
   },
   row: {
     flexDirection: 'row',

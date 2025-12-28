@@ -67,6 +67,18 @@ const SETTINGS_DEFS = {
     default: false,
     parse: (raw: unknown) => raw === true,
   },
+  gridConvergence: {
+    default: null as number | null,
+    parse: (raw: unknown) => {
+      if (raw == null) return null;
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+      if (typeof raw === 'string') {
+        const n = parseFloat(raw);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    },
+  },
 } as const;
 
 const SETTING_KEYS = Object.keys(SETTINGS_DEFS) as Array<keyof typeof SETTINGS_DEFS>;
@@ -80,6 +92,7 @@ export type Settings = {
   mapGridSubdivisionsEnabled: boolean;
   mapGridOrigin: { latitude: number; longitude: number } | null;
   mapGridNumbersEnabled: boolean;
+  gridConvergence: number | null;
 };
 
 type PersistedRecord = Record<string, unknown>;
@@ -99,6 +112,12 @@ function buildDefaultSettings(): Settings {
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.default,
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
+    gridConvergence: SETTINGS_DEFS.gridConvergence.default,
+    mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.default,
+    mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.default,
+    mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
+    mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
+    gridConvergence: SETTINGS_DEFS.gridConvergence.default,
   } as Settings;
 }
 
@@ -110,6 +129,12 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),
+    gridConvergence: SETTINGS_DEFS.gridConvergence.parse(persisted ? persisted['gridConvergence'] : undefined),
+    mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.parse(persisted ? persisted['mapGridEnabled'] : undefined),
+    mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
+    mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),
+    mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),
+    gridConvergence: SETTINGS_DEFS.gridConvergence.parse(persisted ? persisted['gridConvergence'] : undefined),
   } as Settings;
 }
 

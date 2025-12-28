@@ -1,22 +1,35 @@
-import { computeGridConvergence, getMagneticDeclination } from '@/components/map/converter';
+import { degreesToMils, getMagneticDeclination } from '@/components/map/converter';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useGPS } from '@/hooks/gps';
+import { useSettings } from '@/hooks/settings';
 import Constants from 'expo-constants';
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 export default function AboutContent() {
   const { lastLocation } = useGPS();
+  const { angleUnit, gridConvergence } = useSettings();
 
   const [declination, setDeclination] = useState<number | null>(null);
-  const [convergence, setConvergence] = useState<number | null>(null);
+
+  const formatAngle = (v: number | null) => {
+    if (v == null) return '—';
+    if (angleUnit === 'mils') {
+      return `${Math.round(degreesToMils(v, { normalize: false }))} mils`;
+    }
+    return `${v.toFixed(2)}°`;
+  };
+
+  const formatMeters = (v: number | null | undefined) => {
+    if (v == null) return '—';
+    return v < 1 ? `±${v.toFixed(1)} m` : `±${Math.round(v)} m`;
+  };
 
   useEffect(() => {
     let active = true;
     if (!lastLocation) {
       setDeclination(null);
-      setConvergence(null);
       return;
     }
 
@@ -29,13 +42,6 @@ export default function AboutContent() {
         if (active) setDeclination(d);
       } catch {
         if (active) setDeclination(null);
-      }
-
-      try {
-        const g = computeGridConvergence(lat, lon);
-        if (active) setConvergence(g);
-      } catch {
-        if (active) setConvergence(null);
       }
     })();
 
@@ -62,12 +68,13 @@ export default function AboutContent() {
           <ThemedView>
             <ThemedText style={styles.mono}>Latitude: {String(lastLocation.coords.latitude)}</ThemedText>
             <ThemedText style={styles.mono}>Longitude: {String(lastLocation.coords.longitude)}</ThemedText>
-            <ThemedText style={styles.mono}>Accuracy: {lastLocation.coords.accuracy ?? '—'}</ThemedText>
+            <ThemedText style={styles.mono}>Accuracy: {formatMeters(lastLocation.coords.accuracy)}</ThemedText>
             <ThemedText style={styles.mono}>Altitude: {lastLocation.coords.altitude ?? '—'}</ThemedText>
             <ThemedText style={styles.mono}>Magnetic heading: {lastLocation.coords.magHeading ?? '—'}</ThemedText>
             <ThemedText style={styles.mono}>True heading: {lastLocation.coords.trueHeading ?? '—'}</ThemedText>
-            <ThemedText style={styles.mono}>Declination: {declination != null ? `${declination.toFixed(2)}°` : '—'}</ThemedText>
-            <ThemedText style={styles.mono}>Grid convergence: {convergence != null ? `${convergence.toFixed(2)}°` : '—'}</ThemedText>
+            <ThemedText style={styles.mono}>Declination: {formatAngle(declination)}</ThemedText>
+            <ThemedText style={styles.mono}>Grid convergence: {formatAngle(gridConvergence)}</ThemedText>
+            <ThemedText style={styles.mono}>Grid to magnetic: {declination != null && gridConvergence != null ? formatAngle(declination - gridConvergence) : '—'}</ThemedText>
             <ThemedText style={styles.mono}>Timestamp: {new Date(lastLocation.timestamp).toISOString()}</ThemedText>
           </ThemedView>
         ) : (
@@ -101,10 +108,10 @@ export default function AboutContent() {
 const styles = StyleSheet.create({
   card: { backgroundColor: 'transparent' },
   title: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
-  subtitle: { marginBottom: 12, color: '#666' },
+  subtitle: { marginBottom: 12 },
   section: { marginTop: 12 },
   sectionTitle: { fontSize: 14, fontWeight: '700', marginBottom: 6 },
   mono: { fontFamily: 'monospace', fontSize: 13 },
-  text: { fontSize: 13, color: '#222' },
-  link: { color: '#007AFF', fontSize: 13, marginBottom: 6 },
+  text: { fontSize: 13 },
+  link: { fontSize: 13, marginBottom: 6 },
 });
