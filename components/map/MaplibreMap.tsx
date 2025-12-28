@@ -5,20 +5,17 @@ import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { Camera, LineLayer, MapView, ShapeSource, SymbolLayer, UserLocation } from "@maplibre/maplibre-react-native";
+import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 import { CompassButton, getCompassHeadingDeg, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
-import { buildMapGridGeoJSON, buildMapGridNumbersGeoJSON, buildMapGridSubdivisionsGeoJSON } from './mapGrid';
-
-const GRID_LINE_COLOR = '#111111';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin } = useSettings();
+  const { angleUnit, mapHeading } = useSettings();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -101,27 +98,9 @@ export default function MapLibreMap() {
 
   const emptyGeo = { type: 'FeatureCollection', features: [] } as any;
 
-  const showGrid = Boolean(mapGridEnabled && visibleBounds && typeof zoomLevel === 'number' && zoomLevel >= 12);
+  // grid support removed
+  // grid logic removed
 
-  const gridShape = (() => {
-    if (!showGrid) return emptyGeo;
-    const [[west, south], [east, north]] = visibleBounds as [[number, number], [number, number]];
-    return buildMapGridGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
-  })();
-
-  const gridMinorShape = (() => {
-    if (!showGrid || !mapGridSubdivisionsEnabled) return emptyGeo;
-    const [[west, south], [east, north]] = visibleBounds as [[number, number], [number, number]];
-    const geo = buildMapGridSubdivisionsGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
-    return !geo?.features?.length ? emptyGeo : geo;
-  })();
-
-  const gridLabelShape = (() => {
-    if (!showGrid || !mapGridNumbersEnabled) return emptyGeo;
-    const [[west, south], [east, north]] = visibleBounds as [[number, number], [number, number]];
-    const geo = buildMapGridNumbersGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
-    return !geo?.features?.length ? emptyGeo : geo;
-  })();
 
   return (
     <ThemedView style={styles.page}>
@@ -186,41 +165,7 @@ export default function MapLibreMap() {
           }}
         />
 
-        <ShapeSource id="map-grid-source" shape={gridShape}>
-            <LineLayer
-              id="map-grid-lines"
-              style={{
-                lineColor: GRID_LINE_COLOR,
-                lineOpacity: 0.55,
-                lineWidth: 2,
-              }}
-            />
-        </ShapeSource>
-
-        <ShapeSource id="map-grid-minor-source" shape={gridMinorShape}>
-            <LineLayer
-              id="map-grid-minor-lines"
-              style={{
-                lineColor: GRID_LINE_COLOR,
-                lineOpacity: 0.12,
-                lineWidth: 1.5,
-              }}
-            />
-        </ShapeSource>
-
-        <ShapeSource id="map-grid-labels-source" shape={gridLabelShape}>
-          <SymbolLayer
-            id="map-grid-labels"
-            style={{
-              textField: ['get', 'label'],
-              textSize: 12,
-              textColor: GRID_LINE_COLOR,
-              textHaloColor: '#FFFFFF',
-              textHaloWidth: 1,
-              textAllowOverlap: true,
-            }}
-          />
-        </ShapeSource>
+        {/* grid removed */}
 
         {/* checkpoints removed */}
 

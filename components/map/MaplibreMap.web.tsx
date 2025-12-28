@@ -12,9 +12,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
-import { buildMapGridGeoJSON, buildMapGridNumbersGeoJSON, buildMapGridSubdivisionsGeoJSON } from './mapGrid';
-
-const GRID_LINE_COLOR = '#111111';
+// map grid utilities removed
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
@@ -26,7 +24,7 @@ export default function MapLibreMap() {
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin } = useSettings();
+  const { angleUnit, mapHeading } = useSettings();
   // checkpoints removed
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -181,215 +179,7 @@ export default function MapLibreMap() {
     };
   }, [apiKey, loading]);
 
-  // Map grid overlay (GeoJSON source + line layer)
-  useEffect(() => {
-    const m = map.current;
-    if (!m) return;
-
-    const majorSourceId = 'map-grid-source';
-    const majorLayerId = 'map-grid-layer';
-    const minorSourceId = 'map-grid-minor-source';
-    const minorLayerId = 'map-grid-minor-layer';
-    const labelSourceId = 'map-grid-labels-source';
-    const labelLayerId = 'map-grid-labels-layer';
-
-    const ensureAdded = () => {
-      if (!m) return;
-      if (!mapGridEnabled) return;
-      if (!m.getSource(majorSourceId)) {
-        m.addSource(majorSourceId, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        } as any);
-      }
-        if (!m.getLayer(majorLayerId)) {
-        m.addLayer({
-          id: majorLayerId,
-          type: 'line',
-          source: majorSourceId,
-          paint: {
-            'line-color': GRID_LINE_COLOR,
-            'line-opacity': 0.55,
-            'line-width': 2,
-          },
-        } as any);
-      } else {
-        try {
-          m.setPaintProperty(majorLayerId, 'line-color', GRID_LINE_COLOR);
-        } catch {
-          // ignore
-        }
-      }
-
-      if (!m.getSource(minorSourceId)) {
-        m.addSource(minorSourceId, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        } as any);
-      }
-      if (!m.getLayer(minorLayerId)) {
-        m.addLayer({
-          id: minorLayerId,
-          type: 'line',
-          source: minorSourceId,
-          paint: {
-            'line-color': GRID_LINE_COLOR,
-            'line-opacity': 0.12,
-            'line-width': 1.5,
-          },
-        } as any);
-      } else {
-        try {
-          m.setPaintProperty(minorLayerId, 'line-color', GRID_LINE_COLOR);
-        } catch {
-          // ignore
-        }
-      }
-
-      if (!m.getSource(labelSourceId)) {
-        m.addSource(labelSourceId, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        } as any);
-      }
-      if (!m.getLayer(labelLayerId)) {
-        m.addLayer({
-          id: labelLayerId,
-          type: 'symbol',
-          source: labelSourceId,
-          layout: {
-            'text-field': ['get', 'label'],
-            'text-size': 12,
-            'text-allow-overlap': true,
-          },
-          paint: {
-            'text-color': GRID_LINE_COLOR,
-            'text-halo-color': 'rgba(255,255,255,0.85)',
-            'text-halo-width': 1,
-          },
-        } as any);
-      }
-    };
-
-    const updateGrid = () => {
-      if (!m) return;
-      if (!mapGridEnabled) return;
-      const majorSrc = m.getSource(majorSourceId) as any;
-      const minorSrc = m.getSource(minorSourceId) as any;
-      const labelSrc = m.getSource(labelSourceId) as any;
-      if (!majorSrc || !minorSrc || !labelSrc) return;
-
-      const safeSet = (src: any, data: any) => {
-        try {
-          src.setData(data as any);
-        } catch {
-          // ignore
-        }
-      };
-
-      const b = m.getBounds();
-      const west = b.getWest();
-      const south = b.getSouth();
-      const east = b.getEast();
-      const north = b.getNorth();
-      const z = typeof m.getZoom === 'function' ? m.getZoom() : 1;
-      const origin = mapGridOrigin ? { latitude: mapGridOrigin.latitude, longitude: mapGridOrigin.longitude } : null;
-
-      // Only show grid at zoom >= 15
-      if (typeof z !== 'number' || z < 12) {
-        const empty = { type: 'FeatureCollection', features: [] } as any;
-        safeSet(majorSrc, empty);
-        safeSet(minorSrc, empty);
-        safeSet(labelSrc, empty);
-        return;
-      }
-
-      const geo = buildMapGridGeoJSON({ west, south, east, north }, z, origin);
-      const minorGeo = mapGridSubdivisionsEnabled ? buildMapGridSubdivisionsGeoJSON({ west, south, east, north }, z, origin) : { type: 'FeatureCollection', features: [] };
-      const labelGeo = mapGridNumbersEnabled ? buildMapGridNumbersGeoJSON({ west, south, east, north }, z, origin) : { type: 'FeatureCollection', features: [] };
-
-      safeSet(majorSrc, geo);
-      safeSet(minorSrc, minorGeo);
-      safeSet(labelSrc, labelGeo);
-    };
-
-    const remove = () => {
-      if (!m) return;
-      try {
-        if (m.getLayer(minorLayerId)) m.removeLayer(minorLayerId);
-      } catch {
-        // ignore
-      }
-      try {
-        if (m.getLayer(majorLayerId)) m.removeLayer(majorLayerId);
-      } catch {
-        // ignore
-      }
-
-      try {
-        if (m.getLayer(labelLayerId)) m.removeLayer(labelLayerId);
-      } catch {
-        // ignore
-      }
-
-      try {
-        if (m.getSource(minorSourceId)) m.removeSource(minorSourceId);
-      } catch {
-        // ignore
-      }
-
-      try {
-        if (m.getSource(labelSourceId)) m.removeSource(labelSourceId);
-      } catch {
-        // ignore
-      }
-
-      try {
-        if (m.getSource(majorSourceId)) m.removeSource(majorSourceId);
-      } catch {
-        // ignore
-      }
-    };
-
-    const onMove = () => updateGrid();
-
-    const onLoad = () => {
-      if (!m) return;
-      if (!mapGridEnabled) {
-        remove();
-        return;
-      }
-      ensureAdded();
-      updateGrid();
-    };
-
-    if (mapGridEnabled) {
-      if (m.isStyleLoaded()) {
-        ensureAdded();
-        updateGrid();
-      } else {
-        m.once('load', onLoad);
-      }
-      // Update grid continuously while the map is moving/zooming so lines follow camera.
-      m.on('move', onMove);
-      m.on('zoom', onMove);
-      m.on('movestart', onMove);
-      m.on('zoomstart', onMove);
-    } else {
-      remove();
-    }
-
-    return () => {
-      try {
-        m.off('move', onMove);
-        m.off('zoom', onMove);
-        m.off('movestart', onMove);
-        m.off('zoomstart', onMove);
-      } catch {
-        // ignore
-      }
-    };
-  }, [mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin]);
+  // grid overlay removed
 
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
