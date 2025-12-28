@@ -292,7 +292,7 @@ export default function MapLibreMap() {
       const origin = mapGridOrigin ? { latitude: mapGridOrigin.latitude, longitude: mapGridOrigin.longitude } : null;
 
       // Only show grid at zoom >= 15
-      if (typeof z !== 'number' || z < 15) {
+      if (typeof z !== 'number' || z < 12) {
         const empty = { type: 'FeatureCollection', features: [] } as any;
         safeSet(majorSrc, empty);
         safeSet(minorSrc, empty);

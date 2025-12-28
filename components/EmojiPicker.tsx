@@ -1,10 +1,10 @@
-import { Modal, StyleSheet, TouchableOpacity, View, FlatList, TextInput } from 'react-native';
+import { ALL_EMOJIS } from '@/constants/emojis';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useMemo, useState } from 'react';
+import { FlatList, Modal, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { IconSymbol } from './ui/icon-symbol';
-import { ALL_EMOJIS } from '@/constants/emojis';
-import { useState, useMemo } from 'react';
 
 type EmojiPickerProps = {
   visible: boolean;

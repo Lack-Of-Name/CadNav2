@@ -1,11 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import { EmojiPicker } from './EmojiPicker';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
 import StyledButton from './ui/StyledButton';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import { EmojiPicker } from './EmojiPicker';
 
 type EditRouteModalProps = {
   visible: boolean;

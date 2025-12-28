@@ -138,11 +138,11 @@ export default function MapLibreMap() {
         onRegionDidChange={(ev: any) => {
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
-
           // Keep bounds updated for the grid overlay.
           const getBounds = mapRef.current?.getVisibleBounds;
           if (typeof getBounds === 'function') {
-            Promise.resolve(getBounds.call(mapRef.current))
+            Promise.resolve()
+              .then(() => getBounds.call ? getBounds.call(mapRef.current) : getBounds())
               .then((b: any) => {
                 if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
                   setVisibleBounds(b as [[number, number], [number, number]]);
@@ -154,19 +154,23 @@ export default function MapLibreMap() {
           }
         }}
         onRegionIsChanging={(ev: any) => {
-          // Also update continuously while the camera is moving so grid follows the camera.
+          // Update continuously while the camera is moving so grid follows the camera.
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
           const getBounds = mapRef.current?.getVisibleBounds;
           if (typeof getBounds === 'function') {
-            try {
-              const b = getBounds.call(mapRef.current);
-              if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
-                setVisibleBounds(b as [[number, number], [number, number]]);
-              }
-            } catch {
-              // ignore
-            }
+            // Use the same Promise-based approach as onRegionDidChange so both async and sync
+            // implementations of getVisibleBounds are handled consistently.
+            Promise.resolve()
+              .then(() => getBounds.call ? getBounds.call(mapRef.current) : getBounds())
+              .then((b: any) => {
+                if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
+                  setVisibleBounds(b as [[number, number], [number, number]]);
+                }
+              })
+              .catch(() => {
+                // ignore
+              });
           }
         }}
       >

@@ -65,9 +65,13 @@ function originToMercator(origin?: GridOrigin | null) {
   return lonLatToMercatorMeters(origin.longitude, origin.latitude);
 }
 
-function estimateLineCount(rect: { xmin: number; xmax: number; ymin: number; ymax: number }, step: number) {
-  const xLines = Math.max(0, Math.floor((rect.xmax - rect.xmin) / step) + 2);
-  const yLines = Math.max(0, Math.floor((rect.ymax - rect.ymin) / step) + 2);
+function estimateLineCount(
+  rect: { xmin: number; xmax: number; ymin: number; ymax: number },
+  xStep: number,
+  yStep: number
+) {
+  const xLines = Math.max(0, Math.floor((rect.xmax - rect.xmin) / xStep) + 2);
+  const yLines = Math.max(0, Math.floor((rect.ymax - rect.ymin) / yStep) + 2);
   return xLines + yLines;
 }
 
@@ -80,20 +84,28 @@ function buildGridLines(
   const rect = boundsToMercatorRect(bounds);
   const o = originToMercator(origin);
 
-  const startX = o.x + snapDown(rect.xmin - o.x, stepMeters);
-  const endX = o.x + snapUp(rect.xmax - o.x, stepMeters);
+  // Adjust east-west mercator step so that the true ground east-west
+  // distance at the map's center latitude equals `stepMeters`.
+  const centerY = (rect.ymin + rect.ymax) / 2;
+  const centerLat = mercatorMetersToLonLat(0, centerY)[1];
+  const latRad = (centerLat * Math.PI) / 180;
+  const cosLat = Math.max(0.0001, Math.cos(latRad));
+  const xStepMeters = stepMeters / cosLat;
+
+  const startX = o.x + snapDown(rect.xmin - o.x, xStepMeters);
+  const endX = o.x + snapUp(rect.xmax - o.x, xStepMeters);
   const startY = o.y + snapDown(rect.ymin - o.y, stepMeters);
   const endY = o.y + snapUp(rect.ymax - o.y, stepMeters);
 
   const features: GeoJSONFeatureCollection['features'] = [];
 
-  for (let x = startX; x <= endX; x += stepMeters) {
+  for (let x = startX; x <= endX; x += xStepMeters) {
     const a = mercatorMetersToLonLat(x, rect.ymin);
     const b = mercatorMetersToLonLat(x, rect.ymax);
     features.push({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: [a, b] },
-      properties: { kind: 'grid', axis: 'x', stepMeters, ...properties },
+      properties: { kind: 'grid', axis: 'x', stepMeters, xStepMeters, ...properties },
     });
   }
 
@@ -114,12 +126,20 @@ function buildGridLinePositions(bounds: LonLatBounds, stepMeters: number, origin
   const rect = boundsToMercatorRect(bounds);
   const o = originToMercator(origin);
 
-  const startX = o.x + snapDown(rect.xmin - o.x, stepMeters);
-  const endX = o.x + snapUp(rect.xmax - o.x, stepMeters);
+  // Compute latitude at map center and adjust x-step so horizontal
+  // spacing corresponds to true east-west meters.
+  const centerY = (rect.ymin + rect.ymax) / 2;
+  const centerLat = mercatorMetersToLonLat(0, centerY)[1];
+  const latRad = (centerLat * Math.PI) / 180;
+  const cosLat = Math.max(0.0001, Math.cos(latRad));
+  const xStepMeters = stepMeters / cosLat;
+
+  const startX = o.x + snapDown(rect.xmin - o.x, xStepMeters);
+  const endX = o.x + snapUp(rect.xmax - o.x, xStepMeters);
   const startY = o.y + snapDown(rect.ymin - o.y, stepMeters);
   const endY = o.y + snapUp(rect.ymax - o.y, stepMeters);
 
-  return { rect, o, startX, endX, startY, endY };
+  return { rect, o, startX, endX, startY, endY, xStepMeters };
 }
 
 function chooseStepMeters(bounds: LonLatBounds, zoom: number, maxLines: number) {
@@ -134,7 +154,7 @@ export function buildMapGridGeoJSON(bounds: LonLatBounds, zoom: number, origin?:
 
 export function buildMapGridNumbersGeoJSON(bounds: LonLatBounds, zoom: number, origin?: GridOrigin | null): GeoJSONFeatureCollection {
   const stepMeters = chooseStepMeters(bounds, zoom, 320);
-  const { rect, o, startX, endX, startY, endY } = buildGridLinePositions(bounds, stepMeters, origin);
+  const { rect, o, startX, endX, startY, endY, xStepMeters } = buildGridLinePositions(bounds, stepMeters, origin);
 
   // Hide labels when zoomed too far out; they start to clutter.
   // "Looks ok until about 32km on each side" -> about ~64km total span.
@@ -150,25 +170,33 @@ export function buildMapGridNumbersGeoJSON(bounds: LonLatBounds, zoom: number, o
   const features: GeoJSONFeatureCollection['features'] = [];
 
   // Vertical lines: label at (x, top)
-  for (let x = startX; x <= endX; x += stepMeters) {
-    const km = Math.round((x - o.x) / 1000);
-    const pt = mercatorMetersToLonLat(x, rect.ymax - inset);
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: pt },
-      properties: { kind: 'gridLabel', axis: 'x', stepMeters, km, label: String(km) },
-    });
+  {
+    const startIndex = Math.round((startX - o.x) / xStepMeters);
+    let idx = startIndex;
+    for (let x = startX; x <= endX; x += xStepMeters, idx++) {
+      const km = Math.round(idx * (stepMeters / 1000));
+      const pt = mercatorMetersToLonLat(x, rect.ymax - inset);
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: pt },
+        properties: { kind: 'gridLabel', axis: 'x', stepMeters, km, label: String(km) },
+      });
+    }
   }
 
   // Horizontal lines: label at (right, y)
-  for (let y = startY; y <= endY; y += stepMeters) {
-    const km = Math.round((y - o.y) / 1000);
-    const pt = mercatorMetersToLonLat(rect.xmax - inset, y);
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: pt },
-      properties: { kind: 'gridLabel', axis: 'y', stepMeters, km, label: String(km) },
-    });
+  {
+    const startIndex = Math.round((startY - o.y) / stepMeters);
+    let idx = startIndex;
+    for (let y = startY; y <= endY; y += stepMeters, idx++) {
+      const km = Math.round(idx * (stepMeters / 1000));
+      const pt = mercatorMetersToLonLat(rect.xmax - inset, y);
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: pt },
+        properties: { kind: 'gridLabel', axis: 'y', stepMeters, km, label: String(km) },
+      });
+    }
   }
 
   return { type: 'FeatureCollection', features };
@@ -186,7 +214,14 @@ export function buildMapGridSubdivisionsGeoJSON(
   const stepMeters = Math.max(100, Math.round(majorStep / 10));
 
   const rect = boundsToMercatorRect(bounds);
-  if (estimateLineCount(rect, stepMeters) > 1000) {
+  // Adjust x-step for center latitude when estimating total line count.
+  const centerY = (rect.ymin + rect.ymax) / 2;
+  const centerLat = mercatorMetersToLonLat(0, centerY)[1];
+  const latRad = (centerLat * Math.PI) / 180;
+  const cosLat = Math.max(0.0001, Math.cos(latRad));
+  const xStepMeters = stepMeters / cosLat;
+
+  if (estimateLineCount(rect, xStepMeters, stepMeters) > 1000) {
     return { type: 'FeatureCollection', features: [] };
   }
 

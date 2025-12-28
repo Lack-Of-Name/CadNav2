@@ -3,7 +3,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Switch, View } from 'react-native';
+import { FlatList, Modal, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AddRoutePanel } from '@/components/AddRoutePanel';
@@ -38,6 +38,11 @@ export default function RoutesScreen() {
   const [referenceModalVisible, setReferenceModalVisible] = useState(false);
   const [projectModalVisible, setProjectModalVisible] = useState(false);
   const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
+  const [originModalVisible, setOriginModalVisible] = useState(false);
+  const [originChoice, setOriginChoice] = useState<'origin' | 'reference'>('origin');
+  const [easting, setEasting] = useState('');
+  const [northing, setNorthing] = useState('');
+  const [originError, setOriginError] = useState<string | null>(null);
 
   function handleAddPanelSelect(option: string) {
     setAddPanelVisible(false);
@@ -77,6 +82,51 @@ export default function RoutesScreen() {
       addCheckpoint(location.latitude, location.longitude);
       setSavedRoutesModalVisible(false);
       router.push('/');
+  }
+
+  function parseGridComponent(s: string): number | null {
+    // Accept only 3 or 4 digits. First two digits are km, remaining digits are decimal part of km.
+    if (!/^[0-9]{3,4}$/.test(s)) return null;
+    const kmPart = parseInt(s.slice(0, 2), 10);
+    const decPart = s.slice(2);
+    const dec = decPart ? Number('0.' + decPart) : 0;
+    return kmPart + dec;
+  }
+
+  function handleConfirmOrigin() {
+    if (!lastLocation) {
+      setOriginError('Current location unavailable');
+      return;
+    }
+
+    const lat = lastLocation.coords.latitude;
+    const lon = lastLocation.coords.longitude;
+
+    if (originChoice === 'origin') {
+      void setSetting('mapGridOrigin', { latitude: lat, longitude: lon });
+      setOriginModalVisible(false);
+      return;
+    }
+
+    // reference chosen
+    const e = parseGridComponent(easting);
+    const n = parseGridComponent(northing);
+    if (e === null || n === null) {
+      setOriginError('Eastings and northings must be 3 or 4 digits');
+      return;
+    }
+
+    // Convert km offsets to degrees
+    const kmPerDegLat = 111.32; // approximate
+    const kmPerDegLon = 111.32 * Math.cos((lat * Math.PI) / 180);
+
+    // According to spec: if easting is 023, origin is 02.3 km LEFT of current -> longitude decreases
+    const originLon = lon - e / kmPerDegLon;
+    // if northing is 2134, origin is 21.34 km DOWN of current -> latitude decreases
+    const originLat = lat - n / kmPerDegLat;
+
+    void setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
+    setOriginModalVisible(false);
   }
 
   function handleSaveRoute(title: string, subtitle: string, icon: string) {
@@ -128,6 +178,8 @@ export default function RoutesScreen() {
   const cardBg = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const safeBg = useThemeColor({}, 'background');
+  const textColor = useThemeColor({}, 'text');
+  const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
 
   const gridOriginLabel = useMemo(() => {
     if (!mapGridOrigin) return 'None';
@@ -192,7 +244,11 @@ export default function RoutesScreen() {
                     requestLocation();
                     return;
                   }
-                  void setSetting('mapGridOrigin', { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude });
+                  setOriginChoice('origin');
+                  setEasting('');
+                  setNorthing('');
+                  setOriginError(null);
+                  setOriginModalVisible(true);
                 }}
                 disabled={!mapGridEnabled}
                 style={{ marginBottom: 8 }}
@@ -296,6 +352,66 @@ export default function RoutesScreen() {
             onSelectRoute={handleAddSavedRoute}
             onSelectLocation={handleAddSavedLocation}
         />
+
+        <Modal visible={originModalVisible} animationType="slide" transparent={true}>
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalContainer, { backgroundColor: cardBg, borderColor, borderWidth: 1 }]}> 
+              <ThemedText type="title">Use current location as</ThemedText>
+
+              <View style={{ marginTop: 8 }}>
+                <TouchableOpacity onPress={() => setOriginChoice('origin')} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
+                  <View style={[styles.radioOuter, originChoice === 'origin' && styles.radioOuterSelected]}>
+                    {originChoice === 'origin' ? <View style={styles.radioInner} /> : null}
+                  </View>
+                  <ThemedText style={{ marginLeft: 8 }}>Origin (set current as origin)</ThemedText>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setOriginChoice('reference')} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
+                  <View style={[styles.radioOuter, originChoice === 'reference' && styles.radioOuterSelected]}>
+                    {originChoice === 'reference' ? <View style={styles.radioInner} /> : null}
+                  </View>
+                  <ThemedText style={{ marginLeft: 8 }}>Grid reference (enter eastings & northings)</ThemedText>
+                </TouchableOpacity>
+              </View>
+
+              {originChoice === 'reference' ? (
+                <View style={{ marginTop: 8 }}>
+                  <ThemedText type="defaultSemiBold">Eastings</ThemedText>
+                  <TextInput
+                    placeholder="e.g. 023 or 1023"
+                    value={easting}
+                    onChangeText={(t) => { setEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
+                    style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]}
+                    placeholderTextColor={placeholderColor}
+                    maxLength={4}
+                    keyboardType="numeric"
+                  />
+
+                  <ThemedText type="defaultSemiBold" style={{ marginTop: 8 }}>Northings</ThemedText>
+                  <TextInput
+                    placeholder="e.g. 213 or 2134"
+                    value={northing}
+                    onChangeText={(t) => { setNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
+                    style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]}
+                    placeholderTextColor={placeholderColor}
+                    maxLength={4}
+                    keyboardType="numeric"
+                  />
+
+                  <ThemedText style={{ marginTop: 6, fontSize: 12 }}>Enter 3 or 4 digits. First two digits are km; remaining digits are decimals of km.</ThemedText>
+                </View>
+              ) : null}
+
+              {originError ? <ThemedText style={styles.error}>{originError}</ThemedText> : null}
+
+              <View style={styles.modalRow}>
+                <StyledButton variant="secondary" onPress={() => { setOriginModalVisible(false); }}>{'Cancel'}</StyledButton>
+                <View style={{ width: 12 }} />
+                <StyledButton variant="primary" onPress={handleConfirmOrigin}>{'Set'}</StyledButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </ThemedView>
     </SafeAreaView>
   );
@@ -310,4 +426,12 @@ const styles = StyleSheet.create({
   cardLeft: { width: 48, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1 },
   emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  modalContainer: { width: '90%', backgroundColor: 'white', padding: 16, borderRadius: 8 },
+  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, marginTop: 8 },
+  modalRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
+  error: { color: 'red', marginTop: 8, marginBottom: 4 },
+  radioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: '#999', alignItems: 'center', justifyContent: 'center' },
+  radioOuterSelected: { borderColor: '#007AFF' },
+  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#007AFF' },
 });

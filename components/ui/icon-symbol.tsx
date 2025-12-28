@@ -27,6 +27,7 @@ const MAPPING = {
   'book.fill': 'menu-book',
   'folder.fill': 'folder',
   'mappin.and.ellipse': 'add-location',
+  'arrow.up.square.fill': 'arrow-circle-up',
   'star.fill': 'star',
   'xmark': 'close',
   'square.grid.3x3': 'grid-on',
