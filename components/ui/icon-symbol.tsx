@@ -31,6 +31,9 @@ const MAPPING = {
   'star.fill': 'star',
   'xmark': 'close',
   'square.grid.3x3': 'grid-on',
+  'ruler.fill': 'straighten',
+  'map.fill': 'map',
+  'compass.drawing': 'explore',
 } as IconMapping;
 
 /**

@@ -41,6 +41,7 @@ export default function MapLibreMap() {
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [compassOpen, setCompassOpen] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const compassButtonColor = compassOpen ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const initialZoomDone = useRef(false);
   
@@ -145,7 +146,10 @@ export default function MapLibreMap() {
       }
     };
 
-    map.current.on('load', update);
+    map.current.on('load', () => {
+      update();
+      setMapReady(true);
+    });
     map.current.on('move', update);
     map.current.on('zoom', update);
     setTimeout(update, 0);
@@ -428,13 +432,13 @@ export default function MapLibreMap() {
   }, [effectiveLastLocation]);
 
   useEffect(() => {
-    if (effectiveLastLocation && !initialZoomDone.current && map.current) {
+    if (effectiveLastLocation && !initialZoomDone.current && map.current && mapReady) {
       initialZoomDone.current = true;
       const { latitude, longitude } = effectiveLastLocation.coords;
       map.current.flyTo({ center: [longitude, latitude], zoom: 12 });
       setFollowing(true);
     }
-  }, [effectiveLastLocation]);
+  }, [effectiveLastLocation, mapReady]);
 
   useEffect(() => {
     // If lastLocation (or web fallback) is present, cancel any pending clear and update immediately

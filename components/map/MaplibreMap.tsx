@@ -31,6 +31,7 @@ export default function MapLibreMap() {
   const mapRef = React.useRef<any>(null);
   const [following, setFollowing] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
@@ -74,12 +75,12 @@ export default function MapLibreMap() {
   // map press handler removed (placement/checkpoints removed)
 
   useEffect(() => {
-    if (lastLocation && !initialZoomDone.current && cameraRef.current) {
+    if (lastLocation && !initialZoomDone.current && cameraRef.current && cameraReady) {
       initialZoomDone.current = true;
       void centerOnLocation(lastLocation);
       setFollowing(true);
     }
-  }, [lastLocation]);
+  }, [lastLocation, cameraReady]);
 
   useEffect(() => {
     if (!following || !lastLocation || !cameraRef.current) return;
@@ -175,7 +176,10 @@ export default function MapLibreMap() {
         }}
       >
         <Camera
-          ref={cameraRef}
+          ref={(ref) => {
+            cameraRef.current = ref;
+            if (ref) setCameraReady(true);
+          }}
           defaultSettings={{
             centerCoordinate: [0, 0],
             zoomLevel: 1,
