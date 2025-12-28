@@ -24,6 +24,11 @@ const MAPPING = {
   'document.fill': 'description',
   'info.circle': 'info-outline',
   'info.circle.fill': 'info',
+  'book.fill': 'menu-book',
+  'folder.fill': 'folder',
+  'mappin.and.ellipse': 'place',
+  'star.fill': 'star',
+  'xmark': 'close',
 } as IconMapping;
 
 /**
