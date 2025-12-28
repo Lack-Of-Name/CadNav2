@@ -1,5 +1,6 @@
-import React from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { alert } from '@/components/alert';
@@ -13,8 +14,15 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
+  const safeBg = useThemeColor({}, 'background');
   const { angleUnit, mapHeading, setSetting } = useSettings();
+  const { gridConvergence } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
+
+  const [inputConvergence, setInputConvergence] = useState<string>('');
+  useEffect(() => {
+    setInputConvergence(gridConvergence != null ? String(gridConvergence) : '');
+  }, [gridConvergence]);
 
   const isMils = angleUnit === 'mils';
   const isTrue = mapHeading === 'true';
@@ -33,11 +41,12 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ThemedView style={styles.container}>
-        <ThemedText type="title">Settings</ThemedText>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: safeBg }]}> 
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <ThemedView>
+          <ThemedText type="title">Settings</ThemedText>
 
-        <ThemedView style={styles.section}>
+          <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Angle Units</ThemedText>
           <View style={styles.row}>
             <ThemedText type="defaultSemiBold">Display angles in mils</ThemedText>
@@ -53,6 +62,44 @@ export default function SettingsScreen() {
           </View>
           <ThemedText>
             Current: {isMils ? 'Mils (6400)' : 'Degrees (360°)'}
+          </ThemedText>
+        </ThemedView>
+
+        <ThemedView style={styles.section}>
+          <ThemedText type="subtitle">Grid Convergence</ThemedText>
+          <ThemedText>
+            Grid convergence is the angle between true north and grid north for a map sheet. You can
+            usually find it printed on the back of your topographic map. Enter the convergence in
+            degrees (positive when grid north is east of true north) and save — the value will be
+            used to convert between grid and magnetic bearings.
+          </ThemedText>
+          <View style={[styles.row, { marginTop: 8 }]}>
+            <TextInput
+              style={styles.input}
+              placeholder="e.g. -1.23"
+              keyboardType="numeric"
+              value={typeof inputConvergence === 'string' ? inputConvergence : inputConvergence}
+              onChangeText={setInputConvergence}
+            />
+            <StyledButton
+              variant="primary"
+              onPress={async () => {
+                const v = inputConvergence.trim();
+                const n = parseFloat(v);
+                if (!v) {
+                  await setSetting('gridConvergence', null);
+                } else if (!Number.isFinite(n)) {
+                  await alert({ title: 'Invalid', message: 'Please enter a valid number for convergence.' });
+                } else {
+                  await setSetting('gridConvergence', n);
+                }
+              }}
+            >
+              Save
+            </StyledButton>
+          </View>
+          <ThemedText>
+            Current: {gridConvergence != null ? `${gridConvergence}°` : 'Not set'}
           </ThemedText>
         </ThemedView>
 
@@ -84,7 +131,8 @@ export default function SettingsScreen() {
             </StyledButton>
           </View>
         </ThemedView>
-      </ThemedView>
+        </ThemedView>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -94,13 +142,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   container: {
-    flex: 1,
     padding: 16,
     gap: 16,
+  },
+  scroll: {
+    flex: 1,
   },
   section: {
     paddingVertical: 12,
     gap: 10,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ccc',
+    padding: 8,
+    borderRadius: 6,
+    minWidth: 120,
+    marginRight: 8,
   },
   row: {
     flexDirection: 'row',

@@ -45,6 +45,18 @@ const SETTINGS_DEFS = {
     default: 'true' as 'true' | 'magnetic',
     parse: (raw: unknown) => (raw === 'magnetic' ? 'magnetic' : 'true'),
   },
+  gridConvergence: {
+    default: null as number | null,
+    parse: (raw: unknown) => {
+      if (raw == null) return null;
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+      if (typeof raw === 'string') {
+        const n = parseFloat(raw);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    },
+  },
 } as const;
 
 const SETTING_KEYS = Object.keys(SETTINGS_DEFS) as Array<keyof typeof SETTINGS_DEFS>;
@@ -54,6 +66,7 @@ export type MapHeading = 'true' | 'magnetic';
 export type Settings = {
   angleUnit: AngleUnit;
   mapHeading: MapHeading;
+  gridConvergence: number | null;
 };
 
 type PersistedRecord = Record<string, unknown>;
@@ -69,6 +82,7 @@ function buildDefaultSettings(): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.default,
     mapHeading: SETTINGS_DEFS.mapHeading.default,
+    gridConvergence: SETTINGS_DEFS.gridConvergence.default,
   } as Settings;
 }
 
@@ -76,6 +90,7 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.parse(persisted ? persisted['angleUnit'] : undefined),
     mapHeading: SETTINGS_DEFS.mapHeading.parse(persisted ? persisted['mapHeading'] : undefined),
+    gridConvergence: SETTINGS_DEFS.gridConvergence.parse(persisted ? persisted['gridConvergence'] : undefined),
   } as Settings;
 }
 

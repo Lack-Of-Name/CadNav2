@@ -107,9 +107,10 @@ export default function RoutesScreen() {
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({}, 'icon');
+  const safeBg = useThemeColor({}, 'background');
 
   return (
-    <SafeAreaView style={{ flex: 1 }}>
+    <SafeAreaView style={[{ flex: 1, backgroundColor: safeBg }]}> 
       <ThemedView style={styles.container}>
         <View style={styles.headerRow}>
           <ThemedText type="title">Routes</ThemedText>
