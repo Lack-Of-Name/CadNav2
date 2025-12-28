@@ -38,7 +38,8 @@ export function computeGridCornersFromMapBounds(
   origin: LatLon,
   bottomLeft: LatLon,
   topRight: LatLon,
-  step = 1000
+  step = 1000,
+  gridConvergence = 0
 ): {
   offsets: {
     bottomLeft: { easting: number; northing: number };
@@ -47,38 +48,50 @@ export function computeGridCornersFromMapBounds(
 } {
   const originPoint = turf.point([origin.longitude, origin.latitude]);
 
-  const pointBL = turf.point([bottomLeft.longitude, bottomLeft.latitude]);
-  const pointTR = turf.point([topRight.longitude, topRight.latitude]);
+  // Build all four corners of the map bounds
+  const bl = turf.point([bottomLeft.longitude, bottomLeft.latitude]);
+  const br = turf.point([topRight.longitude, bottomLeft.latitude]);
+  const tl = turf.point([bottomLeft.longitude, topRight.latitude]);
+  const tr = turf.point([topRight.longitude, topRight.latitude]);
 
-  // Compute northing: distance between origin and a point with origin longitude but corner latitude
-  const northPointBL = turf.point([origin.longitude, bottomLeft.latitude]);
-  const northPointTR = turf.point([origin.longitude, topRight.latitude]);
+  const corners = [bl, br, tl, tr];
 
-  const northDistBL = turf.distance(originPoint, northPointBL, { units: 'meters' });
-  const northDistTR = turf.distance(originPoint, northPointTR, { units: 'meters' });
+  // Helper: rotate EN vector by degrees
+  const rotate = (e: number, n: number, deg: number) => {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return { e: e * cos - n * sin, n: e * sin + n * cos };
+  };
 
-  // Compute easting: distance between origin and a point with origin latitude but corner longitude
-  const eastPointBL = turf.point([bottomLeft.longitude, origin.latitude]);
-  const eastPointTR = turf.point([topRight.longitude, origin.latitude]);
+  // Convert each corner to true-east/north offsets (meters) from origin, then rotate
+  // into grid coordinates by applying the inverse of gridConvergence (i.e. -gridConvergence).
+  const enPoints = corners.map((pt) => {
+    const dist = turf.distance(originPoint, pt, { units: 'meters' });
+    const bearing = turf.bearing(originPoint, pt); // degrees from north
+    const rad = (bearing * Math.PI) / 180;
+    const eTrue = dist * Math.sin(rad);
+    const nTrue = dist * Math.cos(rad);
+    // rotate into grid coordinates (grid north = true north + gridConvergence)
+    const { e, n } = rotate(eTrue, nTrue, -gridConvergence);
+    return { e, n };
+  });
 
-  const eastDistBL = turf.distance(originPoint, eastPointBL, { units: 'meters' });
-  const eastDistTR = turf.distance(originPoint, eastPointTR, { units: 'meters' });
+  const eVals = enPoints.map((p) => p.e);
+  const nVals = enPoints.map((p) => p.n);
 
-  // Determine sign (east positive, north positive)
-  const eastingBL = bottomLeft.longitude >= origin.longitude ? eastDistBL : -eastDistBL;
-  const northingBL = bottomLeft.latitude >= origin.latitude ? northDistBL : -northDistBL;
-
-  const eastingTR = topRight.longitude >= origin.longitude ? eastDistTR : -eastDistTR;
-  const northingTR = topRight.latitude >= origin.latitude ? northDistTR : -northDistTR;
+  const eMin = Math.min(...eVals);
+  const eMax = Math.max(...eVals);
+  const nMin = Math.min(...nVals);
+  const nMax = Math.max(...nVals);
 
   const roundKm = (v: number) => Math.round(v / step) * step;
 
-  // Expand by 1km and round to nearest 1km per requirements
-  const adjEastingBL = roundKm(eastingBL - step);
-  const adjNorthingBL = roundKm(northingBL - step);
-
-  const adjEastingTR = roundKm(eastingTR + step);
-  const adjNorthingTR = roundKm(northingTR + step);
+  // Expand by 1km on each side to ensure coverage, then round to nearest step
+  const adjEastingBL = roundKm(eMin - step);
+  const adjNorthingBL = roundKm(nMin - step);
+  const adjEastingTR = roundKm(eMax + step);
+  const adjNorthingTR = roundKm(nMax + step);
 
   return {
     offsets: {
@@ -123,4 +136,43 @@ export function generateGridIntersections(
     }
   }
   return points;
+}
+
+/**
+ * Convert grid coordinates (easting,northing) into latitude/longitude, taking
+ * grid convergence into account. `gridConvergence` is degrees difference
+ * between true north and grid north (gridNorth = trueNorth + gridConvergence).
+ */
+export function gridCoordsToLatLon(origin: LatLon, easting: number, northing: number, gridConvergence = 0): LatLon {
+  // rotate grid coords back to true EN by applying +gridConvergence
+  const rad = (gridConvergence * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const eTrue = easting * cos - northing * sin;
+  const nTrue = easting * sin + northing * cos;
+  return gridOffsetMetersToLatLon(origin, eTrue, nTrue);
+}
+
+/**
+ * Generate grid intersections as lat/lon points. Returns an array of objects
+ * containing the original grid `e` and `n` values (in meters) and the
+ * corresponding `latitude`/`longitude` computed after applying
+ * `gridConvergence`.
+ */
+export function generateGridPoints(
+  origin: LatLon,
+  offsets: {
+    bottomLeft: { easting: number; northing: number };
+    topRight: { easting: number; northing: number };
+  },
+  step = 1000,
+  gridConvergence = 0
+): Array<{ e: number; n: number; latitude: number; longitude: number }> {
+  const pts: Array<{ e: number; n: number; latitude: number; longitude: number }> = [];
+  const intersections = generateGridIntersections(offsets, step);
+  for (const [e, n] of intersections) {
+    const ll = gridCoordsToLatLon(origin, e, n, gridConvergence);
+    pts.push({ e, n, latitude: ll.latitude, longitude: ll.longitude });
+  }
+  return pts;
 }

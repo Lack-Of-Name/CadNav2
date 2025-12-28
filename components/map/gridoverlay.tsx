@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl';
 import { useEffect, useState } from 'react';
-import { computeGridCornersFromMapBounds, generateGridIntersections, gridOffsetMetersToLatLon } from './mapGrid';
+import { computeGridCornersFromMapBounds, generateGridPoints, gridCoordsToLatLon } from './mapGrid';
 
 type Origin = { latitude: number; longitude: number } | null;
 
@@ -55,27 +55,14 @@ export default function GridOverlay({
         const ne = bounds.getNorthEast();
         const originPt = origin ?? { latitude: -37.8136, longitude: 144.9631 };
 
-        const gridOffsets = computeGridCornersFromMapBounds(originPt, { latitude: sw.lat, longitude: sw.lng }, { latitude: ne.lat, longitude: ne.lng });
-        const intersections = generateGridIntersections(gridOffsets.offsets, 1000);
-
-        // Apply grid convergence (rotation) to easting/northing before converting to lat/lon
-        function rotate(e: number, n: number, deg: number) {
-          const rad = (deg * Math.PI) / 180;
-          const cos = Math.cos(rad);
-          const sin = Math.sin(rad);
-          return {
-            e: e * cos - n * sin,
-            n: e * sin + n * cos,
-          };
-        }
+        const gridOffsets = computeGridCornersFromMapBounds(originPt, { latitude: sw.lat, longitude: sw.lng }, { latitude: ne.lat, longitude: ne.lng }, 1000, gridConvergence ?? 0);
+        const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
 
         const pts: Array<{ x: number; y: number; e: number; n: number }> = [];
-        for (const [easting, northing] of intersections) {
-          const { e: eRot, n: nRot } = rotate(easting, northing, gridConvergence ?? 0);
-          const ll = gridOffsetMetersToLatLon(originPt, eRot, nRot);
+        for (const inter of intersections) {
           try {
-            const p = map.project([ll.longitude, ll.latitude]);
-            pts.push({ x: p.x, y: p.y, e: easting, n: northing });
+            const p = map.project([inter.longitude, inter.latitude]);
+            pts.push({ x: p.x, y: p.y, e: inter.e, n: inter.n });
           } catch {
             // skip
           }
@@ -162,10 +149,8 @@ export default function GridOverlay({
               // center in e/n
               const ec = (e0 + e1) / 2;
               const nc = (n0 + n1) / 2;
-              // apply grid convergence
-              const { e: ecRot, n: ncRot } = rotate(ec, nc, gridConvergence ?? 0);
-              // get lat/lon and project to screen
-              const ll = gridOffsetMetersToLatLon(originPt, ecRot, ncRot);
+              // get lat/lon (grid coords -> true EN -> lat/lon)
+              const ll = gridCoordsToLatLon(originPt, ec, nc, gridConvergence ?? 0);
               try {
                 const p = map.project([ll.longitude, ll.latitude]);
                 centers.push({ x: p.x, y: p.y, e: e0, n: n0 });

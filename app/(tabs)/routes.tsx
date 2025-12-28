@@ -28,7 +28,7 @@ export default function RoutesScreen() {
   const router = useRouter();
   const { requestPlacementMode, selectedCheckpoint, addCheckpoint } = useCheckpoints();
   const { lastLocation, requestLocation } = useGPS();
-  const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting } = useSettings();
+  const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting, gridConvergence } = useSettings();
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -116,12 +116,19 @@ export default function RoutesScreen() {
       return;
     }
 
-    // Use Turf to calculate the point
-    // 1. Move west by e km (Turf uses meters)
-    const originPoint = turf.destination([lon, lat], e * 1000, 270, { units: 'meters' });
-    // 2. Move south by n km
-    const finalPoint = turf.destination(originPoint.geometry.coordinates, n * 1000, 180, { units: 'meters' });
-
+    // Convert grid reference (e km, n km) into a true EN displacement accounting for grid convergence.
+    // The input e/n represent grid east/north from the origin to the current location;
+    // we want the origin, so move by -e, -n in grid coords and rotate into true EN.
+    const ex = -e * 1000; // meters east in grid coords
+    const ny = -n * 1000; // meters north in grid coords
+    const theta = (gridConvergence ?? 0) * (Math.PI / 180); // radians
+    // rotate grid->true: [E_true; N_true] = R(theta) * [E_grid; N_grid]
+    const e_true = ex * Math.cos(theta) - ny * Math.sin(theta);
+    const n_true = ex * Math.sin(theta) + ny * Math.cos(theta);
+    const dist = Math.hypot(e_true, n_true);
+    // bearing: clockwise from true north (turf expects bearing from north)
+    const bearing = (Math.atan2(e_true, n_true) * 180 / Math.PI + 360) % 360;
+    const finalPoint = turf.destination([lon, lat], dist, bearing, { units: 'meters' });
     const [originLon, originLat] = finalPoint.geometry.coordinates;
 
     void setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
