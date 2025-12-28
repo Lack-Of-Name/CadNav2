@@ -9,7 +9,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { AddRoutePanel } from '@/components/AddRoutePanel';
+import { GridReferenceModal } from '@/components/GridReferenceModal';
+import { ProjectPointModal } from '@/components/ProjectPointModal';
+import { SavedRoutesModal } from '@/components/SavedRoutesModal';
 import StyledButton from '@/components/ui/StyledButton';
+import { SavedRoute } from '@/hooks/checkpoints';
 import { Collapsible } from '@/components/ui/collapsible';
 import { Colors } from '@/constants/theme';
 import { useGPS } from '@/hooks/gps';
@@ -30,6 +35,48 @@ export default function RoutesScreen() {
   const [icon, setIcon] = useState('📍');
   const [modalError, setModalError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [addPanelVisible, setAddPanelVisible] = useState(false);
+  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
+  const [referenceModalVisible, setReferenceModalVisible] = useState(false);
+  const [projectModalVisible, setProjectModalVisible] = useState(false);
+  const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
+
+  function handleAddPanelSelect(option: string) {
+    setAddPanelVisible(false);
+    
+    if (option === 'place') {
+        void requestPlacementMode();
+        router.push('/');
+        setActiveRouteId(null);
+    } else if (option === 'reference') {
+        setReferenceModalVisible(true);
+    } else if (option === 'project') {
+        setProjectModalVisible(true);
+    } else if (option === 'saved') {
+        setSavedRoutesModalVisible(true);
+    }
+  }
+
+  function handleAddPoint(location: { latitude: number; longitude: number }) {
+      addCheckpoint(location);
+      setReferenceModalVisible(false);
+      setProjectModalVisible(false);
+      setActiveRouteId(null);
+      router.push('/');
+  }
+
+  function handleAddSavedRoute(route: SavedRoute) {
+      // Add all checkpoints from the saved route
+      // We do this sequentially to preserve order if addCheckpoint is async/state-dependent
+      // Although addCheckpoint updates global store synchronously, it's safer to just loop.
+      route.checkpoints.forEach(cp => {
+          addCheckpoint(cp.latitude, cp.longitude);
+      });
+      
+      setSavedRoutesModalVisible(false);
+      setActiveRouteId(null);
+      router.push('/');
+  }
 
   
 
@@ -226,8 +273,8 @@ export default function RoutesScreen() {
                     <StyledButton
                       variant="primary"
                       onPress={() => {
-                        void requestPlacementMode();
-                        router.push('/');
+                        setActiveRouteId(item.id);
+                        setAddPanelVisible(true);
                       }}
                       style={{ marginBottom: 8 }}
                     >
@@ -272,6 +319,30 @@ export default function RoutesScreen() {
             </View>
           </View>
         </Modal>
+
+        <AddRoutePanel 
+          visible={addPanelVisible} 
+          onClose={() => { setAddPanelVisible(false); setActiveRouteId(null); }} 
+          onSelect={handleAddPanelSelect} 
+        />
+
+        <GridReferenceModal 
+            visible={referenceModalVisible} 
+            onClose={() => { setReferenceModalVisible(false); setActiveRouteId(null); }}
+            onAdd={handleAddPoint}
+        />
+
+        <ProjectPointModal 
+            visible={projectModalVisible} 
+            onClose={() => { setProjectModalVisible(false); setActiveRouteId(null); }}
+            onAdd={handleAddPoint}
+        />
+
+        <SavedRoutesModal 
+            visible={savedRoutesModalVisible} 
+            onClose={() => { setSavedRoutesModalVisible(false); setActiveRouteId(null); }}
+            onSelect={handleAddSavedRoute}
+        />
       </ThemedView>
     </SafeAreaView>
   );
