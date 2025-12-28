@@ -37,10 +37,9 @@ export function gridOffsetMetersToLatLon(origin: LatLon, easting: number, northi
 export function computeGridCornersFromMapBounds(
   origin: LatLon,
   bottomLeft: LatLon,
-  topRight: LatLon
+  topRight: LatLon,
+  step = 1000
 ): {
-  bottomLeft: LatLon;
-  topRight: LatLon;
   offsets: {
     bottomLeft: { easting: number; northing: number };
     topRight: { easting: number; northing: number };
@@ -72,24 +71,56 @@ export function computeGridCornersFromMapBounds(
   const eastingTR = topRight.longitude >= origin.longitude ? eastDistTR : -eastDistTR;
   const northingTR = topRight.latitude >= origin.latitude ? northDistTR : -northDistTR;
 
-  const roundKm = (v: number) => Math.round(v / 1000) * 1000;
+  const roundKm = (v: number) => Math.round(v / step) * step;
 
   // Expand by 1km and round to nearest 1km per requirements
-  const adjEastingBL = roundKm(eastingBL - 1000);
-  const adjNorthingBL = roundKm(northingBL - 1000);
+  const adjEastingBL = roundKm(eastingBL - step);
+  const adjNorthingBL = roundKm(northingBL - step);
 
-  const adjEastingTR = roundKm(eastingTR + 1000);
-  const adjNorthingTR = roundKm(northingTR + 1000);
-
-  const blLatLon = gridOffsetMetersToLatLon(origin, adjEastingBL, adjNorthingBL);
-  const trLatLon = gridOffsetMetersToLatLon(origin, adjEastingTR, adjNorthingTR);
+  const adjEastingTR = roundKm(eastingTR + step);
+  const adjNorthingTR = roundKm(northingTR + step);
 
   return {
-    bottomLeft: blLatLon,
-    topRight: trLatLon,
     offsets: {
       bottomLeft: { easting: adjEastingBL, northing: adjNorthingBL },
       topRight: { easting: adjEastingTR, northing: adjNorthingTR },
     },
   };
+}
+
+/**
+ * Generate a grid of intersection points (easting, northing) between two corner offsets.
+ *
+ * Both corners are specified as meters east/north of the origin. The function will
+ * return all intersection points (inclusive) on a regular grid with spacing `step`.
+ *
+ * Returns an array of tuples: [easting, northing]
+ */
+export function generateGridIntersections(
+  offsets: {
+    bottomLeft: { easting: number; northing: number };
+    topRight: { easting: number; northing: number };
+  },
+  step = 1000
+): Array<[number, number]> {
+  const eStart = Math.min(offsets.bottomLeft.easting, offsets.topRight.easting);
+  const eEnd = Math.max(offsets.bottomLeft.easting, offsets.topRight.easting);
+  const nStart = Math.min(offsets.bottomLeft.northing, offsets.topRight.northing);
+  const nEnd = Math.max(offsets.bottomLeft.northing, offsets.topRight.northing);
+
+  if (step <= 0) throw new Error('step must be > 0');
+
+  // Assume (eEnd-eStart) and (nEnd-nStart) are divisible by `step`.
+  const eCount = (eEnd - eStart) / step;
+  const nCount = (nEnd - nStart) / step;
+
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i <= eCount; i++) {
+    const e = eStart + i * step;
+    for (let j = 0; j <= nCount; j++) {
+      const n = nStart + j * step;
+      points.push([e, n]);
+    }
+  }
+  return points;
 }
