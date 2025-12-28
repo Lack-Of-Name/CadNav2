@@ -7,16 +7,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { AddRoutePanel } from '@/components/AddRoutePanel';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { SavedRoutesModal } from '@/components/SavedRoutesModal';
-import StyledButton from '@/components/ui/StyledButton';
-import { SavedRoute } from '@/hooks/checkpoints';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import { Collapsible } from '@/components/ui/collapsible';
+import StyledButton from '@/components/ui/StyledButton';
 import { Colors } from '@/constants/theme';
+import { SavedRoute } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 
@@ -58,7 +58,7 @@ export default function RoutesScreen() {
   }
 
   function handleAddPoint(location: { latitude: number; longitude: number }) {
-      addCheckpoint(location);
+      addCheckpoint(location.latitude, location.longitude);
       setReferenceModalVisible(false);
       setProjectModalVisible(false);
       setActiveRouteId(null);
