@@ -45,6 +45,28 @@ const SETTINGS_DEFS = {
     default: 'true' as 'true' | 'magnetic',
     parse: (raw: unknown) => (raw === 'magnetic' ? 'magnetic' : 'true'),
   },
+  mapGridEnabled: {
+    default: false,
+    parse: (raw: unknown) => raw === true,
+  },
+  mapGridSubdivisionsEnabled: {
+    default: true,
+    parse: (raw: unknown) => raw !== false,
+  },
+  mapGridOrigin: {
+    default: null as { latitude: number; longitude: number } | null,
+    parse: (raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return null;
+      const r = raw as any;
+      if (typeof r.latitude !== 'number' || typeof r.longitude !== 'number') return null;
+      if (!Number.isFinite(r.latitude) || !Number.isFinite(r.longitude)) return null;
+      return { latitude: r.latitude, longitude: r.longitude };
+    },
+  },
+  mapGridNumbersEnabled: {
+    default: false,
+    parse: (raw: unknown) => raw === true,
+  },
 } as const;
 
 const SETTING_KEYS = Object.keys(SETTINGS_DEFS) as Array<keyof typeof SETTINGS_DEFS>;
@@ -54,6 +76,10 @@ export type MapHeading = 'true' | 'magnetic';
 export type Settings = {
   angleUnit: AngleUnit;
   mapHeading: MapHeading;
+  mapGridEnabled: boolean;
+  mapGridSubdivisionsEnabled: boolean;
+  mapGridOrigin: { latitude: number; longitude: number } | null;
+  mapGridNumbersEnabled: boolean;
 };
 
 type PersistedRecord = Record<string, unknown>;
@@ -69,6 +95,10 @@ function buildDefaultSettings(): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.default,
     mapHeading: SETTINGS_DEFS.mapHeading.default,
+    mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.default,
+    mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.default,
+    mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
+    mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
   } as Settings;
 }
 
@@ -76,6 +106,10 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.parse(persisted ? persisted['angleUnit'] : undefined),
     mapHeading: SETTINGS_DEFS.mapHeading.parse(persisted ? persisted['mapHeading'] : undefined),
+    mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.parse(persisted ? persisted['mapGridEnabled'] : undefined),
+    mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
+    mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),
+    mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),
   } as Settings;
 }
 

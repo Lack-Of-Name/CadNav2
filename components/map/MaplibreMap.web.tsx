@@ -12,6 +12,9 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
+import { buildMapGridGeoJSON, buildMapGridNumbersGeoJSON, buildMapGridSubdivisionsGeoJSON } from './mapGrid';
+
+const GRID_LINE_COLOR = '#111111';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
@@ -23,7 +26,7 @@ export default function MapLibreMap() {
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading } = useSettings();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin } = useSettings();
   // checkpoints removed
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -177,6 +180,206 @@ export default function MapLibreMap() {
     };
   }, [apiKey, loading]);
 
+  // Map grid overlay (GeoJSON source + line layer)
+  useEffect(() => {
+    const m = map.current;
+    if (!m) return;
+
+    const majorSourceId = 'map-grid-source';
+    const majorLayerId = 'map-grid-layer';
+    const minorSourceId = 'map-grid-minor-source';
+    const minorLayerId = 'map-grid-minor-layer';
+    const labelSourceId = 'map-grid-labels-source';
+    const labelLayerId = 'map-grid-labels-layer';
+
+    const ensureAdded = () => {
+      if (!m) return;
+      if (!mapGridEnabled) return;
+      if (!m.getSource(majorSourceId)) {
+        m.addSource(majorSourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        } as any);
+      }
+      if (!m.getLayer(majorLayerId)) {
+        m.addLayer({
+          id: majorLayerId,
+          type: 'line',
+          source: majorSourceId,
+          paint: {
+            'line-color': GRID_LINE_COLOR,
+            'line-opacity': 0.55,
+            'line-width': 1,
+          },
+        } as any);
+      } else {
+        try {
+          m.setPaintProperty(majorLayerId, 'line-color', GRID_LINE_COLOR);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!m.getSource(minorSourceId)) {
+        m.addSource(minorSourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        } as any);
+      }
+      if (!m.getLayer(minorLayerId)) {
+        m.addLayer({
+          id: minorLayerId,
+          type: 'line',
+          source: minorSourceId,
+          paint: {
+            'line-color': GRID_LINE_COLOR,
+            'line-opacity': 0.12,
+            'line-width': 1,
+          },
+        } as any);
+      } else {
+        try {
+          m.setPaintProperty(minorLayerId, 'line-color', GRID_LINE_COLOR);
+        } catch {
+          // ignore
+        }
+      }
+
+      if (!m.getSource(labelSourceId)) {
+        m.addSource(labelSourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        } as any);
+      }
+      if (!m.getLayer(labelLayerId)) {
+        m.addLayer({
+          id: labelLayerId,
+          type: 'symbol',
+          source: labelSourceId,
+          layout: {
+            'text-field': ['get', 'label'],
+            'text-size': 12,
+            'text-allow-overlap': true,
+          },
+          paint: {
+            'text-color': GRID_LINE_COLOR,
+            'text-halo-color': 'rgba(255,255,255,0.85)',
+            'text-halo-width': 1,
+          },
+        } as any);
+      }
+    };
+
+    const updateGrid = () => {
+      if (!m) return;
+      if (!mapGridEnabled) return;
+      const majorSrc = m.getSource(majorSourceId) as any;
+      const minorSrc = m.getSource(minorSourceId) as any;
+      const labelSrc = m.getSource(labelSourceId) as any;
+      if (!majorSrc || !minorSrc || !labelSrc) return;
+
+      const b = m.getBounds();
+      const west = b.getWest();
+      const south = b.getSouth();
+      const east = b.getEast();
+      const north = b.getNorth();
+      const z = typeof m.getZoom === 'function' ? m.getZoom() : 1;
+      const origin = mapGridOrigin ? { latitude: mapGridOrigin.latitude, longitude: mapGridOrigin.longitude } : null;
+      const geo = buildMapGridGeoJSON({ west, south, east, north }, z, origin);
+      const minorGeo = mapGridSubdivisionsEnabled ? buildMapGridSubdivisionsGeoJSON({ west, south, east, north }, z, origin) : { type: 'FeatureCollection', features: [] };
+      const labelGeo = mapGridNumbersEnabled ? buildMapGridNumbersGeoJSON({ west, south, east, north }, z, origin) : { type: 'FeatureCollection', features: [] };
+      try {
+        majorSrc.setData(geo as any);
+      } catch {
+        // ignore
+      }
+
+      try {
+        minorSrc.setData(minorGeo as any);
+      } catch {
+        // ignore
+      }
+
+      try {
+        labelSrc.setData(labelGeo as any);
+      } catch {
+        // ignore
+      }
+    };
+
+    const remove = () => {
+      if (!m) return;
+      try {
+        if (m.getLayer(minorLayerId)) m.removeLayer(minorLayerId);
+      } catch {
+        // ignore
+      }
+      try {
+        if (m.getLayer(majorLayerId)) m.removeLayer(majorLayerId);
+      } catch {
+        // ignore
+      }
+
+      try {
+        if (m.getLayer(labelLayerId)) m.removeLayer(labelLayerId);
+      } catch {
+        // ignore
+      }
+
+      try {
+        if (m.getSource(minorSourceId)) m.removeSource(minorSourceId);
+      } catch {
+        // ignore
+      }
+
+      try {
+        if (m.getSource(labelSourceId)) m.removeSource(labelSourceId);
+      } catch {
+        // ignore
+      }
+
+      try {
+        if (m.getSource(majorSourceId)) m.removeSource(majorSourceId);
+      } catch {
+        // ignore
+      }
+    };
+
+    const onMove = () => updateGrid();
+
+    const onLoad = () => {
+      if (!m) return;
+      if (!mapGridEnabled) {
+        remove();
+        return;
+      }
+      ensureAdded();
+      updateGrid();
+    };
+
+    if (mapGridEnabled) {
+      if (m.isStyleLoaded()) {
+        ensureAdded();
+        updateGrid();
+      } else {
+        m.once('load', onLoad);
+      }
+      m.on('move', onMove);
+      m.on('zoom', onMove);
+    } else {
+      remove();
+    }
+
+    return () => {
+      try {
+        m.off('move', onMove);
+        m.off('zoom', onMove);
+      } catch {
+        // ignore
+      }
+    };
+  }, [mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin]);
+
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
     lastLocationRef.current = effectiveLastLocation;
@@ -256,8 +459,8 @@ export default function MapLibreMap() {
   }, [lastLocation, webLastLocation]);
 
   useEffect(() => {
-    if (!following || !lastLocation || !map.current) return;
-    const { latitude, longitude } = lastLocation.coords;
+    if (!following || !effectiveLastLocation || !map.current) return;
+    const { latitude, longitude } = effectiveLastLocation.coords;
     try {
       map.current.flyTo({ center: [longitude, latitude] });
     } catch (err) {
@@ -267,7 +470,7 @@ export default function MapLibreMap() {
       }
       // ignore
     }
-  }, [lastLocation, webLastLocation, following]);
+  }, [effectiveLastLocation, following]);
 
   // Compute the orientation (degrees) for the arrow based on device heading
   useEffect(() => {
@@ -288,16 +491,24 @@ export default function MapLibreMap() {
   }, [lastLocation, mapBearing, mapHeading]);
 
   const handleRecenterPress = async () => {
-    if (!lastLocation) {
-      requestLocation();
+    // Dual behavior:
+    // - If already following, toggle off.
+    // - If not following, request/restart location and toggle on immediately.
+    //   Center immediately if we already have a fix, or as soon as one arrives.
+    if (following) {
+      setFollowing(false);
       return;
     }
-    const enabling = !following;
-    if (enabling && lastLocation && map.current) {
-      const { latitude, longitude } = lastLocation.coords;
+
+    requestLocation();
+    setFollowing(true);
+
+    const loc = effectiveLastLocation;
+    if (loc && map.current) {
+      const { latitude, longitude } = loc.coords;
       try {
         map.current.flyTo({ center: [longitude, latitude], zoom: 16, duration: 1000, essential: true });
-        await sleep(1000)
+        await sleep(1000);
       } catch (err) {
         if (!errorReportedRef.current) {
           errorReportedRef.current = true;
@@ -306,7 +517,6 @@ export default function MapLibreMap() {
         // ignore
       }
     }
-    setFollowing(enabling);
   };
 
   if (loading || !apiKey) {
@@ -359,7 +569,7 @@ export default function MapLibreMap() {
           }}
         />
         {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
-        <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }} textStyle={styles.locationText} renderAs="web" />
+        <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }} textStyle={styles.locationText} renderAs="web" />
         <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
     </ThemedView>

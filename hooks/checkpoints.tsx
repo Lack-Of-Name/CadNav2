@@ -28,6 +28,7 @@ type StoreState = {
   selectedId: string | null;
   savedRoutes: SavedRoute[];
   isLoaded: boolean;
+  placementModeRequested: boolean;
 };
 
 let store: StoreState = {
@@ -35,6 +36,7 @@ let store: StoreState = {
   selectedId: null,
   savedRoutes: [],
   isLoaded: false,
+  placementModeRequested: false,
 };
 
 const listeners = new Set<() => void>();
@@ -103,7 +105,7 @@ async function initStore() {
       }
     }
 
-    setStore({ checkpoints: [], selectedId: null, savedRoutes: hydratedRoutes.routes, isLoaded: true });
+    setStore({ checkpoints: [], selectedId: null, savedRoutes: hydratedRoutes.routes, isLoaded: true, placementModeRequested: false });
 
     // Ensure storage is initialized with normalized shape.
     await persistRoutes(hydratedRoutes);
@@ -190,6 +192,16 @@ export function useCheckpoints() {
     []
   );
 
+  const requestPlacementMode = useCallback(async () => {
+    setStore({ ...store, placementModeRequested: true });
+  }, []);
+
+  const consumePlacementModeRequest = useCallback(async () => {
+    if (!store.placementModeRequested) return false;
+    setStore({ ...store, placementModeRequested: false });
+    return true;
+  }, []);
+
   const addCheckpoint = useCallback(
     async (latitude: number, longitude: number) => {
       const cp: Checkpoint = { id: makeId(), latitude, longitude, createdAt: Date.now() };
@@ -274,6 +286,7 @@ export function useCheckpoints() {
     selectedCheckpoint,
     savedRoutes: snapshot.savedRoutes,
     isLoaded: snapshot.isLoaded,
+    placementModeRequested: snapshot.placementModeRequested,
     addCheckpoint,
     removeCheckpoint,
     selectCheckpoint,
@@ -282,5 +295,7 @@ export function useCheckpoints() {
     saveRoute,
     loadRoute,
     deleteRoute,
+    requestPlacementMode,
+    consumePlacementModeRequest,
   } as const;
 }

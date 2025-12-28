@@ -5,18 +5,20 @@ import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
+import { Camera, LineLayer, MapView, ShapeSource, SymbolLayer, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 import { ThemedView } from '../themed-view';
 import { CompassButton, getCompassHeadingDeg, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { buildMapGridGeoJSON, buildMapGridNumbersGeoJSON, buildMapGridSubdivisionsGeoJSON } from './mapGrid';
+
+const GRID_LINE_COLOR = '#111111';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading } = useSettings();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin } = useSettings();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -26,9 +28,11 @@ export default function MapLibreMap() {
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
   const cameraRef = React.useRef<any>(null);
+  const mapRef = React.useRef<any>(null);
   const [following, setFollowing] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
 
   const currentHeading = getCompassHeadingDeg(lastLocation);
@@ -40,23 +44,31 @@ export default function MapLibreMap() {
   const compassBearingText = null;
   const compassDistanceText = null;
 
+  const centerOnLocation = async (loc: any) => {
+    if (!loc || !cameraRef.current) return;
+    const { latitude, longitude } = loc.coords;
+    cameraRef.current.zoomTo?.(16, 200);
+    await sleep(200);
+    cameraRef.current.flyTo?.([longitude, latitude], 800);
+    await sleep(800);
+  };
+
   const handleRecenterPress = async () => {
-    if (!lastLocation) {
-      requestLocation();
+    // Dual behavior:
+    // - If already following, toggle off.
+    // - If not following, request/restart location and toggle on immediately.
+    //   The map will center immediately if we already have a fix, or as soon as one arrives.
+    if (following) {
+      setFollowing(false);
       return;
     }
-    // toggle following mode
-    const enabling = !following;
-    // if enabling, immediately center on current location
-    if (enabling && lastLocation && cameraRef.current) {
-          const { latitude, longitude } = lastLocation.coords;
-          cameraRef.current.zoomTo?.(16, 200);
-          await sleep(200)
-          cameraRef.current.flyTo?.([longitude, latitude], 800);
-          await sleep(800)
+
+    requestLocation();
+    setFollowing(true);
+
+    if (lastLocation) {
+      await centerOnLocation(lastLocation);
     }
-    setFollowing(enabling);
-    
   };
 
   // map press handler removed (placement/checkpoints removed)
@@ -78,11 +90,39 @@ export default function MapLibreMap() {
 
   const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
+  const gridShape = (() => {
+    if (!mapGridEnabled) return null;
+    if (!visibleBounds) return null;
+    const [[west, south], [east, north]] = visibleBounds;
+    return buildMapGridGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
+  })();
+
+  const gridMinorShape = (() => {
+    if (!mapGridEnabled) return null;
+    if (!mapGridSubdivisionsEnabled) return null;
+    if (!visibleBounds) return null;
+    const [[west, south], [east, north]] = visibleBounds;
+    const geo = buildMapGridSubdivisionsGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
+    if (!geo?.features?.length) return null;
+    return geo;
+  })();
+
+  const gridLabelShape = (() => {
+    if (!mapGridEnabled) return null;
+    if (!mapGridNumbersEnabled) return null;
+    if (!visibleBounds) return null;
+    const [[west, south], [east, north]] = visibleBounds;
+    const geo = buildMapGridNumbersGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
+    if (!geo?.features?.length) return null;
+    return geo;
+  })();
+
   return (
     <ThemedView style={styles.page}>
       <StatusBar animated={true} barStyle="dark-content" />
 
       <MapView
+        ref={mapRef}
         style={styles.map}
         mapStyle={mapStyle}
         logoEnabled={false}
@@ -93,6 +133,20 @@ export default function MapLibreMap() {
         onRegionDidChange={(ev: any) => {
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
+
+          // Keep bounds updated for the grid overlay.
+          const getBounds = mapRef.current?.getVisibleBounds;
+          if (typeof getBounds === 'function') {
+            Promise.resolve(getBounds.call(mapRef.current))
+              .then((b: any) => {
+                if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
+                  setVisibleBounds(b as [[number, number], [number, number]]);
+                }
+              })
+              .catch(() => {
+                // ignore - grid will just not render
+              });
+          }
         }}
       >
         <Camera
@@ -102,6 +156,48 @@ export default function MapLibreMap() {
             zoomLevel: 1,
           }}
         />
+
+        {gridShape ? (
+          <ShapeSource id="map-grid-source" shape={gridShape}>
+            <LineLayer
+              id="map-grid-lines"
+              style={{
+                lineColor: GRID_LINE_COLOR,
+                lineOpacity: 0.55,
+                lineWidth: 1,
+              }}
+            />
+          </ShapeSource>
+        ) : null}
+
+        {gridMinorShape ? (
+          <ShapeSource id="map-grid-minor-source" shape={gridMinorShape}>
+            <LineLayer
+              id="map-grid-minor-lines"
+              style={{
+                lineColor: GRID_LINE_COLOR,
+                lineOpacity: 0.12,
+                lineWidth: 1,
+              }}
+            />
+          </ShapeSource>
+        ) : null}
+
+        {gridLabelShape ? (
+          <ShapeSource id="map-grid-labels-source" shape={gridLabelShape}>
+            <SymbolLayer
+              id="map-grid-labels"
+              style={{
+                textField: ['get', 'label'],
+                textSize: 12,
+                textColor: GRID_LINE_COLOR,
+                textHaloColor: '#FFFFFF',
+                textHaloWidth: 1,
+                textAllowOverlap: true,
+              }}
+            />
+          </ShapeSource>
+        ) : null}
 
         {/* checkpoints removed */}
 

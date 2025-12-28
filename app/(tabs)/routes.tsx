@@ -1,8 +1,10 @@
 import { alert as showAlert } from '@/components/alert';
+import { useCheckpoints } from '@/hooks/checkpoints';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
-import { FlatList, Modal, StyleSheet, TextInput, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, Modal, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -10,11 +12,18 @@ import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
 import { Collapsible } from '@/components/ui/collapsible';
 import { Colors } from '@/constants/theme';
+import { useSettings } from '@/hooks/settings';
+import { useGPS } from '@/hooks/gps';
+import { gridOffsetMetersToLatLon } from '@/components/map/mapGrid';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string };
 const ROUTES_KEY = 'APP_ROUTES';
 
 export default function RoutesScreen() {
+  const router = useRouter();
+  const { requestPlacementMode, selectedCheckpoint, addCheckpoint } = useCheckpoints();
+  const { lastLocation, requestLocation } = useGPS();
+  const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting } = useSettings();
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -22,6 +31,30 @@ export default function RoutesScreen() {
   const [icon, setIcon] = useState('📍');
   const [modalError, setModalError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const [gridEasting, setGridEasting] = useState('');
+  const [gridNorthing, setGridNorthing] = useState('');
+  const [gridAccuracy, setGridAccuracy] = useState<'1km' | '100m' | '10m' | '1m'>('100m');
+
+  function accuracyUnitMeters(a: '1km' | '100m' | '10m' | '1m') {
+    switch (a) {
+      case '1km':
+        return 1000;
+      case '100m':
+        return 100;
+      case '10m':
+        return 10;
+      default:
+        return 1;
+    }
+  }
+
+  function parseGridNumber(raw: string) {
+    const cleaned = raw.trim().replace(/,/g, '.');
+    if (cleaned.length === 0) return null;
+    const v = Number.parseFloat(cleaned);
+    return Number.isFinite(v) ? v : null;
+  }
 
   function resetForm() {
     setTitle('');
@@ -108,12 +141,171 @@ export default function RoutesScreen() {
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({}, 'icon');
 
+  const gridOriginLabel = useMemo(() => {
+    if (!mapGridOrigin) return 'None';
+    return `${mapGridOrigin.latitude.toFixed(6)}, ${mapGridOrigin.longitude.toFixed(6)}`;
+  }, [mapGridOrigin]);
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ThemedView style={styles.container}>
         <View style={styles.headerRow}>
           <ThemedText type="title">Routes</ThemedText>
           <StyledButton variant="primary" onPress={() => { resetForm(); setEditingId(null); setOpen(true); }}>Add</StyledButton>
+        </View>
+
+        <View style={[styles.card, { backgroundColor: cardBg, borderColor, borderWidth: 1, alignSelf: 'center', width: '98%' }]}>
+          <Collapsible
+            header={
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
+                <View style={{ flex: 1 }}>
+                  <ThemedText type="defaultSemiBold">Grid</ThemedText>
+                  <ThemedText>Map grid overlays and origin</ThemedText>
+                </View>
+              </View>
+            }
+          >
+            <View style={styles.gridRow}>
+              <ThemedText type="defaultSemiBold">Enabled</ThemedText>
+              <Switch value={mapGridEnabled} onValueChange={(v) => void setSetting('mapGridEnabled', v)} />
+            </View>
+
+            <View style={styles.gridRow}>
+              <ThemedText type="defaultSemiBold">Subdivisions</ThemedText>
+              <Switch
+                value={mapGridSubdivisionsEnabled}
+                onValueChange={(v) => void setSetting('mapGridSubdivisionsEnabled', v)}
+                disabled={!mapGridEnabled}
+              />
+            </View>
+
+            <View style={styles.gridRow}>
+              <ThemedText type="defaultSemiBold">Grid numbers</ThemedText>
+              <Switch
+                value={mapGridNumbersEnabled}
+                onValueChange={(v) => void setSetting('mapGridNumbersEnabled', v)}
+                disabled={!mapGridEnabled}
+              />
+            </View>
+
+            <View style={{ marginTop: 8 }}>
+              <ThemedText type="defaultSemiBold">Origin (0,0)</ThemedText>
+              <ThemedText>{gridOriginLabel}</ThemedText>
+            </View>
+
+            <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <StyledButton
+                variant="secondary"
+                onPress={() => {
+                  if (!lastLocation) {
+                    requestLocation();
+                    return;
+                  }
+                  void setSetting('mapGridOrigin', { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude });
+                }}
+                disabled={!mapGridEnabled}
+              >
+                Use current
+              </StyledButton>
+
+              <View style={{ width: 12 }} />
+
+              <StyledButton
+                variant="secondary"
+                onPress={() => {
+                  if (!selectedCheckpoint) return;
+                  void setSetting('mapGridOrigin', { latitude: selectedCheckpoint.latitude, longitude: selectedCheckpoint.longitude });
+                }}
+                disabled={!mapGridEnabled || !selectedCheckpoint}
+              >
+                Use selected
+              </StyledButton>
+
+              <View style={{ width: 12 }} />
+
+              <StyledButton
+                variant="secondary"
+                onPress={() => void setSetting('mapGridOrigin', null)}
+                disabled={!mapGridEnabled || !mapGridOrigin}
+              >
+                Clear
+              </StyledButton>
+            </View>
+
+            <View style={{ marginTop: 14 }}>
+              <ThemedText type="defaultSemiBold">Add by grid reference</ThemedText>
+              <ThemedText>
+                Enter eastings/northings relative to the grid origin. Accuracy controls the input units.
+              </ThemedText>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+                <TextInput
+                  placeholder="Easting"
+                  value={gridEasting}
+                  onChangeText={setGridEasting}
+                  editable={mapGridEnabled && !!mapGridOrigin}
+                  keyboardType="numbers-and-punctuation"
+                  style={[styles.input, { flex: 1, color: textColor ?? Colors.light.text, borderColor }]}
+                  placeholderTextColor={placeholderColor}
+                />
+                <TextInput
+                  placeholder="Northing"
+                  value={gridNorthing}
+                  onChangeText={setGridNorthing}
+                  editable={mapGridEnabled && !!mapGridOrigin}
+                  keyboardType="numbers-and-punctuation"
+                  style={[styles.input, { flex: 1, color: textColor ?? Colors.light.text, borderColor }]}
+                  placeholderTextColor={placeholderColor}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 10, gap: 8 }}>
+                {(['1km', '100m', '10m', '1m'] as const).map((a) => (
+                  <StyledButton
+                    key={a}
+                    variant={gridAccuracy === a ? 'primary' : 'secondary'}
+                    onPress={() => setGridAccuracy(a)}
+                    disabled={!mapGridEnabled || !mapGridOrigin}
+                  >
+                    {a}
+                  </StyledButton>
+                ))}
+              </View>
+
+              <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
+                <StyledButton
+                  variant="primary"
+                  disabled={!mapGridEnabled || !mapGridOrigin}
+                  onPress={async () => {
+                    try {
+                      if (!mapGridEnabled || !mapGridOrigin) {
+                        await showAlert({ title: 'Grid reference', message: 'Enable the grid and set an origin first.' });
+                        return;
+                      }
+
+                      const e = parseGridNumber(gridEasting);
+                      const n = parseGridNumber(gridNorthing);
+                      if (e === null || n === null) {
+                        await showAlert({ title: 'Grid reference', message: 'Enter valid numbers for easting and northing.' });
+                        return;
+                      }
+
+                      const unit = accuracyUnitMeters(gridAccuracy);
+                      const { latitude, longitude } = gridOffsetMetersToLatLon(mapGridOrigin, e * unit, n * unit);
+                      await addCheckpoint(latitude, longitude);
+                      setGridEasting('');
+                      setGridNorthing('');
+                      router.push('/');
+                    } catch (err) {
+                      await showAlert({ title: 'Grid reference', message: String(err) });
+                    }
+                  }}
+                >
+                  Add place
+                </StyledButton>
+              </View>
+            </View>
+          </Collapsible>
         </View>
 
         <View style={styles.stackContainer}>
@@ -136,7 +328,15 @@ export default function RoutesScreen() {
                   }
                 >
                   <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
-                    <StyledButton variant="primary" onPress={() => null}>Add</StyledButton>
+                    <StyledButton
+                      variant="primary"
+                      onPress={() => {
+                        void requestPlacementMode();
+                        router.push('/');
+                      }}
+                    >
+                      Add
+                    </StyledButton>
                     <View style={{ width: 12 }} />
                     <StyledButton variant="secondary" onPress={() => handleEdit(item)}>Edit</StyledButton>
                     <View style={{ width: 12 }} />
@@ -186,6 +386,7 @@ export default function RoutesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  gridRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   stackContainer: { flex: 1, paddingTop: 5 },
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 12, borderRadius: 8, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
   cardLeft: { width: 48, alignItems: 'center', justifyContent: 'center' },

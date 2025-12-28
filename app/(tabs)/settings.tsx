@@ -1,20 +1,26 @@
-import React from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import React, { useState } from 'react';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { alert } from '@/components/alert';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import AboutContent from '@/components/AboutContent';
 import StyledButton from '@/components/ui/StyledButton';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const { angleUnit, mapHeading, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
+  const [infoOpen, setInfoOpen] = useState(false);
+  const borderColor = useThemeColor({}, 'tabIconDefault');
+  const background = useThemeColor({}, 'background');
 
   const isMils = angleUnit === 'mils';
   const isTrue = mapHeading === 'true';
@@ -35,7 +41,17 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ThemedView style={styles.container}>
-        <ThemedText type="title">Settings</ThemedText>
+        <View style={styles.headerRow}>
+          <ThemedText type="title">Settings</ThemedText>
+          <Pressable
+            onPress={() => setInfoOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Info"
+            style={({ pressed }) => [styles.infoButton, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <IconSymbol size={22} name="info.circle" color={String(borderColor)} />
+          </Pressable>
+        </View>
 
         <ThemedView style={styles.section}>
           <ThemedText type="subtitle">Angle Units</ThemedText>
@@ -84,6 +100,21 @@ export default function SettingsScreen() {
             </StyledButton>
           </View>
         </ThemedView>
+
+        <Modal visible={infoOpen} animationType="slide" transparent={true}>
+          <View style={styles.modalBackdrop}>
+            <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}
+            >
+              <View style={styles.modalHeader}>
+                <ThemedText type="title">Info</ThemedText>
+                <StyledButton variant="secondary" onPress={() => setInfoOpen(false)}>Close</StyledButton>
+              </View>
+              <ScrollView contentContainerStyle={styles.modalScroll}>
+                <AboutContent />
+              </ScrollView>
+            </ThemedView>
+          </View>
+        </Modal>
       </ThemedView>
     </SafeAreaView>
   );
@@ -98,6 +129,15 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 16,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  infoButton: {
+    padding: 8,
+    borderRadius: 16,
+  },
   section: {
     paddingVertical: 12,
     gap: 10,
@@ -107,5 +147,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 12,
+  },
+  modalContainer: {
+    width: '95%',
+    maxHeight: '90%',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  modalScroll: {
+    paddingBottom: 16,
   },
 });
