@@ -1,9 +1,8 @@
-import React from 'react';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
-import { useThemeColor } from '@/hooks/use-theme-color';
 
 type AddRoutePanelProps = {
   visible: boolean;
@@ -13,7 +12,7 @@ type AddRoutePanelProps = {
 
 const OPTIONS = [
   { id: 'reference', label: 'Reference', icon: 'book.fill' },
-  { id: 'project', label: 'Project', icon: 'folder.fill' },
+  { id: 'project', label: 'Project', icon: 'arrow.up.square.fill' },
   { id: 'place', label: 'Place', icon: 'mappin.and.ellipse' },
   { id: 'saved', label: 'Saved', icon: 'star.fill' },
 ] as const;

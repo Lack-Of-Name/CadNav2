@@ -25,7 +25,7 @@ const MAPPING = {
   'info.circle': 'info-outline',
   'info.circle.fill': 'info',
   'book.fill': 'menu-book',
-  'folder.fill': 'folder',
+  'arrow.up.square.fill': 'arrow-circle-up',
   'mappin.and.ellipse': 'place',
   'star.fill': 'star',
   'xmark': 'close',
