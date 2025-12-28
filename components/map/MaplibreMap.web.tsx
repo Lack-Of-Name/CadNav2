@@ -201,7 +201,7 @@ export default function MapLibreMap() {
           data: { type: 'FeatureCollection', features: [] },
         } as any);
       }
-      if (!m.getLayer(majorLayerId)) {
+        if (!m.getLayer(majorLayerId)) {
         m.addLayer({
           id: majorLayerId,
           type: 'line',
@@ -209,7 +209,7 @@ export default function MapLibreMap() {
           paint: {
             'line-color': GRID_LINE_COLOR,
             'line-opacity': 0.55,
-            'line-width': 1,
+            'line-width': 2,
           },
         } as any);
       } else {
@@ -234,7 +234,7 @@ export default function MapLibreMap() {
           paint: {
             'line-color': GRID_LINE_COLOR,
             'line-opacity': 0.12,
-            'line-width': 1,
+            'line-width': 1.5,
           },
         } as any);
       } else {
@@ -278,6 +278,14 @@ export default function MapLibreMap() {
       const labelSrc = m.getSource(labelSourceId) as any;
       if (!majorSrc || !minorSrc || !labelSrc) return;
 
+      const safeSet = (src: any, data: any) => {
+        try {
+          src.setData(data as any);
+        } catch {
+          // ignore
+        }
+      };
+
       const b = m.getBounds();
       const west = b.getWest();
       const south = b.getSouth();
@@ -285,26 +293,23 @@ export default function MapLibreMap() {
       const north = b.getNorth();
       const z = typeof m.getZoom === 'function' ? m.getZoom() : 1;
       const origin = mapGridOrigin ? { latitude: mapGridOrigin.latitude, longitude: mapGridOrigin.longitude } : null;
+
+      // Only show grid at zoom >= 15
+      if (typeof z !== 'number' || z < 15) {
+        const empty = { type: 'FeatureCollection', features: [] } as any;
+        safeSet(majorSrc, empty);
+        safeSet(minorSrc, empty);
+        safeSet(labelSrc, empty);
+        return;
+      }
+
       const geo = buildMapGridGeoJSON({ west, south, east, north }, z, origin);
       const minorGeo = mapGridSubdivisionsEnabled ? buildMapGridSubdivisionsGeoJSON({ west, south, east, north }, z, origin) : { type: 'FeatureCollection', features: [] };
       const labelGeo = mapGridNumbersEnabled ? buildMapGridNumbersGeoJSON({ west, south, east, north }, z, origin) : { type: 'FeatureCollection', features: [] };
-      try {
-        majorSrc.setData(geo as any);
-      } catch {
-        // ignore
-      }
 
-      try {
-        minorSrc.setData(minorGeo as any);
-      } catch {
-        // ignore
-      }
-
-      try {
-        labelSrc.setData(labelGeo as any);
-      } catch {
-        // ignore
-      }
+      safeSet(majorSrc, geo);
+      safeSet(minorSrc, minorGeo);
+      safeSet(labelSrc, labelGeo);
     };
 
     const remove = () => {
@@ -364,8 +369,11 @@ export default function MapLibreMap() {
       } else {
         m.once('load', onLoad);
       }
+      // Update grid continuously while the map is moving/zooming so lines follow camera.
       m.on('move', onMove);
       m.on('zoom', onMove);
+      m.on('movestart', onMove);
+      m.on('zoomstart', onMove);
     } else {
       remove();
     }
@@ -374,6 +382,8 @@ export default function MapLibreMap() {
       try {
         m.off('move', onMove);
         m.off('zoom', onMove);
+        m.off('movestart', onMove);
+        m.off('zoomstart', onMove);
       } catch {
         // ignore
       }
@@ -499,10 +509,7 @@ export default function MapLibreMap() {
       setFollowing(false);
       return;
     }
-
     requestLocation();
-    setFollowing(true);
-
     const loc = effectiveLastLocation;
     if (loc && map.current) {
       const { latitude, longitude } = loc.coords;
@@ -517,6 +524,7 @@ export default function MapLibreMap() {
         // ignore
       }
     }
+    setFollowing(true);
   };
 
   if (loading || !apiKey) {

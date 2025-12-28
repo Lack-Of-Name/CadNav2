@@ -50,7 +50,7 @@ export default function MapLibreMap() {
     cameraRef.current.zoomTo?.(16, 200);
     await sleep(200);
     cameraRef.current.flyTo?.([longitude, latitude], 800);
-    await sleep(800);
+    await sleep(800)
   };
 
   const handleRecenterPress = async () => {
@@ -64,11 +64,10 @@ export default function MapLibreMap() {
     }
 
     requestLocation();
-    setFollowing(true);
-
     if (lastLocation) {
       await centerOnLocation(lastLocation);
     }
+    setFollowing(true);
   };
 
   // map press handler removed (placement/checkpoints removed)
@@ -90,31 +89,28 @@ export default function MapLibreMap() {
 
   const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
+  const emptyGeo = { type: 'FeatureCollection', features: [] } as any;
+
+  const showGrid = Boolean(mapGridEnabled && visibleBounds && typeof zoomLevel === 'number' && zoomLevel >= 12);
+
   const gridShape = (() => {
-    if (!mapGridEnabled) return null;
-    if (!visibleBounds) return null;
-    const [[west, south], [east, north]] = visibleBounds;
+    if (!showGrid) return emptyGeo;
+    const [[west, south], [east, north]] = visibleBounds as [[number, number], [number, number]];
     return buildMapGridGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
   })();
 
   const gridMinorShape = (() => {
-    if (!mapGridEnabled) return null;
-    if (!mapGridSubdivisionsEnabled) return null;
-    if (!visibleBounds) return null;
-    const [[west, south], [east, north]] = visibleBounds;
+    if (!showGrid || !mapGridSubdivisionsEnabled) return emptyGeo;
+    const [[west, south], [east, north]] = visibleBounds as [[number, number], [number, number]];
     const geo = buildMapGridSubdivisionsGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
-    if (!geo?.features?.length) return null;
-    return geo;
+    return !geo?.features?.length ? emptyGeo : geo;
   })();
 
   const gridLabelShape = (() => {
-    if (!mapGridEnabled) return null;
-    if (!mapGridNumbersEnabled) return null;
-    if (!visibleBounds) return null;
-    const [[west, south], [east, north]] = visibleBounds;
+    if (!showGrid || !mapGridNumbersEnabled) return emptyGeo;
+    const [[west, south], [east, north]] = visibleBounds as [[number, number], [number, number]];
     const geo = buildMapGridNumbersGeoJSON({ west, south, east, north }, zoomLevel, mapGridOrigin) as any;
-    if (!geo?.features?.length) return null;
-    return geo;
+    return !geo?.features?.length ? emptyGeo : geo;
   })();
 
   return (
@@ -148,6 +144,22 @@ export default function MapLibreMap() {
               });
           }
         }}
+        onRegionIsChanging={(ev: any) => {
+          // Also update continuously while the camera is moving so grid follows the camera.
+          const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
+          if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
+          const getBounds = mapRef.current?.getVisibleBounds;
+          if (typeof getBounds === 'function') {
+            try {
+              const b = getBounds.call(mapRef.current);
+              if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
+                setVisibleBounds(b as [[number, number], [number, number]]);
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }}
       >
         <Camera
           ref={cameraRef}
@@ -157,47 +169,41 @@ export default function MapLibreMap() {
           }}
         />
 
-        {gridShape ? (
-          <ShapeSource id="map-grid-source" shape={gridShape}>
+        <ShapeSource id="map-grid-source" shape={gridShape}>
             <LineLayer
               id="map-grid-lines"
               style={{
                 lineColor: GRID_LINE_COLOR,
                 lineOpacity: 0.55,
-                lineWidth: 1,
+                lineWidth: 2,
               }}
             />
-          </ShapeSource>
-        ) : null}
+        </ShapeSource>
 
-        {gridMinorShape ? (
-          <ShapeSource id="map-grid-minor-source" shape={gridMinorShape}>
+        <ShapeSource id="map-grid-minor-source" shape={gridMinorShape}>
             <LineLayer
               id="map-grid-minor-lines"
               style={{
                 lineColor: GRID_LINE_COLOR,
                 lineOpacity: 0.12,
-                lineWidth: 1,
+                lineWidth: 1.5,
               }}
             />
-          </ShapeSource>
-        ) : null}
+        </ShapeSource>
 
-        {gridLabelShape ? (
-          <ShapeSource id="map-grid-labels-source" shape={gridLabelShape}>
-            <SymbolLayer
-              id="map-grid-labels"
-              style={{
-                textField: ['get', 'label'],
-                textSize: 12,
-                textColor: GRID_LINE_COLOR,
-                textHaloColor: '#FFFFFF',
-                textHaloWidth: 1,
-                textAllowOverlap: true,
-              }}
-            />
-          </ShapeSource>
-        ) : null}
+        <ShapeSource id="map-grid-labels-source" shape={gridLabelShape}>
+          <SymbolLayer
+            id="map-grid-labels"
+            style={{
+              textField: ['get', 'label'],
+              textSize: 12,
+              textColor: GRID_LINE_COLOR,
+              textHaloColor: '#FFFFFF',
+              textHaloWidth: 1,
+              textAllowOverlap: true,
+            }}
+          />
+        </ShapeSource>
 
         {/* checkpoints removed */}
 

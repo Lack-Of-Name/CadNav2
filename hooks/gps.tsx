@@ -129,7 +129,14 @@ export function useGPS() {
         // Magnetic heading
         if (Platform.OS !== 'web') {
           try {
-            headingSubscriptionRef.current?.remove();
+            try {
+              const old = headingSubscriptionRef.current as any;
+              if (old) {
+                if (typeof old.remove === 'function') old.remove();
+                else if (typeof old.removeSubscription === 'function') old.removeSubscription();
+                else if (typeof old.unsubscribe === 'function') old.unsubscribe();
+              }
+            } catch {}
             headingSubscriptionRef.current = await Location.watchHeadingAsync((h) => {
               if (cancelled) return;
               const mag = Number.isFinite(h.magHeading) ? h.magHeading : null;
@@ -175,7 +182,16 @@ export function useGPS() {
           // Ignore: watchPositionAsync below will still update.
         }
 
-        subscriptionRef.current?.remove();
+        try {
+          const old = subscriptionRef.current as any;
+          if (old) {
+            try {
+              if (typeof old.remove === 'function') old.remove();
+              else if (typeof old.removeSubscription === 'function') old.removeSubscription();
+              else if (typeof old.unsubscribe === 'function') old.unsubscribe();
+            } catch {}
+          }
+        } catch {}
         subscriptionRef.current = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
@@ -206,9 +222,23 @@ export function useGPS() {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      subscriptionRef.current?.remove();
+      try {
+        const s = subscriptionRef.current as any;
+        if (s) {
+          if (typeof s.remove === 'function') s.remove();
+          else if (typeof s.removeSubscription === 'function') s.removeSubscription();
+          else if (typeof s.unsubscribe === 'function') s.unsubscribe();
+        }
+      } catch {}
       subscriptionRef.current = null;
-      headingSubscriptionRef.current?.remove();
+      try {
+        const h = headingSubscriptionRef.current as any;
+        if (h) {
+          if (typeof h.remove === 'function') h.remove();
+          else if (typeof h.removeSubscription === 'function') h.removeSubscription();
+          else if (typeof h.unsubscribe === 'function') h.unsubscribe();
+        }
+      } catch {}
       headingSubscriptionRef.current = null;
     };
   }, [computeAndSetTrueHeading, restartToken]);

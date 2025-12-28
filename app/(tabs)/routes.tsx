@@ -12,9 +12,8 @@ import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
 import { Collapsible } from '@/components/ui/collapsible';
 import { Colors } from '@/constants/theme';
-import { useSettings } from '@/hooks/settings';
 import { useGPS } from '@/hooks/gps';
-import { gridOffsetMetersToLatLon } from '@/components/map/mapGrid';
+import { useSettings } from '@/hooks/settings';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string };
 const ROUTES_KEY = 'APP_ROUTES';
@@ -32,29 +31,7 @@ export default function RoutesScreen() {
   const [modalError, setModalError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const [gridEasting, setGridEasting] = useState('');
-  const [gridNorthing, setGridNorthing] = useState('');
-  const [gridAccuracy, setGridAccuracy] = useState<'1km' | '100m' | '10m' | '1m'>('100m');
-
-  function accuracyUnitMeters(a: '1km' | '100m' | '10m' | '1m') {
-    switch (a) {
-      case '1km':
-        return 1000;
-      case '100m':
-        return 100;
-      case '10m':
-        return 10;
-      default:
-        return 1;
-    }
-  }
-
-  function parseGridNumber(raw: string) {
-    const cleaned = raw.trim().replace(/,/g, '.');
-    if (cleaned.length === 0) return null;
-    const v = Number.parseFloat(cleaned);
-    return Number.isFinite(v) ? v : null;
-  }
+  
 
   function resetForm() {
     setTitle('');
@@ -233,79 +210,7 @@ export default function RoutesScreen() {
               </StyledButton>
             </View>
 
-            <View style={{ marginTop: 14 }}>
-              <ThemedText type="defaultSemiBold">Add by grid reference</ThemedText>
-              <ThemedText>
-                Enter eastings/northings relative to the grid origin. Accuracy controls the input units.
-              </ThemedText>
-
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
-                <TextInput
-                  placeholder="Easting"
-                  value={gridEasting}
-                  onChangeText={setGridEasting}
-                  editable={mapGridEnabled && !!mapGridOrigin}
-                  keyboardType="numbers-and-punctuation"
-                  style={[styles.input, { flex: 1, color: textColor ?? Colors.light.text, borderColor }]}
-                  placeholderTextColor={placeholderColor}
-                />
-                <TextInput
-                  placeholder="Northing"
-                  value={gridNorthing}
-                  onChangeText={setGridNorthing}
-                  editable={mapGridEnabled && !!mapGridOrigin}
-                  keyboardType="numbers-and-punctuation"
-                  style={[styles.input, { flex: 1, color: textColor ?? Colors.light.text, borderColor }]}
-                  placeholderTextColor={placeholderColor}
-                />
-              </View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 10, gap: 8 }}>
-                {(['1km', '100m', '10m', '1m'] as const).map((a) => (
-                  <StyledButton
-                    key={a}
-                    variant={gridAccuracy === a ? 'primary' : 'secondary'}
-                    onPress={() => setGridAccuracy(a)}
-                    disabled={!mapGridEnabled || !mapGridOrigin}
-                  >
-                    {a}
-                  </StyledButton>
-                ))}
-              </View>
-
-              <View style={{ marginTop: 10, flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' }}>
-                <StyledButton
-                  variant="primary"
-                  disabled={!mapGridEnabled || !mapGridOrigin}
-                  onPress={async () => {
-                    try {
-                      if (!mapGridEnabled || !mapGridOrigin) {
-                        await showAlert({ title: 'Grid reference', message: 'Enable the grid and set an origin first.' });
-                        return;
-                      }
-
-                      const e = parseGridNumber(gridEasting);
-                      const n = parseGridNumber(gridNorthing);
-                      if (e === null || n === null) {
-                        await showAlert({ title: 'Grid reference', message: 'Enter valid numbers for easting and northing.' });
-                        return;
-                      }
-
-                      const unit = accuracyUnitMeters(gridAccuracy);
-                      const { latitude, longitude } = gridOffsetMetersToLatLon(mapGridOrigin, e * unit, n * unit);
-                      await addCheckpoint(latitude, longitude);
-                      setGridEasting('');
-                      setGridNorthing('');
-                      router.push('/');
-                    } catch (err) {
-                      await showAlert({ title: 'Grid reference', message: String(err) });
-                    }
-                  }}
-                >
-                  Add place
-                </StyledButton>
-              </View>
-            </View>
+            
           </Collapsible>
         </View>
 

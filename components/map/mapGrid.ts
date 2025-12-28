@@ -47,15 +47,7 @@ function snapUp(value: number, step: number) {
   return Math.ceil(value / step) * step;
 }
 
-function baseGridStepMetersForZoom(zoom: number) {
-  // Denser grid at lower zooms.
-  if (zoom >= 12) return 1000;
-  if (zoom >= 10) return 2000;
-  if (zoom >= 8) return 4000;
-  if (zoom >= 6) return 8000;
-  if (zoom >= 4) return 16000;
-  return 32000;
-}
+
 
 function boundsToMercatorRect(bounds: LonLatBounds) {
   const sw = lonLatToMercatorMeters(bounds.west, bounds.south);
@@ -131,26 +123,8 @@ function buildGridLinePositions(bounds: LonLatBounds, stepMeters: number, origin
 }
 
 function chooseStepMeters(bounds: LonLatBounds, zoom: number, maxLines: number) {
-  const sw = lonLatToMercatorMeters(bounds.west, bounds.south);
-  const ne = lonLatToMercatorMeters(bounds.east, bounds.north);
-
-  const xmin = Math.min(sw.x, ne.x);
-  const xmax = Math.max(sw.x, ne.x);
-  const ymin = Math.min(sw.y, ne.y);
-  const ymax = Math.max(sw.y, ne.y);
-
-  let step = baseGridStepMetersForZoom(zoom);
-
-  // Increase step until the number of lines is below the cap.
-  for (let i = 0; i < 12; i++) {
-    const xLines = Math.max(0, Math.floor((xmax - xmin) / step) + 2);
-    const yLines = Math.max(0, Math.floor((ymax - ymin) / step) + 2);
-    const total = xLines + yLines;
-    if (total <= maxLines) break;
-    step *= 2;
-  }
-
-  return step;
+  // Force a fixed 1km (1000 m) grid regardless of zoom or viewport size.
+  return 1000;
 }
 
 export function buildMapGridGeoJSON(bounds: LonLatBounds, zoom: number, origin?: GridOrigin | null): GeoJSONFeatureCollection {
