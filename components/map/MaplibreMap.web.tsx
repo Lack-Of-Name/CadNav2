@@ -25,7 +25,7 @@ export default function MapLibreMap() {
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled } = useSettings();
+  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, gridConvergence } = useSettings();
   // checkpoints removed
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -357,6 +357,7 @@ export default function MapLibreMap() {
             origin={mapGridOrigin ?? { latitude: effectiveLastLocation.coords.latitude, longitude: effectiveLastLocation.coords.longitude }}
             subdivisionsEnabled={mapGridSubdivisionsEnabled}
             numbersEnabled={mapGridNumbersEnabled}
+            gridConvergence={typeof gridConvergence === 'number' ? gridConvergence : 0}
           />
         )}
         <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6, zIndex: 100 }} textStyle={styles.locationText} renderAs="web" />

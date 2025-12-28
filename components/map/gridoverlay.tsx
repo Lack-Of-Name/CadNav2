@@ -10,12 +10,14 @@ export default function GridOverlay({
   minZoom = 12,
   subdivisionsEnabled = true,
   numbersEnabled = false,
+  gridConvergence = 0,
 }: {
   map: maplibregl.Map | null | undefined;
   origin: Origin;
   minZoom?: number;
   subdivisionsEnabled?: boolean;
   numbersEnabled?: boolean;
+  gridConvergence?: number;
 }) {
   const [gridLines, setGridLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
   const [gridSubLines, setGridSubLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
@@ -56,9 +58,21 @@ export default function GridOverlay({
         const gridOffsets = computeGridCornersFromMapBounds(originPt, { latitude: sw.lat, longitude: sw.lng }, { latitude: ne.lat, longitude: ne.lng });
         const intersections = generateGridIntersections(gridOffsets.offsets, 1000);
 
+        // Apply grid convergence (rotation) to easting/northing before converting to lat/lon
+        function rotate(e: number, n: number, deg: number) {
+          const rad = (deg * Math.PI) / 180;
+          const cos = Math.cos(rad);
+          const sin = Math.sin(rad);
+          return {
+            e: e * cos - n * sin,
+            n: e * sin + n * cos,
+          };
+        }
+
         const pts: Array<{ x: number; y: number; e: number; n: number }> = [];
         for (const [easting, northing] of intersections) {
-          const ll = gridOffsetMetersToLatLon(originPt, easting, northing);
+          const { e: eRot, n: nRot } = rotate(easting, northing, gridConvergence ?? 0);
+          const ll = gridOffsetMetersToLatLon(originPt, eRot, nRot);
           try {
             const p = map.project([ll.longitude, ll.latitude]);
             pts.push({ x: p.x, y: p.y, e: easting, n: northing });
@@ -148,8 +162,10 @@ export default function GridOverlay({
               // center in e/n
               const ec = (e0 + e1) / 2;
               const nc = (n0 + n1) / 2;
+              // apply grid convergence
+              const { e: ecRot, n: ncRot } = rotate(ec, nc, gridConvergence ?? 0);
               // get lat/lon and project to screen
-              const ll = gridOffsetMetersToLatLon(originPt, ec, nc);
+              const ll = gridOffsetMetersToLatLon(originPt, ecRot, ncRot);
               try {
                 const p = map.project([ll.longitude, ll.latitude]);
                 centers.push({ x: p.x, y: p.y, e: e0, n: n0 });
@@ -178,7 +194,7 @@ export default function GridOverlay({
       map.off('move', update);
       map.off('zoom', update);
     };
-  }, [map, origin, minZoom]);
+  }, [map, origin, minZoom, gridConvergence]);
 
   return (
     <div style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 59 }}>
