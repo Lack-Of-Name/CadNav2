@@ -12,7 +12,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
-// map grid utilities removed
+// map grid utilities
+import { computeGridCornersFromMapBounds, generateGridIntersections, gridOffsetMetersToLatLon } from './mapGrid';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
@@ -24,7 +25,7 @@ export default function MapLibreMap() {
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading } = useSettings();
+  const { angleUnit, mapHeading, mapGridOrigin } = useSettings();
   // checkpoints removed
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -36,6 +37,7 @@ export default function MapLibreMap() {
   const [following, setFollowing] = useState(false);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
+  const [gridScreenPoints, setGridScreenPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [compassOpen, setCompassOpen] = useState(false);
@@ -135,6 +137,40 @@ export default function MapLibreMap() {
         if (ll) {
           const p = map.current.project([ll.coords.longitude, ll.coords.latitude]);
           setScreenPos({ x: p.x, y: p.y });
+        }
+
+        // compute grid points and project to screen coordinates only at zoom >= 12
+        try {
+          const zoom = typeof map.current.getZoom === 'function' ? map.current.getZoom() : 0;
+          if (zoom >= 12) {
+            const bounds = map.current.getBounds();
+            const sw = bounds.getSouthWest();
+            const ne = bounds.getNorthEast();
+            const origin = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
+
+            const gridOffsets = computeGridCornersFromMapBounds(
+              origin,
+              { latitude: sw.lat, longitude: sw.lng },
+              { latitude: ne.lat, longitude: ne.lng }
+            );
+
+            const intersections = generateGridIntersections(gridOffsets.offsets, 1000);
+            const pts: Array<{ x: number; y: number }> = [];
+            for (const [easting, northing] of intersections) {
+              const ll = gridOffsetMetersToLatLon(origin, easting, northing);
+              try {
+                const p = map.current.project([ll.longitude, ll.latitude]);
+                pts.push({ x: p.x, y: p.y });
+              } catch {
+                // skip
+              }
+            }
+            setGridScreenPoints(pts);
+          } else {
+            setGridScreenPoints([]);
+          }
+        } catch (gErr) {
+          console.error('grid computation failed', gErr);
         }
       } catch (err) {
         if (!errorReportedRef.current) {
@@ -348,6 +384,22 @@ export default function MapLibreMap() {
         }}
       >
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
+        {gridScreenPoints.map((pt, idx) => (
+          <div
+            key={`grid-point-${idx}`}
+            style={{
+              position: 'absolute',
+              left: pt.x - 4,
+              top: pt.y - 4,
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              background: 'rgba(255,0,0,0.9)',
+              pointerEvents: 'none',
+              zIndex: 60,
+            }}
+          />
+        ))}
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
         {/* placement UI removed */}
