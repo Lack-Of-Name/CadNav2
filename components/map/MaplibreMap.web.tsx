@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
 // map grid utilities
-import { computeGridCornersFromMapBounds, generateGridIntersections, gridOffsetMetersToLatLon } from './mapGrid';
+import GridOverlay from './gridoverlay';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
@@ -25,7 +25,7 @@ export default function MapLibreMap() {
   const lastLocationLossTimer = useRef<number | null>(null);
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
-  const { angleUnit, mapHeading, mapGridOrigin } = useSettings();
+  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled } = useSettings();
   // checkpoints removed
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -37,10 +37,6 @@ export default function MapLibreMap() {
   const [following, setFollowing] = useState(false);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
-  const [gridScreenPoints, setGridScreenPoints] = useState<Array<{ x: number; y: number }>>([]);
-  const [gridLines, setGridLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
-  const [gridSubLines, setGridSubLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
-  const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [compassOpen, setCompassOpen] = useState(false);
@@ -142,128 +138,7 @@ export default function MapLibreMap() {
           setScreenPos({ x: p.x, y: p.y });
         }
 
-        // compute origin screen point and grid points; grid visible only at zoom >= 12
-        try {
-          // project origin to screen (if available)
-          try {
-            const originForProj = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
-            const op = map.current.project([originForProj.longitude, originForProj.latitude]);
-            setOriginScreenPoint({ x: op.x, y: op.y });
-          } catch {
-            setOriginScreenPoint(null);
-          }
-          const zoom = typeof map.current.getZoom === 'function' ? map.current.getZoom() : 0;
-          if (zoom >= 12) {
-            const bounds = map.current.getBounds();
-            const sw = bounds.getSouthWest();
-            const ne = bounds.getNorthEast();
-            const origin = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
-
-            const gridOffsets = computeGridCornersFromMapBounds(
-              origin,
-              { latitude: sw.lat, longitude: sw.lng },
-              { latitude: ne.lat, longitude: ne.lng }
-            );
-
-            const intersections = generateGridIntersections(gridOffsets.offsets, 1000);
-
-            // map each intersection to screen points (if inside projection)
-            const pts: Array<{ x: number; y: number; e: number; n: number }> = [];
-            for (const [easting, northing] of intersections) {
-              const ll = gridOffsetMetersToLatLon(origin, easting, northing);
-              try {
-                const p = map.current.project([ll.longitude, ll.latitude]);
-                pts.push({ x: p.x, y: p.y, e: easting, n: northing });
-              } catch {
-                // skip
-              }
-            }
-            setGridScreenPoints(pts.map((p) => ({ x: p.x, y: p.y })));
-
-            // Build polylines for vertical (constant easting) and horizontal (constant northing) grid lines
-            const es = Array.from(new Set(pts.map((p) => p.e))).sort((a, b) => a - b);
-            const ns = Array.from(new Set(pts.map((p) => p.n))).sort((a, b) => a - b);
-
-            const vertical: string[] = es.map((e) => {
-              const linePts = ns
-                .map((n) => {
-                  const p = pts.find((q) => q.e === e && q.n === n);
-                  return p ? `${p.x},${p.y}` : null;
-                })
-                .filter(Boolean) as string[];
-              return linePts.join(' ');
-            });
-
-            const horizontal: string[] = ns.map((n) => {
-              const linePts = es
-                .map((e) => {
-                  const p = pts.find((q) => q.e === e && q.n === n);
-                  return p ? `${p.x},${p.y}` : null;
-                })
-                .filter(Boolean) as string[];
-              return linePts.join(' ');
-            });
-
-            // build a quick lookup for points by e,n for fast interpolation
-            const key = (e: number, n: number) => `${e}:${n}`;
-            const ptMap = new Map<string, { x: number; y: number; e: number; n: number }>();
-            for (const p of pts) ptMap.set(key(p.e, p.n), p);
-
-            // Generate subdivision lines (9 subdivisions between main lines => 10 equal parts)
-            const verticalSub: string[] = [];
-            const horizontalSub: string[] = [];
-
-            if (es.length >= 2 && ns.length >= 2) {
-              const parts = 10;
-              // vertical subdivisions between each adjacent easting pair
-              for (let i = 0; i < es.length - 1; i++) {
-                const eA = es[i];
-                const eB = es[i + 1];
-                for (let k = 1; k < parts; k++) {
-                  const t = k / parts;
-                  const linePts: string[] = [];
-                  for (const n of ns) {
-                    const a = ptMap.get(key(eA, n));
-                    const b = ptMap.get(key(eB, n));
-                    if (!a || !b) continue;
-                    const x = a.x + (b.x - a.x) * t;
-                    const y = a.y + (b.y - a.y) * t;
-                    linePts.push(`${x},${y}`);
-                  }
-                  if (linePts.length) verticalSub.push(linePts.join(' '));
-                }
-              }
-
-              // horizontal subdivisions between each adjacent northing pair
-              for (let j = 0; j < ns.length - 1; j++) {
-                const nA = ns[j];
-                const nB = ns[j + 1];
-                for (let k = 1; k < parts; k++) {
-                  const t = k / parts;
-                  const linePts: string[] = [];
-                  for (const e of es) {
-                    const a = ptMap.get(key(e, nA));
-                    const b = ptMap.get(key(e, nB));
-                    if (!a || !b) continue;
-                    const x = a.x + (b.x - a.x) * t;
-                    const y = a.y + (b.y - a.y) * t;
-                    linePts.push(`${x},${y}`);
-                  }
-                  if (linePts.length) horizontalSub.push(linePts.join(' '));
-                }
-              }
-            }
-
-            setGridLines({ vertical, horizontal });
-            setGridSubLines({ vertical: verticalSub, horizontal: horizontalSub });
-          } else {
-            setGridScreenPoints([]);
-            setGridLines({ vertical: [], horizontal: [] });
-            setOriginScreenPoint(null);
-          }
-        } catch (gErr) {
-          console.error('grid computation failed', gErr);
-        }
+        // grid computation moved to GridOverlay component
       } catch (err) {
         if (!errorReportedRef.current) {
           errorReportedRef.current = true;
@@ -476,32 +351,13 @@ export default function MapLibreMap() {
         }}
       >
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
-        <svg style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 59 }}>
-          {gridLines.vertical.map((pts, i) => (
-            <polyline key={`v-${i}`} points={pts} stroke="#000" strokeWidth={1} fill="none" />
-          ))}
-          {gridLines.horizontal.map((pts, i) => (
-            <polyline key={`h-${i}`} points={pts} stroke="#000" strokeWidth={1} fill="none" />
-          ))}
-        </svg>
-        {/* red point markers removed */}
-        {originScreenPoint ? (
-          <div
-            key="grid-origin"
-            style={{
-              position: 'absolute',
-              left: originScreenPoint.x - 10,
-              top: originScreenPoint.y - 10,
-              width: 20,
-              height: 20,
-              borderRadius: 10,
-              background: 'rgba(0,0,0,0.9)',
-              border: '2px solid white',
-              pointerEvents: 'none',
-              zIndex: 61,
-            }}
+        {effectiveLastLocation && mapGridEnabled && (
+          <GridOverlay
+            map={map.current}
+            origin={mapGridOrigin ?? { latitude: effectiveLastLocation.coords.latitude, longitude: effectiveLastLocation.coords.longitude }}
+            subdivisionsEnabled={mapGridSubdivisionsEnabled}
           />
-        ) : null}
+        )}
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
         {/* placement UI removed */}
