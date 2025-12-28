@@ -1,12 +1,5 @@
-import { alert as showAlert } from '@/components/alert';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { AddRoutePanel } from '@/components/AddRoutePanel';
+import { alert as showAlert } from '@/components/alert';
 import { EditRouteModal } from '@/components/EditRouteModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
@@ -20,6 +13,13 @@ import { Colors } from '@/constants/theme';
 import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as turf from '@turf/turf';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, Modal, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string };
 const ROUTES_KEY = 'APP_ROUTES';
@@ -116,14 +116,13 @@ export default function RoutesScreen() {
       return;
     }
 
-    // Convert km offsets to degrees
-    const kmPerDegLat = 111.32; // approximate
-    const kmPerDegLon = 111.32 * Math.cos((lat * Math.PI) / 180);
+    // Use Turf to calculate the point
+    // 1. Move west by e km (Turf uses meters)
+    const originPoint = turf.destination([lon, lat], e * 1000, 270, { units: 'meters' });
+    // 2. Move south by n km
+    const finalPoint = turf.destination(originPoint.geometry.coordinates, n * 1000, 180, { units: 'meters' });
 
-    // According to spec: if easting is 023, origin is 02.3 km LEFT of current -> longitude decreases
-    const originLon = lon - e / kmPerDegLon;
-    // if northing is 2134, origin is 21.34 km DOWN of current -> latitude decreases
-    const originLat = lat - n / kmPerDegLat;
+    const [originLon, originLat] = finalPoint.geometry.coordinates;
 
     void setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
     setOriginModalVisible(false);
