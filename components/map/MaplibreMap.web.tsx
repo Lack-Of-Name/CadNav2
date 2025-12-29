@@ -13,7 +13,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
 // map grid utilities
-import GridOverlay from './gridoverlay';
+import GridOverlay from './gridoverlay.web';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
