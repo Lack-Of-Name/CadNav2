@@ -84,18 +84,20 @@ function buildGridLines(
   const rect = boundsToMercatorRect(bounds);
   const o = originToMercator(origin);
 
-  // Adjust east-west mercator step so that the true ground east-west
-  // distance at the map's center latitude equals `stepMeters`.
+  // Scale mercator spacing by latitude so grid squares represent true meters
+  // and remain square in view.
   const centerY = (rect.ymin + rect.ymax) / 2;
   const centerLat = mercatorMetersToLonLat(0, centerY)[1];
   const latRad = (centerLat * Math.PI) / 180;
   const cosLat = Math.max(0.0001, Math.cos(latRad));
-  const xStepMeters = stepMeters / cosLat;
+  const stepMercator = stepMeters / cosLat;
+  const xStepMeters = stepMercator;
+  const yStepMeters = stepMercator;
 
   const startX = o.x + snapDown(rect.xmin - o.x, xStepMeters);
   const endX = o.x + snapUp(rect.xmax - o.x, xStepMeters);
-  const startY = o.y + snapDown(rect.ymin - o.y, stepMeters);
-  const endY = o.y + snapUp(rect.ymax - o.y, stepMeters);
+  const startY = o.y + snapDown(rect.ymin - o.y, yStepMeters);
+  const endY = o.y + snapUp(rect.ymax - o.y, yStepMeters);
 
   const features: GeoJSONFeatureCollection['features'] = [];
 
@@ -109,7 +111,7 @@ function buildGridLines(
     });
   }
 
-  for (let y = startY; y <= endY; y += stepMeters) {
+  for (let y = startY; y <= endY; y += yStepMeters) {
     const a = mercatorMetersToLonLat(rect.xmin, y);
     const b = mercatorMetersToLonLat(rect.xmax, y);
     features.push({
@@ -126,20 +128,21 @@ function buildGridLinePositions(bounds: LonLatBounds, stepMeters: number, origin
   const rect = boundsToMercatorRect(bounds);
   const o = originToMercator(origin);
 
-  // Compute latitude at map center and adjust x-step so horizontal
-  // spacing corresponds to true east-west meters.
+  // Scale mercator spacing by latitude so grid squares represent true meters.
   const centerY = (rect.ymin + rect.ymax) / 2;
   const centerLat = mercatorMetersToLonLat(0, centerY)[1];
   const latRad = (centerLat * Math.PI) / 180;
   const cosLat = Math.max(0.0001, Math.cos(latRad));
-  const xStepMeters = stepMeters / cosLat;
+  const stepMercator = stepMeters / cosLat;
+  const xStepMeters = stepMercator;
+  const yStepMeters = stepMercator;
 
   const startX = o.x + snapDown(rect.xmin - o.x, xStepMeters);
   const endX = o.x + snapUp(rect.xmax - o.x, xStepMeters);
-  const startY = o.y + snapDown(rect.ymin - o.y, stepMeters);
-  const endY = o.y + snapUp(rect.ymax - o.y, stepMeters);
+  const startY = o.y + snapDown(rect.ymin - o.y, yStepMeters);
+  const endY = o.y + snapUp(rect.ymax - o.y, yStepMeters);
 
-  return { rect, o, startX, endX, startY, endY, xStepMeters };
+  return { rect, o, startX, endX, startY, endY, xStepMeters, yStepMeters };
 }
 
 function chooseStepMeters(bounds: LonLatBounds, zoom: number, maxLines: number) {
@@ -154,7 +157,7 @@ export function buildMapGridGeoJSON(bounds: LonLatBounds, zoom: number, origin?:
 
 export function buildMapGridNumbersGeoJSON(bounds: LonLatBounds, zoom: number, origin?: GridOrigin | null): GeoJSONFeatureCollection {
   const stepMeters = chooseStepMeters(bounds, zoom, 320);
-  const { rect, o, startX, endX, startY, endY, xStepMeters } = buildGridLinePositions(bounds, stepMeters, origin);
+  const { rect, o, startX, endX, startY, endY, xStepMeters, yStepMeters } = buildGridLinePositions(bounds, stepMeters, origin);
 
   // Hide labels when zoomed too far out; they start to clutter.
   // "Looks ok until about 32km on each side" -> about ~64km total span.
@@ -186,9 +189,9 @@ export function buildMapGridNumbersGeoJSON(bounds: LonLatBounds, zoom: number, o
 
   // Horizontal lines: label at (right, y)
   {
-    const startIndex = Math.round((startY - o.y) / stepMeters);
+    const startIndex = Math.round((startY - o.y) / yStepMeters);
     let idx = startIndex;
-    for (let y = startY; y <= endY; y += stepMeters, idx++) {
+    for (let y = startY; y <= endY; y += yStepMeters, idx++) {
       const km = Math.round(idx * (stepMeters / 1000));
       const pt = mercatorMetersToLonLat(rect.xmax - inset, y);
       features.push({
@@ -214,7 +217,7 @@ export function buildMapGridSubdivisionsGeoJSON(
   const stepMeters = Math.max(100, Math.round(majorStep / 10));
 
   const rect = boundsToMercatorRect(bounds);
-  // Adjust x-step for center latitude when estimating total line count.
+  // Scale mercator spacing by latitude so subdivisions represent true meters.
   const centerY = (rect.ymin + rect.ymax) / 2;
   const centerLat = mercatorMetersToLonLat(0, centerY)[1];
   const latRad = (centerLat * Math.PI) / 180;

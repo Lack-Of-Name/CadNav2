@@ -7,6 +7,7 @@ export type Checkpoint = {
   longitude: number;
   createdAt: number;
   label?: string;
+  color?: string;
 };
 
 export type SavedRoute = {
@@ -44,6 +45,9 @@ type StoreState = {
   savedLocations: SavedLocation[];
   isLoaded: boolean;
   placementModeRequested: boolean;
+  activeRouteColor: string | null;
+  activeRouteStart: { latitude: number; longitude: number } | null;
+  activeRouteLoop: boolean;
 };
 
 let store: StoreState = {
@@ -53,6 +57,9 @@ let store: StoreState = {
   savedLocations: [],
   isLoaded: false,
   placementModeRequested: false,
+  activeRouteColor: null,
+  activeRouteStart: null,
+  activeRouteLoop: false,
 };
 
 const listeners = new Set<() => void>();
@@ -264,7 +271,13 @@ export function useCheckpoints() {
 
   const addCheckpoint = useCallback(
     async (latitude: number, longitude: number) => {
-      const cp: Checkpoint = { id: makeId(), latitude, longitude, createdAt: Date.now() };
+      const cp: Checkpoint = {
+        id: makeId(),
+        latitude,
+        longitude,
+        createdAt: Date.now(),
+        color: store.activeRouteColor ?? undefined,
+      };
       // Keep checkpoints in placement order.
       const nextCheckpoints = [...store.checkpoints, cp];
       setStore({ ...store, checkpoints: nextCheckpoints, selectedId: cp.id });
@@ -295,6 +308,28 @@ export function useCheckpoints() {
       return { ...c, label: normalized };
     });
     setStore({ ...store, checkpoints: nextCheckpoints });
+  }, []);
+
+  const reorderCheckpoints = useCallback(async (nextCheckpoints: Checkpoint[]) => {
+    const hasSelected = store.selectedId && nextCheckpoints.some((c) => c.id === store.selectedId);
+    const nextSelectedId = hasSelected
+      ? store.selectedId
+      : nextCheckpoints.length > 0
+        ? nextCheckpoints[nextCheckpoints.length - 1].id
+        : null;
+    setStore({ ...store, checkpoints: nextCheckpoints, selectedId: nextSelectedId });
+  }, []);
+
+  const setActiveRouteColor = useCallback(async (color: string | null) => {
+    setStore({ ...store, activeRouteColor: color });
+  }, []);
+
+  const setActiveRouteStart = useCallback(async (start: { latitude: number; longitude: number } | null) => {
+    setStore({ ...store, activeRouteStart: start });
+  }, []);
+
+  const setActiveRouteLoop = useCallback(async (loop: boolean) => {
+    setStore({ ...store, activeRouteLoop: loop });
   }, []);
 
   const clearActiveRoute = useCallback(async () => {
@@ -375,10 +410,17 @@ export function useCheckpoints() {
     savedLocations: snapshot.savedLocations,
     isLoaded: snapshot.isLoaded,
     placementModeRequested: snapshot.placementModeRequested,
+    activeRouteColor: snapshot.activeRouteColor,
+    activeRouteStart: snapshot.activeRouteStart,
+    activeRouteLoop: snapshot.activeRouteLoop,
     addCheckpoint,
     removeCheckpoint,
     selectCheckpoint,
     setCheckpointLabel,
+    reorderCheckpoints,
+    setActiveRouteColor,
+    setActiveRouteStart,
+    setActiveRouteLoop,
     clearActiveRoute,
     saveRoute,
     loadRoute,

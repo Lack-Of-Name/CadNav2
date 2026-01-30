@@ -1,16 +1,17 @@
 import { alert as showAlert } from '@/components/alert';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { CompassButton, getCompassHeadingDeg, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
-// checkpoints removed — compass kept
+import { CompassButton, bearingDegrees, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
+import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { degreesToMils } from './converter';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ThemedView } from '../themed-view';
 import { buildMapGridGeoJSON, buildMapGridNumbersGeoJSON, buildMapGridSubdivisionsGeoJSON } from './mapGrid';
 
@@ -27,7 +28,19 @@ export default function MapLibreMap() {
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
   const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin } = useSettings();
-  // checkpoints removed
+  const {
+    checkpoints,
+    addCheckpoint,
+    removeCheckpoint,
+    selectCheckpoint,
+    selectedId,
+    selectedCheckpoint,
+    placementModeRequested,
+    consumePlacementModeRequest,
+    activeRouteColor,
+    activeRouteStart,
+    activeRouteLoop,
+  } = useCheckpoints();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelected = useThemeColor({}, 'tabIconSelected');
@@ -82,17 +95,67 @@ export default function MapLibreMap() {
   };
 
   const effectiveLastLocation = lastLocation ?? webLastLocation;
-  const currentHeading = getCompassHeadingDeg(effectiveLastLocation);
-
-  // checkpoint-bearing and distance removed
-
   // Use shared CompassOverlay component for web as well
-  const compassHeadingDeg = currentHeading ?? null;
-  const compassTargetBearingDeg = null;
-  const compassTargetLabel = null;
-  const compassHeadingRefLabel = 'Magnetic';
-  const compassBearingText = null;
-  const compassDistanceText = null;
+  const compassHeadingDeg = (() => {
+    if (!effectiveLastLocation) return null;
+    const useMag = mapHeading !== 'true';
+    const h = useMag ? effectiveLastLocation.coords.magHeading : effectiveLastLocation.coords.trueHeading;
+    return typeof h === 'number' ? h : null;
+  })();
+
+  const compassHeadingRefLabel = compassHeadingDeg == null ? null : (mapHeading === 'true' ? 'True' : 'Magnetic');
+
+  const selectedIndex = selectedCheckpoint
+    ? checkpoints.findIndex((c) => c.id === selectedCheckpoint.id)
+    : -1;
+
+  const compassTargetLabel = selectedCheckpoint
+    ? selectedCheckpoint.label?.trim() || `Checkpoint ${selectedIndex + 1}`
+    : null;
+
+  const compassTargetBearingDeg =
+    effectiveLastLocation && selectedCheckpoint
+      ? bearingDegrees(
+          effectiveLastLocation.coords.latitude,
+          effectiveLastLocation.coords.longitude,
+          selectedCheckpoint.latitude,
+          selectedCheckpoint.longitude
+        )
+      : null;
+
+  const compassBearingText =
+    typeof compassTargetBearingDeg === 'number'
+      ? angleUnit === 'mils'
+        ? `${Math.round(degreesToMils(compassTargetBearingDeg, { normalize: true }))} mils`
+        : `${Math.round(compassTargetBearingDeg)}°`
+      : null;
+
+  const compassDistanceText =
+    effectiveLastLocation && selectedCheckpoint
+      ? (() => {
+          const meters = haversineMeters(
+            effectiveLastLocation.coords.latitude,
+            effectiveLastLocation.coords.longitude,
+            selectedCheckpoint.latitude,
+            selectedCheckpoint.longitude
+          );
+          if (!Number.isFinite(meters)) return null;
+          if (meters >= 1000) {
+            const km = meters / 1000;
+            const decimals = km >= 10 ? 0 : 1;
+            return `${km.toFixed(decimals)} km`;
+          }
+          return `${Math.round(meters)} m`;
+        })()
+      : null;
+
+  const checkpointSourceId = 'checkpoints-source';
+  const checkpointOuterLayerId = 'checkpoints-outer';
+  const checkpointInnerLayerId = 'checkpoints-inner';
+  const checkpointDotLayerId = 'checkpoints-dot';
+  const checkpointLabelLayerId = 'checkpoints-label';
+  const routeLineSourceId = 'route-line-source';
+  const routeLineLayerId = 'route-line-layer';
 
   function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
     return (
@@ -180,6 +243,25 @@ export default function MapLibreMap() {
       map.current = null;
     };
   }, [apiKey, loading]);
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+
+    const stopFollowing = () => setFollowing(false);
+    const m = map.current;
+    m.on('dragstart', stopFollowing);
+    m.on('zoomstart', stopFollowing);
+    m.on('mousedown', stopFollowing);
+    m.on('touchstart', stopFollowing);
+
+    return () => {
+      if (!map.current) return;
+      m.off('dragstart', stopFollowing);
+      m.off('zoomstart', stopFollowing);
+      m.off('mousedown', stopFollowing);
+      m.off('touchstart', stopFollowing);
+    };
+  }, [mapReady]);
 
   // Map grid overlay (GeoJSON source + line layer)
   useEffect(() => {
@@ -492,6 +574,196 @@ export default function MapLibreMap() {
     }
   }, [effectiveLastLocation, following]);
 
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+
+    const m = map.current;
+    const features = checkpoints.map((cp) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: [cp.longitude, cp.latitude],
+      },
+      properties: {
+        id: cp.id,
+        label: cp.label ?? '',
+        selected: cp.id === selectedId,
+        color: cp.color ?? activeRouteColor ?? null,
+      },
+    }));
+
+    const data = {
+      type: 'FeatureCollection',
+      features,
+    } as GeoJSON.FeatureCollection;
+
+    if (!m.getSource(checkpointSourceId)) {
+      m.addSource(checkpointSourceId, {
+        type: 'geojson',
+        data,
+      });
+
+      m.addLayer({
+        id: checkpointOuterLayerId,
+        type: 'circle',
+        source: checkpointSourceId,
+        paint: {
+          'circle-radius': 10,
+          'circle-color': [
+            'case',
+            ['boolean', ['get', 'selected'], false],
+            String(tabIconSelected),
+            String(tint),
+          ],
+          'circle-opacity': 0.95,
+          'circle-pitch-alignment': 'map',
+        },
+      });
+
+      m.addLayer({
+        id: checkpointInnerLayerId,
+        type: 'circle',
+        source: checkpointSourceId,
+        paint: {
+          'circle-radius': 6,
+          'circle-color': colorScheme === 'dark' ? 'rgba(16,18,20,0.96)' : 'rgba(255,255,255,0.98)',
+          'circle-stroke-width': 1,
+          'circle-stroke-color': colorScheme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.08)',
+          'circle-pitch-alignment': 'map',
+        },
+      });
+
+      m.addLayer({
+        id: checkpointDotLayerId,
+        type: 'circle',
+        source: checkpointSourceId,
+        paint: {
+          'circle-radius': 2.5,
+          'circle-color': ['coalesce', ['get', 'color'], String(tint)],
+          'circle-pitch-alignment': 'map',
+        },
+      });
+
+      m.addLayer({
+        id: checkpointLabelLayerId,
+        type: 'symbol',
+        source: checkpointSourceId,
+        layout: {
+          'text-field': ['coalesce', ['get', 'label'], ''],
+          'text-size': 12,
+          'text-offset': [0, 1.4],
+          'text-anchor': 'top',
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': String(textColor),
+          'text-halo-color': colorScheme === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)',
+          'text-halo-width': 1,
+        },
+      });
+    } else {
+      const source = m.getSource(checkpointSourceId) as maplibregl.GeoJSONSource;
+      source.setData(data as any);
+      m.setPaintProperty(checkpointOuterLayerId, 'circle-color', [
+        'case',
+        ['boolean', ['get', 'selected'], false],
+        String(tabIconSelected),
+        String(tint),
+      ]);
+      m.setPaintProperty(checkpointDotLayerId, 'circle-color', ['coalesce', ['get', 'color'], String(tint)]);
+      m.setPaintProperty(checkpointInnerLayerId, 'circle-color', colorScheme === 'dark' ? 'rgba(16,18,20,0.96)' : 'rgba(255,255,255,0.98)');
+      m.setPaintProperty(checkpointInnerLayerId, 'circle-stroke-color', colorScheme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.08)');
+      m.setPaintProperty(checkpointLabelLayerId, 'text-color', String(textColor));
+      m.setPaintProperty(checkpointLabelLayerId, 'text-halo-color', colorScheme === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.95)');
+    }
+
+    if (activeRouteColor && (checkpoints.length > 1 || (activeRouteStart && checkpoints.length > 0))) {
+      const lineCoords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
+      if (activeRouteStart) {
+        lineCoords.unshift([activeRouteStart.longitude, activeRouteStart.latitude]);
+      }
+      if (activeRouteLoop && lineCoords.length > 1) {
+        lineCoords.push(lineCoords[0]);
+      }
+      if (lineCoords.length < 2) return;
+      const lineData = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: lineCoords,
+            },
+            properties: {},
+          },
+        ],
+      } as GeoJSON.FeatureCollection;
+
+      if (!m.getSource(routeLineSourceId)) {
+        m.addSource(routeLineSourceId, {
+          type: 'geojson',
+          data: lineData,
+        });
+        m.addLayer({
+          id: routeLineLayerId,
+          type: 'line',
+          source: routeLineSourceId,
+          paint: {
+            'line-color': String(activeRouteColor),
+            'line-width': 3,
+            'line-opacity': 0.75,
+          },
+        });
+      } else {
+        const source = m.getSource(routeLineSourceId) as maplibregl.GeoJSONSource;
+        source.setData(lineData as any);
+        m.setPaintProperty(routeLineLayerId, 'line-color', String(activeRouteColor));
+      }
+    } else if (m.getSource(routeLineSourceId)) {
+      m.removeLayer(routeLineLayerId);
+      m.removeSource(routeLineSourceId);
+    }
+  }, [checkpoints, selectedId, mapReady, colorScheme, textColor, tint, tabIconSelected, activeRouteColor, activeRouteStart, activeRouteLoop]);
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const m = map.current;
+
+    const handleClick = async (e: maplibregl.MapMouseEvent) => {
+      if (!m) return;
+
+      if (placementModeRequested) {
+        await addCheckpoint(e.lngLat.lat, e.lngLat.lng);
+        await consumePlacementModeRequest();
+        return;
+      }
+
+      const features = m.queryRenderedFeatures(e.point, { layers: [checkpointOuterLayerId, checkpointInnerLayerId, checkpointDotLayerId] });
+      if (features && features.length > 0) {
+        const id = features[0]?.properties?.id;
+        if (typeof id === 'string') {
+          if (selectedId === id) {
+            await selectCheckpoint(null);
+          } else {
+            await selectCheckpoint(id);
+          }
+          return;
+        }
+      }
+
+      if (selectedId) {
+        await selectCheckpoint(null);
+      }
+    };
+
+    m.on('click', handleClick);
+    return () => {
+      m.off('click', handleClick);
+    };
+  }, [mapReady, placementModeRequested, selectedId, addCheckpoint, selectCheckpoint, consumePlacementModeRequest]);
+
   // Compute the orientation (degrees) for the arrow based on device heading
   useEffect(() => {
     if (!effectiveLastLocation) {
@@ -511,14 +783,7 @@ export default function MapLibreMap() {
   }, [effectiveLastLocation, mapBearing, mapHeading]);
 
   const handleRecenterPress = async () => {
-    // Dual behavior:
-    // - If already following, toggle off.
-    // - If not following, request/restart location and toggle on immediately.
-    //   Center immediately if we already have a fix, or as soon as one arrives.
-    if (following) {
-      setFollowing(false);
-      return;
-    }
+    // Follow on single press. User interaction stops following.
     requestLocation();
     const loc = effectiveLastLocation;
     if (loc && map.current) {
@@ -560,7 +825,25 @@ export default function MapLibreMap() {
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
-        {/* placement UI removed */}
+        {placementModeRequested && (
+          <View style={[styles.placementBannerWrap, { top: 60, left: 12, right: 12 }]}> 
+            <View
+              style={[
+                styles.placementBanner,
+                {
+                  backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.95)',
+                  borderColor: String(borderColor),
+                },
+              ]}
+            >
+              <Text style={[styles.placementBannerTitle, { color: textColor }]}>Placement mode</Text>
+              <Text style={[styles.placementBannerText, { color: textColor }]}>Tap map to place checkpoint</Text>
+              <TouchableOpacity onPress={() => consumePlacementModeRequest()} style={styles.placementBannerAction}>
+                <Text style={[styles.placementBannerHint, { color: String(tint) }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         <CompassOverlay
           open={compassOpen}
           onToggle={() => setCompassOpen((v) => !v)}
@@ -588,6 +871,36 @@ export default function MapLibreMap() {
         />
         {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
         <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6 }} textStyle={styles.locationText} renderAs="web" />
+        {selectedCheckpoint && (
+          <View
+            style={[
+              styles.checkpointActions,
+              {
+                right: 12,
+                bottom: 12 + 58,
+                backgroundColor: colorScheme === 'dark' ? 'rgba(12,12,12,0.85)' : 'rgba(255,255,255,0.95)',
+                borderColor: String(borderColor),
+              },
+            ]}
+          >
+            <Text style={[styles.checkpointActionsTitle, { color: textColor }]}>Checkpoint selected</Text>
+            <Text style={[styles.checkpointActionsMeta, { color: textColor }]}>Lat {selectedCheckpoint.latitude.toFixed(5)} · Lon {selectedCheckpoint.longitude.toFixed(5)}</Text>
+            <View style={styles.checkpointActionsRow}>
+              <TouchableOpacity
+                onPress={() => removeCheckpoint(selectedCheckpoint.id)}
+                style={[styles.checkpointActionBtn, { borderColor: String(borderColor) }]}
+              >
+                <Text style={[styles.checkpointActionText, { color: textColor }]}>Remove</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => selectCheckpoint(null)}
+                style={[styles.checkpointActionBtn, { borderColor: 'transparent', backgroundColor: String(tint) }]}
+              >
+                <Text style={[styles.checkpointActionText, { color: 'white' }]}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
     </ThemedView>
@@ -603,6 +916,70 @@ const styles = StyleSheet.create({
   locationText: {
     color: 'white',
     fontSize: 12,
+  },
+  placementBannerWrap: {
+    position: 'absolute',
+    zIndex: 60,
+    alignItems: 'center',
+  },
+  placementBanner: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    maxWidth: 320,
+  },
+  placementBannerTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  placementBannerText: {
+    fontSize: 12,
+    opacity: 0.85,
+    marginTop: 2,
+  },
+  placementBannerAction: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  placementBannerHint: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  checkpointActions: {
+    position: 'absolute',
+    zIndex: 60,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    minWidth: 200,
+  },
+  checkpointActionsTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  checkpointActionsMeta: {
+    marginTop: 2,
+    fontSize: 11,
+    opacity: 0.8,
+  },
+  checkpointActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  checkpointActionBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkpointActionText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   recenterButton: {
     position: 'absolute',

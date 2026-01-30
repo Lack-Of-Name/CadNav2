@@ -3,6 +3,7 @@ import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from '
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
+import { UnfinishedBadge } from './ui/UnfinishedBadge';
 
 type AddRoutePanelProps = {
   visible: boolean;
@@ -41,6 +42,8 @@ const OPTIONS = [
   },
 ] as const;
 
+const UNFINISHED_OPTIONS = new Set(['saved']);
+
 export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 768;
@@ -71,13 +74,25 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
             </View>
             
             <View style={styles.grid}>
-                {OPTIONS.map((opt) => (
+                {OPTIONS.map((opt) => {
+                    const isUnfinished = UNFINISHED_OPTIONS.has(opt.id);
+
+                    return (
                     <TouchableOpacity 
                         key={opt.id} 
-                        style={[styles.option, { backgroundColor: cardColor }]} 
-                        onPress={() => onSelect(opt.id)}
-                        activeOpacity={0.7}
+                        style={[
+                          styles.option,
+                          { backgroundColor: cardColor },
+                          isUnfinished && styles.optionDisabled,
+                        ]}
+                        onPress={() => (!isUnfinished ? onSelect(opt.id) : undefined)}
+                        activeOpacity={isUnfinished ? 1 : 0.7}
                     >
+                        {isUnfinished ? (
+                          <View style={styles.badgeWrap}>
+                            <UnfinishedBadge />
+                          </View>
+                        ) : null}
                         <View style={[styles.iconCircle, { backgroundColor: opt.color }]}>
                              <IconSymbol name={opt.icon as any} size={24} color="#fff" />
                         </View>
@@ -86,7 +101,8 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
                             <ThemedText style={styles.optionDesc}>{opt.desc}</ThemedText>
                         </View>
                     </TouchableOpacity>
-                ))}
+                    );
+                })}
             </View>
         </Animated.View>
       </View>
@@ -133,6 +149,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     minHeight: 110,
+  },
+  optionDisabled: {
+    opacity: 0.55,
+  },
+  badgeWrap: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
   },
   iconCircle: {
     width: 44,

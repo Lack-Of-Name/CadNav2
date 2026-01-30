@@ -10,12 +10,24 @@ import StyledButton from './ui/StyledButton';
 type EditRouteModalProps = {
   visible: boolean;
   onClose: () => void;
-  onSave: (title: string, subtitle: string, icon: string) => void;
+  onSave: (title: string, subtitle: string, icon: string, color: string) => void;
   initialTitle?: string;
   initialSubtitle?: string;
   initialIcon?: string;
+  initialColor?: string;
   isEditing?: boolean;
 };
+
+const ROUTE_COLORS = [
+  '#34C759',
+  '#0A84FF',
+  '#64D2FF',
+  '#FFD60A',
+  '#FF9F0A',
+  '#FF453A',
+  '#BF5AF2',
+  '#5E5CE6',
+] as const;
 
 export function EditRouteModal({ 
   visible, 
@@ -24,6 +36,7 @@ export function EditRouteModal({
   initialTitle = '', 
   initialSubtitle = '', 
   initialIcon = '📍',
+  initialColor = ROUTE_COLORS[0],
   isEditing = false 
 }: EditRouteModalProps) {
   const { width } = useWindowDimensions();
@@ -32,6 +45,7 @@ export function EditRouteModal({
   const [title, setTitle] = useState(initialTitle);
   const [subtitle, setSubtitle] = useState(initialSubtitle);
   const [icon, setIcon] = useState(initialIcon);
+  const [color, setColor] = useState(initialColor);
   const [error, setError] = useState<string | null>(null);
   const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
 
@@ -46,9 +60,10 @@ export function EditRouteModal({
       setTitle(initialTitle);
       setSubtitle(initialSubtitle);
       setIcon(initialIcon);
+      setColor(initialColor);
       setError(null);
     }
-  }, [visible, initialTitle, initialSubtitle, initialIcon]);
+  }, [visible, initialTitle, initialSubtitle, initialIcon, initialColor]);
 
   function extractEmoji(s: string) {
     try {
@@ -72,7 +87,7 @@ export function EditRouteModal({
       return;
     }
 
-    onSave(t, subtitle.trim(), ic);
+    onSave(t, subtitle.trim(), ic, color);
     onClose();
   }
 
@@ -142,6 +157,21 @@ export function EditRouteModal({
                     placeholderTextColor={placeholderColor} 
                     maxLength={120} 
                 />
+
+                <ThemedText style={styles.label}>Route Color</ThemedText>
+                <View style={styles.colorRow}>
+                  {ROUTE_COLORS.map((c) => (
+                    <TouchableOpacity key={c} onPress={() => setColor(c)}>
+                      <View
+                        style={[
+                          styles.colorDot,
+                          { backgroundColor: c, borderColor },
+                          color === c && styles.colorDotSelected,
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
                 {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
@@ -216,6 +246,20 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     fontSize: 16,
+  },
+  colorRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  colorDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    borderWidth: 2,
+  },
+  colorDotSelected: {
+    borderWidth: 3,
   },
   error: {
     color: '#FF3B30',

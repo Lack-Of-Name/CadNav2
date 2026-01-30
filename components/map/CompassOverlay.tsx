@@ -105,6 +105,11 @@ export function CompassOverlay({
     return `${relative}deg`;
   }, [heading, targetBearingDeg]);
 
+  const targetRingRotation = useMemo(() => {
+    if (typeof targetBearingDeg !== 'number') return null;
+    return `${normalize360(targetBearingDeg)}deg`;
+  }, [targetBearingDeg]);
+
   // Haptic feedback: light tap when heading passes over any tick line
   const prevHeadingRef = useRef<number | null>(null);
   useEffect(() => {
@@ -227,6 +232,13 @@ export function CompassOverlay({
                 </View>
               );
             })}
+
+            {/* Target bearing marker on the ring */}
+            {targetRingRotation ? (
+              <View style={[styles.targetMarkWrap, { transform: [{ rotate: targetRingRotation }] }]}>
+                <View style={[styles.targetMarkDot, { backgroundColor: primary }]} />
+              </View>
+            ) : null}
 
             {/* N marker */}
             <View style={[styles.nLabelWrap, { top: 6 * scale }]}>
@@ -460,6 +472,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 16,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
+  },
+  targetMarkWrap: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+  },
+  targetMarkDot: {
+    marginTop: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 999,
   },
   readout: {
     marginTop: 12,

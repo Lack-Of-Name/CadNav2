@@ -17,16 +17,26 @@ import { Collapsible } from '@/components/ui/collapsible';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import StyledButton from '@/components/ui/StyledButton';
 import { Colors } from '@/constants/theme';
-import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
+import { Checkpoint, SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { haversineMeters } from '@/components/map/MaplibreMap.general';
 
-type RouteItem = { id: string; title: string; subtitle?: string; icon?: string };
+type RouteItem = { id: string; title: string; subtitle?: string; icon?: string; color?: string };
 const ROUTES_KEY = 'APP_ROUTES';
 
 export default function RoutesScreen() {
   const router = useRouter();
-  const { requestPlacementMode, selectedCheckpoint, addCheckpoint } = useCheckpoints();
+  const {
+    requestPlacementMode,
+    selectedCheckpoint,
+    addCheckpoint,
+    checkpoints,
+    reorderCheckpoints,
+    setActiveRouteColor,
+    setActiveRouteStart,
+    setActiveRouteLoop,
+  } = useCheckpoints();
   const { lastLocation, requestLocation } = useGPS();
   const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting } = useSettings();
   const [routes, setRoutes] = useState<RouteItem[]>([]);
@@ -43,6 +53,10 @@ export default function RoutesScreen() {
   const [easting, setEasting] = useState('');
   const [northing, setNorthing] = useState('');
   const [originError, setOriginError] = useState<string | null>(null);
+  const [optimizeModalVisible, setOptimizeModalVisible] = useState(false);
+  const [optimizeRouteItem, setOptimizeRouteItem] = useState<RouteItem | null>(null);
+  const [optimizeIncludeCurrent, setOptimizeIncludeCurrent] = useState(false);
+  const [optimizeMode, setOptimizeMode] = useState<'route' | 'circuit'>('route');
 
   function handleAddPanelSelect(option: string) {
     setAddPanelVisible(false);
@@ -60,10 +74,10 @@ export default function RoutesScreen() {
   }
 
   function handleAddPoint(location: { latitude: number; longitude: number }) {
-      addCheckpoint(location.latitude, location.longitude);
-      setReferenceModalVisible(false);
-      setProjectModalVisible(false);
-      router.push('/');
+    addCheckpoint(location.latitude, location.longitude);
+    setReferenceModalVisible(false);
+    setProjectModalVisible(false);
+    router.push('/');
   }
 
   function handleAddSavedRoute(route: SavedRoute) {
@@ -129,16 +143,102 @@ export default function RoutesScreen() {
     setOriginModalVisible(false);
   }
 
-  function handleSaveRoute(title: string, subtitle: string, icon: string) {
+  function handleSaveRoute(title: string, subtitle: string, icon: string, color: string) {
     if (editingId) {
-      setRoutes((r) => r.map((it) => (it.id === editingId ? { ...it, title, subtitle: subtitle || undefined, icon: icon || undefined } : it)));
+      setRoutes((r) => r.map((it) => (it.id === editingId ? { ...it, title, subtitle: subtitle || undefined, icon: icon || undefined, color } : it)));
     } else {
-      const item: RouteItem = { id: String(Date.now()), title, subtitle: subtitle || undefined, icon: icon || undefined };
+      const item: RouteItem = { id: String(Date.now()), title, subtitle: subtitle || undefined, icon: icon || undefined, color };
       setRoutes((r) => [item, ...r]);
     }
     setOpen(false);
     setEditingId(null);
     setEditingItem(null);
+  }
+
+  function handleOpenAddPoints(routeItem: RouteItem) {
+    setActiveRouteColor(routeItem.color ?? null);
+    setAddPanelVisible(true);
+  }
+
+  function handleOpenOptimize(routeItem: RouteItem) {
+    setActiveRouteColor(routeItem.color ?? null);
+    setOptimizeRouteItem(routeItem);
+    setOptimizeIncludeCurrent(false);
+    setOptimizeMode('route');
+    setOptimizeModalVisible(true);
+  }
+
+  function computeNearestNeighborOrder(points: Checkpoint[], start: { latitude: number; longitude: number }) {
+    const remaining = [...points];
+    const ordered: Checkpoint[] = [];
+    let current = start;
+
+    while (remaining.length > 0) {
+      let bestIndex = 0;
+      let bestDist = Number.POSITIVE_INFINITY;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const cp = remaining[i];
+        const d = haversineMeters(current.latitude, current.longitude, cp.latitude, cp.longitude);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIndex = i;
+        }
+      }
+
+      const next = remaining.splice(bestIndex, 1)[0];
+      ordered.push(next);
+      current = { latitude: next.latitude, longitude: next.longitude };
+    }
+
+    return ordered;
+  }
+
+  function calculateTotalDistance(
+    ordered: Checkpoint[],
+    startPoint: { latitude: number; longitude: number },
+    mode: 'route' | 'circuit'
+  ) {
+    if (ordered.length === 0) return 0;
+    let dist = 0;
+    let prev = startPoint;
+    for (const cp of ordered) {
+      dist += haversineMeters(prev.latitude, prev.longitude, cp.latitude, cp.longitude);
+      prev = { latitude: cp.latitude, longitude: cp.longitude };
+    }
+    if (mode === 'circuit') {
+      dist += haversineMeters(prev.latitude, prev.longitude, startPoint.latitude, startPoint.longitude);
+    }
+    return dist;
+  }
+
+  async function handleOptimizeRoute() {
+    if (checkpoints.length < 2) {
+      void showAlert({ title: 'Optimize route', message: 'Add at least two checkpoints first.' });
+      return;
+    }
+
+    if (optimizeIncludeCurrent && !lastLocation) {
+      requestLocation();
+      void showAlert({ title: 'Optimize route', message: 'Current location unavailable. Try again once GPS is ready.' });
+      return;
+    }
+
+    const startPoint = optimizeIncludeCurrent && lastLocation
+      ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude }
+      : { latitude: checkpoints[0].latitude, longitude: checkpoints[0].longitude };
+
+    await setActiveRouteStart(optimizeIncludeCurrent ? startPoint : null);
+    await setActiveRouteLoop(optimizeMode === 'circuit');
+
+    const ordered = computeNearestNeighborOrder(checkpoints, startPoint);
+    await reorderCheckpoints(ordered);
+
+    const distance = calculateTotalDistance(ordered, startPoint, optimizeMode);
+    const distanceLabel = distance >= 1000 ? `${(distance / 1000).toFixed(distance >= 10000 ? 0 : 1)} km` : `${Math.round(distance)} m`;
+    void showAlert({ title: 'Route optimized', message: `${optimizeMode === 'circuit' ? 'Circuit' : 'Route'} length: ${distanceLabel}` });
+
+    setOptimizeModalVisible(false);
   }
 
   function handleEdit(item: RouteItem) {
@@ -287,7 +387,10 @@ export default function RoutesScreen() {
                         <ThemedText style={{ fontSize: 28 }}>{item.icon ?? '📍'}</ThemedText>
                       </View>
                       <View style={styles.cardBody}>
-                        <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text} type="defaultSemiBold">{item.title}</ThemedText>
+                        <View style={styles.routeTitleRow}>
+                          <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text} type="defaultSemiBold">{item.title}</ThemedText>
+                          <View style={[styles.routeColorDot, { backgroundColor: item.color ?? Colors.light.tint }]} />
+                        </View>
                         {item.subtitle ? <ThemedText lightColor={Colors.light.text} darkColor={Colors.dark.text} style={{ opacity: 0.7, fontSize: 13 }}>{item.subtitle}</ThemedText> : null}
                       </View>
                     </View>
@@ -296,12 +399,17 @@ export default function RoutesScreen() {
                   <View style={{ marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 12 }}>
                     <StyledButton
                       variant="primary"
-                      onPress={() => {
-                        setAddPanelVisible(true);
-                      }}
+                      onPress={() => handleOpenAddPoints(item)}
                       style={{ marginBottom: 8 }}
                     >
                       Add Point
+                    </StyledButton>
+                    <StyledButton
+                      variant="secondary"
+                      onPress={() => handleOpenOptimize(item)}
+                      style={{ marginBottom: 8 }}
+                    >
+                      Optimize Route
                     </StyledButton>
                     <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={{ marginBottom: 8 }}>Edit</StyledButton>
                     <StyledButton variant="secondary" onPress={() => handleRemove(item.id)} style={{ marginBottom: 8 }}>Remove</StyledButton>
@@ -325,6 +433,7 @@ export default function RoutesScreen() {
             initialTitle={editingItem?.title}
             initialSubtitle={editingItem?.subtitle}
             initialIcon={editingItem?.icon}
+          initialColor={editingItem?.color}
             isEditing={!!editingId}
         />
 
@@ -352,6 +461,51 @@ export default function RoutesScreen() {
             onSelectRoute={handleAddSavedRoute}
             onSelectLocation={handleAddSavedLocation}
         />
+
+        <Modal visible={optimizeModalVisible} animationType="slide" transparent={true}>
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalContainer, { backgroundColor: cardBg, borderColor, borderWidth: 1 }]}> 
+              <ThemedText type="title">Optimize route</ThemedText>
+              <ThemedText style={{ marginTop: 6, opacity: 0.7 }}>
+                {optimizeRouteItem ? optimizeRouteItem.title : 'Current route'}
+              </ThemedText>
+
+              <View style={{ marginTop: 12 }}>
+                <ThemedText type="defaultSemiBold">Mode</ThemedText>
+                <View style={{ marginTop: 6 }}>
+                  <TouchableOpacity onPress={() => setOptimizeMode('route')} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
+                    <View style={[styles.radioOuter, optimizeMode === 'route' && styles.radioOuterSelected]}>
+                      {optimizeMode === 'route' ? <View style={styles.radioInner} /> : null}
+                    </View>
+                    <ThemedText style={{ marginLeft: 8 }}>Shortest route (open path)</ThemedText>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={() => setOptimizeMode('circuit')} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
+                    <View style={[styles.radioOuter, optimizeMode === 'circuit' && styles.radioOuterSelected]}>
+                      {optimizeMode === 'circuit' ? <View style={styles.radioInner} /> : null}
+                    </View>
+                    <ThemedText style={{ marginLeft: 8 }}>Shortest circuit (loop)</ThemedText>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={[styles.gridRow, { marginTop: 12 }]}> 
+                <ThemedText type="defaultSemiBold">Include current location</ThemedText>
+                <Switch value={optimizeIncludeCurrent} onValueChange={setOptimizeIncludeCurrent} />
+              </View>
+
+              <ThemedText style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>
+                Warning: this will reconfigure your route order.
+              </ThemedText>
+
+              <View style={styles.modalRow}>
+                <StyledButton variant="secondary" onPress={() => setOptimizeModalVisible(false)}>{'Cancel'}</StyledButton>
+                <View style={{ width: 12 }} />
+                <StyledButton variant="primary" onPress={handleOptimizeRoute}>{'Optimize'}</StyledButton>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <Modal visible={originModalVisible} animationType="slide" transparent={true}>
           <View style={styles.modalBackdrop}>
@@ -425,6 +579,8 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 12, borderRadius: 8, marginBottom: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6, elevation: 2 },
   cardLeft: { width: 48, alignItems: 'center', justifyContent: 'center' },
   cardBody: { flex: 1 },
+  routeTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  routeColorDot: { width: 10, height: 10, borderRadius: 999, marginLeft: 6 },
   emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   modalContainer: { width: '90%', backgroundColor: 'white', padding: 16, borderRadius: 8 },
