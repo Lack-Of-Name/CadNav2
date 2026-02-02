@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AddRoutePanel } from '@/components/AddRoutePanel';
 import { EditRouteModal } from '@/components/EditRouteModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
+import { haversineMeters } from '@/components/map/MaplibreMap.general';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { SavedRoutesModal } from '@/components/SavedRoutesModal';
 import { ThemedText } from '@/components/themed-text';
@@ -20,7 +21,6 @@ import { Colors } from '@/constants/theme';
 import { Checkpoint, SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
-import { haversineMeters } from '@/components/map/MaplibreMap.general';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string; color?: string };
 const ROUTES_KEY = 'APP_ROUTES';
@@ -36,6 +36,7 @@ export default function RoutesScreen() {
     setActiveRouteColor,
     setActiveRouteStart,
     setActiveRouteLoop,
+    setCheckpointsColor,
   } = useCheckpoints();
   const { lastLocation, requestLocation } = useGPS();
   const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting } = useSettings();
@@ -53,6 +54,7 @@ export default function RoutesScreen() {
   const [easting, setEasting] = useState('');
   const [northing, setNorthing] = useState('');
   const [originError, setOriginError] = useState<string | null>(null);
+  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [optimizeModalVisible, setOptimizeModalVisible] = useState(false);
   const [optimizeRouteItem, setOptimizeRouteItem] = useState<RouteItem | null>(null);
   const [optimizeIncludeCurrent, setOptimizeIncludeCurrent] = useState(false);
@@ -146,6 +148,10 @@ export default function RoutesScreen() {
   function handleSaveRoute(title: string, subtitle: string, icon: string, color: string) {
     if (editingId) {
       setRoutes((r) => r.map((it) => (it.id === editingId ? { ...it, title, subtitle: subtitle || undefined, icon: icon || undefined, color } : it)));
+      if (editingId === activeRouteId) {
+        setActiveRouteColor(color);
+        setCheckpointsColor(color);
+      }
     } else {
       const item: RouteItem = { id: String(Date.now()), title, subtitle: subtitle || undefined, icon: icon || undefined, color };
       setRoutes((r) => [item, ...r]);
@@ -156,11 +162,13 @@ export default function RoutesScreen() {
   }
 
   function handleOpenAddPoints(routeItem: RouteItem) {
+    setActiveRouteId(routeItem.id);
     setActiveRouteColor(routeItem.color ?? null);
     setAddPanelVisible(true);
   }
 
   function handleOpenOptimize(routeItem: RouteItem) {
+    setActiveRouteId(routeItem.id);
     setActiveRouteColor(routeItem.color ?? null);
     setOptimizeRouteItem(routeItem);
     setOptimizeIncludeCurrent(false);
@@ -244,11 +252,17 @@ export default function RoutesScreen() {
   function handleEdit(item: RouteItem) {
     setEditingItem(item);
     setEditingId(item.id);
+    setActiveRouteId(item.id);
+    setActiveRouteColor(item.color ?? null);
     setOpen(true);
   }
 
   function handleRemove(id: string) {
     setRoutes((r) => r.filter((it) => it.id !== id));
+    if (activeRouteId === id) {
+      setActiveRouteId(null);
+      setActiveRouteColor(null);
+    }
   }
 
   useEffect(() => {

@@ -310,6 +310,14 @@ export function useCheckpoints() {
     setStore({ ...store, checkpoints: nextCheckpoints });
   }, []);
 
+  const setCheckpointsColor = useCallback(async (color: string | null) => {
+    const nextCheckpoints = store.checkpoints.map((c) => ({
+      ...c,
+      color: color ?? undefined,
+    }));
+    setStore({ ...store, checkpoints: nextCheckpoints });
+  }, []);
+
   const reorderCheckpoints = useCallback(async (nextCheckpoints: Checkpoint[]) => {
     const hasSelected = store.selectedId && nextCheckpoints.some((c) => c.id === store.selectedId);
     const nextSelectedId = hasSelected
@@ -417,6 +425,7 @@ export function useCheckpoints() {
     removeCheckpoint,
     selectCheckpoint,
     setCheckpointLabel,
+    setCheckpointsColor,
     reorderCheckpoints,
     setActiveRouteColor,
     setActiveRouteStart,
