@@ -1,232 +1,178 @@
-const EARTH_RADIUS_M = 6378137;
-const MAX_MERCATOR_LAT = 85.05112878;
+import * as turf from '@turf/turf';
 
-export type LonLat = [number, number];
-export type LonLatBounds = { west: number; south: number; east: number; north: number };
-export type GridOrigin = { latitude: number; longitude: number };
+type LatLon = { latitude: number; longitude: number };
 
-type GeoJSONFeatureCollection = {
-  type: 'FeatureCollection';
-  features: {
-    type: 'Feature';
-    geometry:
-      | { type: 'LineString'; coordinates: LonLat[] }
-      | { type: 'Point'; coordinates: LonLat };
-    properties: Record<string, unknown>;
-  }[];
-};
+/**
+ * Convert grid offsets in meters to latitude/longitude.
+ * @param origin The origin point { latitude, longitude }
+ * @param easting Offset in meters east from origin
+ * @param northing Offset in meters north from origin
+ * @returns New point { latitude, longitude }
+ */
+export function gridOffsetMetersToLatLon(origin: LatLon, easting: number, northing: number): LatLon {
+  // Start at origin [lon, lat]
+  const originPoint = turf.point([origin.longitude, origin.latitude]);
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
+  // Move east by easting meters
+  const eastPoint = turf.destination(originPoint, easting, 90, { units: 'meters' });
+
+  // Move north by northing meters
+  const finalPoint = turf.destination(eastPoint, northing, 0, { units: 'meters' });
+
+  const [lon, lat] = finalPoint.geometry.coordinates;
+  return { latitude: lat, longitude: lon };
 }
 
-function lonLatToMercatorMeters(lon: number, lat: number): { x: number; y: number } {
-  const clampedLat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT);
-  const x = (EARTH_RADIUS_M * lon * Math.PI) / 180;
-  const y = EARTH_RADIUS_M * Math.log(Math.tan(Math.PI / 4 + (clampedLat * Math.PI) / 360));
-  return { x, y };
-}
+/**
+ * Given an origin and two corner lat/lon points (map bottom-left and top-right),
+ * compute expanded grid-aligned corner coordinates around the origin.
+ *
+ * Steps:
+ * 1. Calculate easting (meters east of origin) and northing (meters north of origin)
+ *    for both corners.
+ * 2. For bottom-left subtract 1km from both easting and northing and round to nearest 1km.
+ *    For top-right add 1km to both and round to nearest 1km.
+ * 3. Convert the adjusted easting/northing back to lat/lon to produce grid bounds.
+ */
+export function computeGridCornersFromMapBounds(
+  origin: LatLon,
+  bottomLeft: LatLon,
+  topRight: LatLon,
+  step = 1000,
+  gridConvergence = 0
+): {
+  offsets: {
+    bottomLeft: { easting: number; northing: number };
+    topRight: { easting: number; northing: number };
+  };
+} {
+  const originPoint = turf.point([origin.longitude, origin.latitude]);
 
-function mercatorMetersToLonLat(x: number, y: number): LonLat {
-  const lon = (x / EARTH_RADIUS_M) * (180 / Math.PI);
-  const lat = (2 * Math.atan(Math.exp(y / EARTH_RADIUS_M)) - Math.PI / 2) * (180 / Math.PI);
-  return [lon, lat];
-}
+  // Build all four corners of the map bounds
+  const bl = turf.point([bottomLeft.longitude, bottomLeft.latitude]);
+  const br = turf.point([topRight.longitude, bottomLeft.latitude]);
+  const tl = turf.point([bottomLeft.longitude, topRight.latitude]);
+  const tr = turf.point([topRight.longitude, topRight.latitude]);
 
-export function gridOffsetMetersToLatLon(origin: GridOrigin, eastingMeters: number, northingMeters: number) {
-  const o = lonLatToMercatorMeters(origin.longitude, origin.latitude);
-  const [longitude, latitude] = mercatorMetersToLonLat(o.x + eastingMeters, o.y + northingMeters);
-  return { latitude, longitude };
-}
+  const corners = [bl, br, tl, tr];
 
-function snapDown(value: number, step: number) {
-  return Math.floor(value / step) * step;
-}
+  // Helper: rotate EN vector by degrees
+  const rotate = (e: number, n: number, deg: number) => {
+    const rad = (deg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return { e: e * cos - n * sin, n: e * sin + n * cos };
+  };
 
-function snapUp(value: number, step: number) {
-  return Math.ceil(value / step) * step;
-}
+  // Convert each corner to true-east/north offsets (meters) from origin, then rotate
+  // into grid coordinates by applying the inverse of gridConvergence (i.e. -gridConvergence).
+  const enPoints = corners.map((pt) => {
+    const dist = turf.distance(originPoint, pt, { units: 'meters' });
+    const bearing = turf.bearing(originPoint, pt); // degrees from north
+    const rad = (bearing * Math.PI) / 180;
+    const eTrue = dist * Math.sin(rad);
+    const nTrue = dist * Math.cos(rad);
+    // rotate into grid coordinates (grid north = true north + gridConvergence)
+    const { e, n } = rotate(eTrue, nTrue, -gridConvergence);
+    return { e, n };
+  });
 
+  const eVals = enPoints.map((p) => p.e);
+  const nVals = enPoints.map((p) => p.n);
 
+  const eMin = Math.min(...eVals);
+  const eMax = Math.max(...eVals);
+  const nMin = Math.min(...nVals);
+  const nMax = Math.max(...nVals);
 
-function boundsToMercatorRect(bounds: LonLatBounds) {
-  const sw = lonLatToMercatorMeters(bounds.west, bounds.south);
-  const ne = lonLatToMercatorMeters(bounds.east, bounds.north);
+  const roundKm = (v: number) => Math.round(v / step) * step;
+
+  // Expand by 1km on each side to ensure coverage, then round to nearest step
+  const adjEastingBL = roundKm(eMin - step);
+  const adjNorthingBL = roundKm(nMin - step);
+  const adjEastingTR = roundKm(eMax + step);
+  const adjNorthingTR = roundKm(nMax + step);
+
   return {
-    xmin: Math.min(sw.x, ne.x),
-    xmax: Math.max(sw.x, ne.x),
-    ymin: Math.min(sw.y, ne.y),
-    ymax: Math.max(sw.y, ne.y),
+    offsets: {
+      bottomLeft: { easting: adjEastingBL, northing: adjNorthingBL },
+      topRight: { easting: adjEastingTR, northing: adjNorthingTR },
+    },
   };
 }
 
-function originToMercator(origin?: GridOrigin | null) {
-  if (!origin) return { x: 0, y: 0 };
-  return lonLatToMercatorMeters(origin.longitude, origin.latitude);
-}
+/**
+ * Generate a grid of intersection points (easting, northing) between two corner offsets.
+ *
+ * Both corners are specified as meters east/north of the origin. The function will
+ * return all intersection points (inclusive) on a regular grid with spacing `step`.
+ *
+ * Returns an array of tuples: [easting, northing]
+ */
+export function generateGridIntersections(
+  offsets: {
+    bottomLeft: { easting: number; northing: number };
+    topRight: { easting: number; northing: number };
+  },
+  step = 1000
+): Array<[number, number]> {
+  const eStart = Math.min(offsets.bottomLeft.easting, offsets.topRight.easting);
+  const eEnd = Math.max(offsets.bottomLeft.easting, offsets.topRight.easting);
+  const nStart = Math.min(offsets.bottomLeft.northing, offsets.topRight.northing);
+  const nEnd = Math.max(offsets.bottomLeft.northing, offsets.topRight.northing);
 
-function estimateLineCount(
-  rect: { xmin: number; xmax: number; ymin: number; ymax: number },
-  xStep: number,
-  yStep: number
-) {
-  const xLines = Math.max(0, Math.floor((rect.xmax - rect.xmin) / xStep) + 2);
-  const yLines = Math.max(0, Math.floor((rect.ymax - rect.ymin) / yStep) + 2);
-  return xLines + yLines;
-}
+  if (step <= 0) throw new Error('step must be > 0');
 
-function buildGridLines(
-  bounds: LonLatBounds,
-  stepMeters: number,
-  properties: Record<string, unknown>,
-  origin?: GridOrigin | null
-): GeoJSONFeatureCollection {
-  const rect = boundsToMercatorRect(bounds);
-  const o = originToMercator(origin);
+  // Assume (eEnd-eStart) and (nEnd-nStart) are divisible by `step`.
+  const eCount = (eEnd - eStart) / step;
+  const nCount = (nEnd - nStart) / step;
 
-  // Scale mercator spacing by latitude so grid squares represent true meters
-  // and remain square in view.
-  const centerY = (rect.ymin + rect.ymax) / 2;
-  const centerLat = mercatorMetersToLonLat(0, centerY)[1];
-  const latRad = (centerLat * Math.PI) / 180;
-  const cosLat = Math.max(0.0001, Math.cos(latRad));
-  const stepMercator = stepMeters / cosLat;
-  const xStepMeters = stepMercator;
-  const yStepMeters = stepMercator;
-
-  const startX = o.x + snapDown(rect.xmin - o.x, xStepMeters);
-  const endX = o.x + snapUp(rect.xmax - o.x, xStepMeters);
-  const startY = o.y + snapDown(rect.ymin - o.y, yStepMeters);
-  const endY = o.y + snapUp(rect.ymax - o.y, yStepMeters);
-
-  const features: GeoJSONFeatureCollection['features'] = [];
-
-  for (let x = startX; x <= endX; x += xStepMeters) {
-    const a = mercatorMetersToLonLat(x, rect.ymin);
-    const b = mercatorMetersToLonLat(x, rect.ymax);
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: [a, b] },
-      properties: { kind: 'grid', axis: 'x', stepMeters, xStepMeters, ...properties },
-    });
-  }
-
-  for (let y = startY; y <= endY; y += yStepMeters) {
-    const a = mercatorMetersToLonLat(rect.xmin, y);
-    const b = mercatorMetersToLonLat(rect.xmax, y);
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: [a, b] },
-      properties: { kind: 'grid', axis: 'y', stepMeters, ...properties },
-    });
-  }
-
-  return { type: 'FeatureCollection', features };
-}
-
-function buildGridLinePositions(bounds: LonLatBounds, stepMeters: number, origin?: GridOrigin | null) {
-  const rect = boundsToMercatorRect(bounds);
-  const o = originToMercator(origin);
-
-  // Scale mercator spacing by latitude so grid squares represent true meters.
-  const centerY = (rect.ymin + rect.ymax) / 2;
-  const centerLat = mercatorMetersToLonLat(0, centerY)[1];
-  const latRad = (centerLat * Math.PI) / 180;
-  const cosLat = Math.max(0.0001, Math.cos(latRad));
-  const stepMercator = stepMeters / cosLat;
-  const xStepMeters = stepMercator;
-  const yStepMeters = stepMercator;
-
-  const startX = o.x + snapDown(rect.xmin - o.x, xStepMeters);
-  const endX = o.x + snapUp(rect.xmax - o.x, xStepMeters);
-  const startY = o.y + snapDown(rect.ymin - o.y, yStepMeters);
-  const endY = o.y + snapUp(rect.ymax - o.y, yStepMeters);
-
-  return { rect, o, startX, endX, startY, endY, xStepMeters, yStepMeters };
-}
-
-function chooseStepMeters(bounds: LonLatBounds, zoom: number, maxLines: number) {
-  // Force a fixed 1km (1000 m) grid regardless of zoom or viewport size.
-  return 1000;
-}
-
-export function buildMapGridGeoJSON(bounds: LonLatBounds, zoom: number, origin?: GridOrigin | null): GeoJSONFeatureCollection {
-  const stepMeters = chooseStepMeters(bounds, zoom, 320);
-  return buildGridLines(bounds, stepMeters, { weight: 'major' }, origin);
-}
-
-export function buildMapGridNumbersGeoJSON(bounds: LonLatBounds, zoom: number, origin?: GridOrigin | null): GeoJSONFeatureCollection {
-  const stepMeters = chooseStepMeters(bounds, zoom, 320);
-  const { rect, o, startX, endX, startY, endY, xStepMeters, yStepMeters } = buildGridLinePositions(bounds, stepMeters, origin);
-
-  // Hide labels when zoomed too far out; they start to clutter.
-  // "Looks ok until about 32km on each side" -> about ~64km total span.
-  const spanX = rect.xmax - rect.xmin;
-  const spanY = rect.ymax - rect.ymin;
-  if (Math.max(spanX, spanY) > 64_000) {
-    return { type: 'FeatureCollection', features: [] };
-  }
-
-  // Place labels inset from the viewport edges so they're visible and not cramped.
-  const inset = Math.min(350, Math.max(80, Math.round(stepMeters / 12)));
-
-  const features: GeoJSONFeatureCollection['features'] = [];
-
-  // Vertical lines: label at (x, top)
-  {
-    const startIndex = Math.round((startX - o.x) / xStepMeters);
-    let idx = startIndex;
-    for (let x = startX; x <= endX; x += xStepMeters, idx++) {
-      const km = Math.round(idx * (stepMeters / 1000));
-      const pt = mercatorMetersToLonLat(x, rect.ymax - inset);
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: pt },
-        properties: { kind: 'gridLabel', axis: 'x', stepMeters, km, label: String(km) },
-      });
+  const points: Array<[number, number]> = [];
+  for (let i = 0; i <= eCount; i++) {
+    const e = eStart + i * step;
+    for (let j = 0; j <= nCount; j++) {
+      const n = nStart + j * step;
+      points.push([e, n]);
     }
   }
-
-  // Horizontal lines: label at (right, y)
-  {
-    const startIndex = Math.round((startY - o.y) / yStepMeters);
-    let idx = startIndex;
-    for (let y = startY; y <= endY; y += yStepMeters, idx++) {
-      const km = Math.round(idx * (stepMeters / 1000));
-      const pt = mercatorMetersToLonLat(rect.xmax - inset, y);
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: pt },
-        properties: { kind: 'gridLabel', axis: 'y', stepMeters, km, label: String(km) },
-      });
-    }
-  }
-
-  return { type: 'FeatureCollection', features };
+  return points;
 }
 
-export function buildMapGridSubdivisionsGeoJSON(
-  bounds: LonLatBounds,
-  zoom: number,
-  origin?: GridOrigin | null
-): GeoJSONFeatureCollection {
-  // Show subdivisions earlier; keep it safe via a line-count cap.
-  if (zoom < 8) return { type: 'FeatureCollection', features: [] };
+/**
+ * Convert grid coordinates (easting,northing) into latitude/longitude, taking
+ * grid convergence into account. `gridConvergence` is degrees difference
+ * between true north and grid north (gridNorth = trueNorth + gridConvergence).
+ */
+export function gridCoordsToLatLon(origin: LatLon, easting: number, northing: number, gridConvergence = 0): LatLon {
+  // rotate grid coords back to true EN by applying +gridConvergence
+  const rad = (gridConvergence * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const eTrue = easting * cos - northing * sin;
+  const nTrue = easting * sin + northing * cos;
+  return gridOffsetMetersToLatLon(origin, eTrue, nTrue);
+}
 
-  const majorStep = chooseStepMeters(bounds, zoom, 320);
-  const stepMeters = Math.max(100, Math.round(majorStep / 10));
-
-  const rect = boundsToMercatorRect(bounds);
-  // Scale mercator spacing by latitude so subdivisions represent true meters.
-  const centerY = (rect.ymin + rect.ymax) / 2;
-  const centerLat = mercatorMetersToLonLat(0, centerY)[1];
-  const latRad = (centerLat * Math.PI) / 180;
-  const cosLat = Math.max(0.0001, Math.cos(latRad));
-  const xStepMeters = stepMeters / cosLat;
-
-  if (estimateLineCount(rect, xStepMeters, stepMeters) > 1000) {
-    return { type: 'FeatureCollection', features: [] };
+/**
+ * Generate grid intersections as lat/lon points. Returns an array of objects
+ * containing the original grid `e` and `n` values (in meters) and the
+ * corresponding `latitude`/`longitude` computed after applying
+ * `gridConvergence`.
+ */
+export function generateGridPoints(
+  origin: LatLon,
+  offsets: {
+    bottomLeft: { easting: number; northing: number };
+    topRight: { easting: number; northing: number };
+  },
+  step = 1000,
+  gridConvergence = 0
+): Array<{ e: number; n: number; latitude: number; longitude: number }> {
+  const pts: Array<{ e: number; n: number; latitude: number; longitude: number }> = [];
+  const intersections = generateGridIntersections(offsets, step);
+  for (const [e, n] of intersections) {
+    const ll = gridCoordsToLatLon(origin, e, n, gridConvergence);
+    pts.push({ e, n, latitude: ll.latitude, longitude: ll.longitude });
   }
-
-  return buildGridLines(bounds, stepMeters, { weight: 'minor', majorStepMeters: majorStep, stepMeters }, origin);
+  return pts;
 }

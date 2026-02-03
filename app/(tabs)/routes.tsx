@@ -1,12 +1,5 @@
-import { alert as showAlert } from '@/components/alert';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-
 import { AddRoutePanel } from '@/components/AddRoutePanel';
+import { alert as showAlert } from '@/components/alert';
 import { EditRouteModal } from '@/components/EditRouteModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { haversineMeters } from '@/components/map/MaplibreMap.general';
@@ -21,6 +14,13 @@ import { Colors } from '@/constants/theme';
 import { Checkpoint, SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as turf from '@turf/turf';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
+import { FlatList, Modal, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string; color?: string };
 const ROUTES_KEY = 'APP_ROUTES';
@@ -39,7 +39,7 @@ export default function RoutesScreen() {
     setCheckpointsColor,
   } = useCheckpoints();
   const { lastLocation, requestLocation } = useGPS();
-  const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting } = useSettings();
+  const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting, gridConvergence } = useSettings();
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -132,14 +132,20 @@ export default function RoutesScreen() {
       return;
     }
 
-    // Convert km offsets to degrees
-    const kmPerDegLat = 111.32; // approximate
-    const kmPerDegLon = 111.32 * Math.cos((lat * Math.PI) / 180);
-
-    // According to spec: if easting is 023, origin is 02.3 km LEFT of current -> longitude decreases
-    const originLon = lon - e / kmPerDegLon;
-    // if northing is 2134, origin is 21.34 km DOWN of current -> latitude decreases
-    const originLat = lat - n / kmPerDegLat;
+    // Convert grid reference (e km, n km) into a true EN displacement accounting for grid convergence.
+    // The input e/n represent grid east/north from the origin to the current location;
+    // we want the origin, so move by -e, -n in grid coords and rotate into true EN.
+    const ex = -e * 1000; // meters east in grid coords
+    const ny = -n * 1000; // meters north in grid coords
+    const theta = (gridConvergence ?? 0) * (Math.PI / 180); // radians
+    // rotate grid->true: [E_true; N_true] = R(theta) * [E_grid; N_grid]
+    const e_true = ex * Math.cos(theta) - ny * Math.sin(theta);
+    const n_true = ex * Math.sin(theta) + ny * Math.cos(theta);
+    const dist = Math.hypot(e_true, n_true);
+    // bearing: clockwise from true north (turf expects bearing from north)
+    const bearing = (Math.atan2(e_true, n_true) * 180 / Math.PI + 360) % 360;
+    const finalPoint = turf.destination([lon, lat], dist, bearing, { units: 'meters' });
+    const [originLon, originLat] = finalPoint.geometry.coordinates;
 
     void setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
     setOriginModalVisible(false);
