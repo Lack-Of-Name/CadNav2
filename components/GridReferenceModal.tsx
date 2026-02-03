@@ -2,7 +2,7 @@ import { useSettings } from '@/hooks/settings';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useState } from 'react';
 import { Modal, StyleSheet, TextInput, View } from 'react-native';
-import { gridOffsetMetersToLatLon } from './map/mapGrid';
+import { gridCoordsToLatLon } from './map/mapGrid';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import StyledButton from './ui/StyledButton';
@@ -14,7 +14,7 @@ type GridReferenceModalProps = {
 };
 
 export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceModalProps) {
-  const { mapGridOrigin } = useSettings();
+  const { mapGridOrigin, gridConvergence } = useSettings();
   const [easting, setEasting] = useState('');
   const [northing, setNorthing] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +38,7 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
       return;
     }
 
-    const loc = gridOffsetMetersToLatLon(mapGridOrigin, e, n);
+    const loc = gridCoordsToLatLon(mapGridOrigin, e, n, gridConvergence ?? 0);
     onAdd(loc);
     reset();
   }

@@ -1,8 +1,9 @@
 import { alert as showAlert } from '@/components/alert';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { CompassButton, getCompassHeadingDeg, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
-// checkpoints removed — compass kept
+import { bearingDegrees, CompassButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
+import { degreesToMils } from './converter';
+import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -26,7 +27,7 @@ export default function MapLibreMap() {
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
   const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, gridConvergence } = useSettings();
-  // checkpoints removed
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop } = useCheckpoints();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelected = useThemeColor({}, 'tabIconSelected');
@@ -43,6 +44,7 @@ export default function MapLibreMap() {
   const [mapReady, setMapReady] = useState(false);
   const compassButtonColor = compassOpen ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const initialZoomDone = useRef(false);
+  const checkpointMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   
   // Overlay styles and small helpers to keep JSX concise below
   const overlayStyles = {
@@ -81,17 +83,86 @@ export default function MapLibreMap() {
   };
 
   const effectiveLastLocation = lastLocation ?? webLastLocation;
-  const currentHeading = getCompassHeadingDeg(effectiveLastLocation);
+  const compassHeadingDeg = (() => {
+    if (!effectiveLastLocation) return null;
+    const useMag = mapHeading === 'magnetic';
+    const h = useMag ? effectiveLastLocation.coords.magHeading : effectiveLastLocation.coords.trueHeading;
+    return typeof h === 'number' ? h : null;
+  })();
 
-  // checkpoint-bearing and distance removed
+  const compassHeadingRefLabel = compassHeadingDeg == null ? null : (mapHeading === 'true' ? 'True' : 'Magnetic');
 
-  // Use shared CompassOverlay component for web as well
-  const compassHeadingDeg = currentHeading ?? null;
-  const compassTargetBearingDeg = null;
-  const compassTargetLabel = null;
-  const compassHeadingRefLabel = 'Magnetic';
-  const compassBearingText = null;
-  const compassDistanceText = null;
+  const selectedIndex = selectedCheckpoint
+    ? checkpoints.findIndex((c) => c.id === selectedCheckpoint.id)
+    : -1;
+
+  const compassTargetLabel = selectedCheckpoint
+    ? selectedCheckpoint.label?.trim() || `Checkpoint ${selectedIndex + 1}`
+    : null;
+
+  const compassTargetBearingDeg =
+    effectiveLastLocation && selectedCheckpoint
+      ? bearingDegrees(
+          effectiveLastLocation.coords.latitude,
+          effectiveLastLocation.coords.longitude,
+          selectedCheckpoint.latitude,
+          selectedCheckpoint.longitude
+        )
+      : null;
+
+  const compassBearingText =
+    typeof compassTargetBearingDeg === 'number'
+      ? angleUnit === 'mils'
+        ? `${Math.round(degreesToMils(compassTargetBearingDeg, { normalize: true }))} mils`
+        : `${Math.round(compassTargetBearingDeg)}°`
+      : null;
+
+  const compassDistanceText =
+    effectiveLastLocation && selectedCheckpoint
+      ? (() => {
+          const meters = haversineMeters(
+            effectiveLastLocation.coords.latitude,
+            effectiveLastLocation.coords.longitude,
+            selectedCheckpoint.latitude,
+            selectedCheckpoint.longitude
+          );
+          if (!Number.isFinite(meters)) return null;
+          if (meters >= 1000) {
+            const km = meters / 1000;
+            const decimals = km >= 10 ? 0 : 1;
+            return `${km.toFixed(decimals)} km`;
+          }
+          return `${Math.round(meters)} m`;
+        })()
+      : null;
+
+  const emptyGeo = { type: 'FeatureCollection', features: [] } as any;
+
+  const buildRouteLineGeoJSON = () => {
+    if (!activeRouteColor) return emptyGeo;
+    const coords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
+    if (activeRouteStart) {
+      coords.unshift([activeRouteStart.longitude, activeRouteStart.latitude]);
+    }
+    if (activeRouteLoop && coords.length > 1) {
+      const first = coords[0];
+      coords.push(first);
+    }
+    if (coords.length < 2) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: coords,
+          },
+          properties: { kind: 'routeLine' },
+        },
+      ],
+    } as any;
+  };
 
   function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
     return (
@@ -147,12 +218,21 @@ export default function MapLibreMap() {
       }
     };
 
-    map.current.on('load', () => {
+    const handleLoad = () => {
       update();
       setMapReady(true);
-    });
+    };
+    const handleUserInteraction = () => {
+      setFollowing(false);
+    };
+
+    map.current.on('load', handleLoad);
     map.current.on('move', update);
     map.current.on('zoom', update);
+    map.current.on('dragstart', handleUserInteraction);
+    map.current.on('zoomstart', handleUserInteraction);
+    map.current.on('rotatestart', handleUserInteraction);
+    map.current.on('pitchstart', handleUserInteraction);
     setTimeout(update, 0);
 
     // Lock map orientation to north-up
@@ -173,16 +253,147 @@ export default function MapLibreMap() {
 
     return () => {
       if (map.current) {
-        map.current.off('load', update);
+        map.current.off('load', handleLoad);
         map.current.off('move', update);
         map.current.off('zoom', update);
+        map.current.off('dragstart', handleUserInteraction);
+        map.current.off('zoomstart', handleUserInteraction);
+        map.current.off('rotatestart', handleUserInteraction);
+        map.current.off('pitchstart', handleUserInteraction);
         map.current.remove();
       }
       map.current = null;
     };
   }, [apiKey, loading]);
 
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const sourceId = 'route-line-source';
+    const layerId = 'route-line';
+    const data = buildRouteLineGeoJSON();
+
+    const existingSource = map.current.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existingSource) {
+      existingSource.setData(data);
+    } else {
+      map.current.addSource(sourceId, { type: 'geojson', data });
+    }
+
+    if (!map.current.getLayer(layerId)) {
+      map.current.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': activeRouteColor ?? 'transparent',
+          'line-opacity': activeRouteColor ? 0.75 : 0,
+          'line-width': 3,
+        },
+      });
+    } else {
+      map.current.setPaintProperty(layerId, 'line-color', activeRouteColor ?? 'transparent');
+      map.current.setPaintProperty(layerId, 'line-opacity', activeRouteColor ? 0.75 : 0);
+    }
+  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop]);
+
   // grid overlay removed
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const handleClick = async (ev: maplibregl.MapMouseEvent) => {
+      if (!placementModeRequested) return;
+      const { lng, lat } = ev.lngLat;
+      await addCheckpoint(lat, lng);
+      await consumePlacementModeRequest();
+    };
+    map.current.on('click', handleClick);
+    return () => {
+      map.current?.off('click', handleClick);
+    };
+  }, [mapReady, placementModeRequested, addCheckpoint, consumePlacementModeRequest]);
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const markers = checkpointMarkersRef.current;
+
+    markers.forEach((marker) => marker.remove());
+    markers.clear();
+
+    checkpoints.forEach((cp) => {
+      const selected = selectedId === cp.id;
+      const dotColor = cp.color ?? activeRouteColor ?? String(tint);
+
+      const root = document.createElement('div');
+      root.style.display = 'flex';
+      root.style.flexDirection = 'column';
+      root.style.alignItems = 'center';
+      root.style.cursor = 'pointer';
+
+      const outer = document.createElement('div');
+      outer.style.width = '28px';
+      outer.style.height = '28px';
+      outer.style.borderRadius = '14px';
+      outer.style.background = '#000000';
+      outer.style.border = '2px solid #FFFFFF';
+      outer.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
+      outer.style.boxSizing = 'border-box';
+      outer.style.display = 'flex';
+      outer.style.alignItems = 'center';
+      outer.style.justifyContent = 'center';
+
+      const inner = document.createElement('div');
+      inner.style.width = '20px';
+      inner.style.height = '20px';
+      inner.style.borderRadius = '10px';
+      inner.style.display = 'flex';
+      inner.style.alignItems = 'center';
+      inner.style.justifyContent = 'center';
+
+      const dot = document.createElement('div');
+      dot.style.width = '8px';
+      dot.style.height = '8px';
+      dot.style.borderRadius = '4px';
+      dot.style.background = String(dotColor);
+
+      inner.appendChild(dot);
+      outer.appendChild(inner);
+      root.appendChild(outer);
+
+      if (cp.label) {
+        const label = document.createElement('div');
+        label.textContent = cp.label;
+        label.style.marginTop = '6px';
+        label.style.padding = '4px 8px';
+        label.style.borderRadius = '8px';
+        label.style.background = String(background);
+        label.style.color = String(textColor);
+        label.style.fontSize = '11px';
+        label.style.fontWeight = '600';
+        label.style.border = `1px solid ${selected ? String(tint) : String(borderColor)}`;
+        label.style.whiteSpace = 'nowrap';
+        root.appendChild(label);
+      }
+
+      root.addEventListener('click', () => {
+        if (selected) {
+          void selectCheckpoint(null);
+        } else {
+          void selectCheckpoint(cp.id);
+        }
+      });
+
+      const marker = new maplibregl.Marker({ element: root, anchor: 'center' })
+        .setLngLat([cp.longitude, cp.latitude])
+        .addTo(map.current!);
+
+      markers.set(cp.id, marker);
+    });
+
+    return () => {
+      markers.forEach((marker) => marker.remove());
+      markers.clear();
+    };
+  }, [mapReady, checkpoints, selectedId, tint, tabIconSelected, textColor, borderColor, background, selectCheckpoint, activeRouteColor, colorScheme]);
 
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
@@ -304,14 +515,7 @@ export default function MapLibreMap() {
   }, [effectiveLastLocation, mapBearing, mapHeading]);
 
   const handleRecenterPress = async () => {
-    // Dual behavior:
-    // - If already following, toggle off.
-    // - If not following, request/restart location and toggle on immediately.
-    //   Center immediately if we already have a fix, or as soon as one arrives.
-    if (following) {
-      setFollowing(false);
-      return;
-    }
+    // Always re-center and enable following. Following stops on user map interaction.
     requestLocation();
     const loc = effectiveLastLocation;
     if (loc && map.current) {

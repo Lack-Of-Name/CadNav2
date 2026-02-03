@@ -1,20 +1,22 @@
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-// checkpoints removed — compass kept
+import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
+import { Camera, LineLayer, MapView, MarkerView, ShapeSource, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { CompassButton, getCompassHeadingDeg, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, haversineMeters, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { degreesToMils } from './converter';
 
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop } = useCheckpoints();
   const { angleUnit, mapHeading } = useSettings();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -34,14 +36,58 @@ export default function MapLibreMap() {
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const initialZoomDone = React.useRef(false);
 
-  const currentHeading = getCompassHeadingDeg(lastLocation);
+  const compassHeadingDeg = (() => {
+    if (!lastLocation) return null;
+    const useMag = mapHeading === 'magnetic';
+    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+    return typeof h === 'number' ? h : null;
+  })();
 
-  const compassHeadingDeg = currentHeading ?? null;
-  const compassTargetBearingDeg = null;
-  const compassTargetLabel = null;
-  const compassHeadingRefLabel = 'Magnetic';
-  const compassBearingText = null;
-  const compassDistanceText = null;
+  const compassHeadingRefLabel = compassHeadingDeg == null ? null : (mapHeading === 'true' ? 'True' : 'Magnetic');
+
+  const selectedIndex = selectedCheckpoint
+    ? checkpoints.findIndex((c) => c.id === selectedCheckpoint.id)
+    : -1;
+
+  const compassTargetLabel = selectedCheckpoint
+    ? selectedCheckpoint.label?.trim() || `Checkpoint ${selectedIndex + 1}`
+    : null;
+
+  const compassTargetBearingDeg =
+    lastLocation && selectedCheckpoint
+      ? bearingDegrees(
+          lastLocation.coords.latitude,
+          lastLocation.coords.longitude,
+          selectedCheckpoint.latitude,
+          selectedCheckpoint.longitude
+        )
+      : null;
+
+  const compassBearingText =
+    typeof compassTargetBearingDeg === 'number'
+      ? angleUnit === 'mils'
+        ? `${Math.round(degreesToMils(compassTargetBearingDeg, { normalize: true }))} mils`
+        : `${Math.round(compassTargetBearingDeg)}°`
+      : null;
+
+  const compassDistanceText =
+    lastLocation && selectedCheckpoint
+      ? (() => {
+          const meters = haversineMeters(
+            lastLocation.coords.latitude,
+            lastLocation.coords.longitude,
+            selectedCheckpoint.latitude,
+            selectedCheckpoint.longitude
+          );
+          if (!Number.isFinite(meters)) return null;
+          if (meters >= 1000) {
+            const km = meters / 1000;
+            const decimals = km >= 10 ? 0 : 1;
+            return `${km.toFixed(decimals)} km`;
+          }
+          return `${Math.round(meters)} m`;
+        })()
+      : null;
 
   const centerOnLocation = async (loc: any) => {
     if (!loc || !cameraRef.current) return;
@@ -53,15 +99,7 @@ export default function MapLibreMap() {
   };
 
   const handleRecenterPress = async () => {
-    // Dual behavior:
-    // - If already following, toggle off.
-    // - If not following, request/restart location and toggle on immediately.
-    //   The map will center immediately if we already have a fix, or as soon as one arrives.
-    if (following) {
-      setFollowing(false);
-      return;
-    }
-
+    // Always re-center and enable following. Following stops on user map interaction.
     requestLocation();
     if (lastLocation) {
       await centerOnLocation(lastLocation);
@@ -69,7 +107,21 @@ export default function MapLibreMap() {
     setFollowing(true);
   };
 
-  // map press handler removed (placement/checkpoints removed)
+  const onMapPress = async (feature: any) => {
+    if (!placementModeRequested) return;
+    const { geometry } = feature;
+    const [longitude, latitude] = geometry.coordinates;
+    await addCheckpoint(latitude, longitude);
+    await consumePlacementModeRequest();
+  };
+
+  const handleMarkerPress = async (id: string) => {
+    if (selectedId === id) {
+      await selectCheckpoint(null);
+      return;
+    }
+    await selectCheckpoint(id);
+  };
 
   useEffect(() => {
     if (lastLocation && !initialZoomDone.current && cameraRef.current && cameraReady) {
@@ -98,8 +150,31 @@ export default function MapLibreMap() {
 
   const emptyGeo = { type: 'FeatureCollection', features: [] } as any;
 
-  // grid support removed
-  // grid logic removed
+  const routeLineShape = (() => {
+    if (!activeRouteColor) return emptyGeo;
+    const coords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
+    if (activeRouteStart) {
+      coords.unshift([activeRouteStart.longitude, activeRouteStart.latitude]);
+    }
+    if (activeRouteLoop && coords.length > 1) {
+      const first = coords[0];
+      coords.push(first);
+    }
+    if (coords.length < 2) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: coords,
+          },
+          properties: { kind: 'routeLine' },
+        },
+      ],
+    } as any;
+  })();
 
 
   return (
@@ -114,7 +189,7 @@ export default function MapLibreMap() {
         rotateEnabled={false}
         pitchEnabled={false}
         compassEnabled={false}
-        // checkpoint interaction removed
+        onPress={onMapPress}
         onRegionDidChange={(ev: any) => {
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
@@ -134,6 +209,14 @@ export default function MapLibreMap() {
           }
         }}
         onRegionIsChanging={(ev: any) => {
+          const isUserInteraction = Boolean(
+            ev?.properties?.isUserInteraction ??
+            ev?.properties?.isUserTouching ??
+            ev?.properties?.isGestureActive
+          );
+          if (following && isUserInteraction) {
+            setFollowing(false);
+          }
           // Update continuously while the camera is moving so grid follows the camera.
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
@@ -165,9 +248,39 @@ export default function MapLibreMap() {
           }}
         />
 
-        {/* grid removed */}
+        <ShapeSource id="route-line-source" shape={routeLineShape}>
+          <LineLayer
+            id="route-line"
+            style={{
+              lineColor: activeRouteColor ?? 'transparent',
+              lineOpacity: activeRouteColor ? 0.75 : 0,
+              lineWidth: 3,
+            }}
+          />
+        </ShapeSource>
 
-        {/* checkpoints removed */}
+        {checkpoints.map((cp) => {
+          const selected = selectedId === cp.id;
+          const dotColor = cp.color ?? activeRouteColor ?? tint;
+          return (
+            <MarkerView key={cp.id} coordinate={[cp.longitude, cp.latitude]} anchor={{ x: 0.5, y: 0.5 }} allowOverlap={true}>
+              <TouchableOpacity onPress={() => handleMarkerPress(cp.id)} activeOpacity={0.85}>
+                <View style={styles.checkpointRoot}>
+                  <View style={styles.checkpointOuter}>
+                    <View style={styles.checkpointInner}>
+                      <View style={[styles.checkpointDot, { backgroundColor: dotColor }]} />
+                    </View>
+                  </View>
+                  {cp.label ? (
+                    <View style={[styles.checkpointLabelWrap, { backgroundColor: background, borderColor: selected ? String(tint) : String(borderColor) }]}> 
+                      <Text style={[styles.checkpointLabelText, { color: textColor }]}>{cp.label}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+            </MarkerView>
+          );
+        })}
 
         {/* Render the native location puck w/ heading indicator. */}
         {/* @ts-ignore - typing differs across forks */}
@@ -211,7 +324,17 @@ export default function MapLibreMap() {
         }}
       />
 
-      {/* placement mode removed */}
+      {placementModeRequested ? (
+        <View style={[styles.placementBannerWrap, { top: insets.top + 12, left: 0, right: 0 }]}> 
+          <View style={[styles.placementBanner, { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)', borderColor: String(borderColor) }]}>
+            <View style={styles.placementBannerRow}>
+              <Text style={[styles.placementBannerTitle, { color: String(textColor) }]}>Place checkpoint</Text>
+              <Text style={[styles.placementBannerHint, { color: String(borderColor) }]}>Tap map</Text>
+            </View>
+            <Text style={[styles.placementBannerText, { color: String(borderColor) }]}>Tap anywhere on the map to drop a checkpoint.</Text>
+          </View>
+        </View>
+      ) : null}
 
       {/* Compass overlay replaced by CompassOverlay */}
 
@@ -280,32 +403,46 @@ const styles = StyleSheet.create({
   compassOverlay: {
     // (unused)
   },
-  checkpointMarker: {
-    position: 'relative',
-    width: 32,
-    height: 48,
+  checkpointRoot: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  checkpointIconWrap: {
-    position: 'absolute',
-    left: 0,
-    bottom: 0,
-    width: 32,
-    height: 32,
+  checkpointOuter: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#000000',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  checkpointInner: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkpointDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   checkpointLabelWrap: {
-    position: 'absolute',
-    left: 10,
-    right: -110,
-    bottom: 34,
-    maxWidth: 140,
+    marginTop: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,1)',
+    borderWidth: 1,
+    maxWidth: 160,
   },
   checkpointLabelText: {
-    color: 'white',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   recenterButton: {
