@@ -1,8 +1,6 @@
 import { alert as showAlert } from '@/components/alert';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { bearingDegrees, CompassButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
-import { degreesToMils } from './converter';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
@@ -13,6 +11,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
+import { bearingDegrees, CompassButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
+import { degreesToMils } from './converter';
 // map grid utilities
 import GridOverlay from './gridoverlay.web';
 

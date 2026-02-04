@@ -8,18 +8,15 @@ import { SavedRoutesModal } from '@/components/SavedRoutesModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Collapsible } from '@/components/ui/collapsible';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import StyledButton from '@/components/ui/StyledButton';
 import { Colors } from '@/constants/theme';
 import { Checkpoint, SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
-import { useSettings } from '@/hooks/settings';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as turf from '@turf/turf';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { FlatList, Modal, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type RouteItem = { id: string; title: string; subtitle?: string; icon?: string; color?: string };
@@ -39,7 +36,6 @@ export default function RoutesScreen() {
     setCheckpointsColor,
   } = useCheckpoints();
   const { lastLocation, requestLocation } = useGPS();
-  const { mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapGridOrigin, setSetting, gridConvergence } = useSettings();
   const [routes, setRoutes] = useState<RouteItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -49,11 +45,6 @@ export default function RoutesScreen() {
   const [referenceModalVisible, setReferenceModalVisible] = useState(false);
   const [projectModalVisible, setProjectModalVisible] = useState(false);
   const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
-  const [originModalVisible, setOriginModalVisible] = useState(false);
-  const [originChoice, setOriginChoice] = useState<'origin' | 'reference'>('origin');
-  const [easting, setEasting] = useState('');
-  const [northing, setNorthing] = useState('');
-  const [originError, setOriginError] = useState<string | null>(null);
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [optimizeModalVisible, setOptimizeModalVisible] = useState(false);
   const [optimizeRouteItem, setOptimizeRouteItem] = useState<RouteItem | null>(null);
@@ -100,56 +91,6 @@ export default function RoutesScreen() {
       router.push('/');
   }
 
-  function parseGridComponent(s: string): number | null {
-    // Accept only 3 or 4 digits. First two digits are km, remaining digits are decimal part of km.
-    if (!/^[0-9]{3,4}$/.test(s)) return null;
-    const kmPart = parseInt(s.slice(0, 2), 10);
-    const decPart = s.slice(2);
-    const dec = decPart ? Number('0.' + decPart) : 0;
-    return kmPart + dec;
-  }
-
-  function handleConfirmOrigin() {
-    if (!lastLocation) {
-      setOriginError('Current location unavailable');
-      return;
-    }
-
-    const lat = lastLocation.coords.latitude;
-    const lon = lastLocation.coords.longitude;
-
-    if (originChoice === 'origin') {
-      void setSetting('mapGridOrigin', { latitude: lat, longitude: lon });
-      setOriginModalVisible(false);
-      return;
-    }
-
-    // reference chosen
-    const e = parseGridComponent(easting);
-    const n = parseGridComponent(northing);
-    if (e === null || n === null) {
-      setOriginError('Eastings and northings must be 3 or 4 digits');
-      return;
-    }
-
-    // Convert grid reference (e km, n km) into a true EN displacement accounting for grid convergence.
-    // The input e/n represent grid east/north from the origin to the current location;
-    // we want the origin, so move by -e, -n in grid coords and rotate into true EN.
-    const ex = -e * 1000; // meters east in grid coords
-    const ny = -n * 1000; // meters north in grid coords
-    const theta = (gridConvergence ?? 0) * (Math.PI / 180); // radians
-    // rotate grid->true: [E_true; N_true] = R(theta) * [E_grid; N_grid]
-    const e_true = ex * Math.cos(theta) - ny * Math.sin(theta);
-    const n_true = ex * Math.sin(theta) + ny * Math.cos(theta);
-    const dist = Math.hypot(e_true, n_true);
-    // bearing: clockwise from true north (turf expects bearing from north)
-    const bearing = (Math.atan2(e_true, n_true) * 180 / Math.PI + 360) % 360;
-    const finalPoint = turf.destination([lon, lat], dist, bearing, { units: 'meters' });
-    const [originLon, originLat] = finalPoint.geometry.coordinates;
-
-    void setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
-    setOriginModalVisible(false);
-  }
 
   function handleSaveRoute(title: string, subtitle: string, icon: string, color: string) {
     if (editingId) {
@@ -298,13 +239,7 @@ export default function RoutesScreen() {
   const cardBg = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const safeBg = useThemeColor({}, 'background');
-  const textColor = useThemeColor({}, 'text');
-  const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
 
-  const gridOriginLabel = useMemo(() => {
-    if (!mapGridOrigin) return 'None';
-    return `${mapGridOrigin.latitude.toFixed(6)}, ${mapGridOrigin.longitude.toFixed(6)}`;
-  }, [mapGridOrigin]);
 
   return (
     <SafeAreaView style={[{ flex: 1, backgroundColor: safeBg }]}> 
@@ -312,85 +247,6 @@ export default function RoutesScreen() {
         <View style={styles.headerRow}>
           <ThemedText type="title">Routes</ThemedText>
           <StyledButton variant="primary" onPress={() => { setEditingId(null); setEditingItem(null); setOpen(true); }}>Add</StyledButton>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: cardBg, borderColor, borderWidth: 1, alignSelf: 'center', width: '98%' }]}>
-          <Collapsible
-            header={
-                <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 48, paddingVertical: 2 }}>
-                  <View style={{ width: 40, alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                    <IconSymbol name="square.grid.3x3" size={24} color={Colors.light.icon} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <ThemedText type="defaultSemiBold">Grid Settings</ThemedText>
-                    <ThemedText style={{ fontSize: 12, opacity: 0.7 }}>Overlays & Origin</ThemedText>
-                  </View>
-                </View>
-            }
-          >
-            <View style={styles.gridRow}>
-              <ThemedText type="defaultSemiBold">Enabled</ThemedText>
-              <Switch value={mapGridEnabled} onValueChange={(v) => void setSetting('mapGridEnabled', v)} />
-            </View>
-
-            <View style={styles.gridRow}>
-              <ThemedText type="defaultSemiBold">Subdivisions</ThemedText>
-              <Switch
-                value={mapGridSubdivisionsEnabled}
-                onValueChange={(v) => void setSetting('mapGridSubdivisionsEnabled', v)}
-                disabled={!mapGridEnabled}
-              />
-            </View>
-
-            <View style={styles.gridRow}>
-              <ThemedText type="defaultSemiBold">Grid numbers</ThemedText>
-              <Switch
-                value={mapGridNumbersEnabled}
-                onValueChange={(v) => void setSetting('mapGridNumbersEnabled', v)}
-                disabled={!mapGridEnabled}
-              />
-            </View>
-
-            <View style={{ marginTop: 8 }}>
-              <ThemedText type="defaultSemiBold">Origin (0,0)</ThemedText>
-              <ThemedText>{gridOriginLabel}</ThemedText>
-            </View>
-
-            <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'center', gap: 12 }}>
-              <StyledButton
-                variant="secondary"
-                onPress={() => {
-                  if (!lastLocation) {
-                    requestLocation();
-                    return;
-                  }
-                  setOriginChoice('origin');
-                  setEasting('');
-                  setNorthing('');
-                  setOriginError(null);
-                  setOriginModalVisible(true);
-                }}
-                disabled={!mapGridEnabled}
-                style={{ marginBottom: 8 }}
-              >
-                Use current
-              </StyledButton>
-
-              <StyledButton
-                variant="secondary"
-                onPress={() => {
-                  if (!selectedCheckpoint) return;
-                  void setSetting('mapGridOrigin', { latitude: selectedCheckpoint.latitude, longitude: selectedCheckpoint.longitude });
-                }}
-                disabled={!mapGridEnabled || !selectedCheckpoint}
-                style={{ marginBottom: 8 }}
-              >
-                Select point
-              </StyledButton>
-            </View>
-
-            
-          </Collapsible>
         </View>
 
         <View style={styles.stackContainer}>
@@ -527,65 +383,6 @@ export default function RoutesScreen() {
           </View>
         </Modal>
 
-        <Modal visible={originModalVisible} animationType="slide" transparent={true}>
-          <View style={styles.modalBackdrop}>
-            <View style={[styles.modalContainer, { backgroundColor: cardBg, borderColor, borderWidth: 1 }]}> 
-              <ThemedText type="title">Use current location as</ThemedText>
-
-              <View style={{ marginTop: 8 }}>
-                <TouchableOpacity onPress={() => setOriginChoice('origin')} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
-                  <View style={[styles.radioOuter, originChoice === 'origin' && styles.radioOuterSelected]}>
-                    {originChoice === 'origin' ? <View style={styles.radioInner} /> : null}
-                  </View>
-                  <ThemedText style={{ marginLeft: 8 }}>Origin (set current as origin)</ThemedText>
-                </TouchableOpacity>
-
-                <TouchableOpacity onPress={() => setOriginChoice('reference')} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 6 }}>
-                  <View style={[styles.radioOuter, originChoice === 'reference' && styles.radioOuterSelected]}>
-                    {originChoice === 'reference' ? <View style={styles.radioInner} /> : null}
-                  </View>
-                  <ThemedText style={{ marginLeft: 8 }}>Grid reference (enter eastings & northings)</ThemedText>
-                </TouchableOpacity>
-              </View>
-
-              {originChoice === 'reference' ? (
-                <View style={{ marginTop: 8 }}>
-                  <ThemedText type="defaultSemiBold">Eastings</ThemedText>
-                  <TextInput
-                    placeholder="e.g. 023 or 1023"
-                    value={easting}
-                    onChangeText={(t) => { setEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                    style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]}
-                    placeholderTextColor={placeholderColor}
-                    maxLength={4}
-                    keyboardType="numeric"
-                  />
-
-                  <ThemedText type="defaultSemiBold" style={{ marginTop: 8 }}>Northings</ThemedText>
-                  <TextInput
-                    placeholder="e.g. 213 or 2134"
-                    value={northing}
-                    onChangeText={(t) => { setNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                    style={[styles.input, { color: textColor ?? Colors.light.text, borderColor }]}
-                    placeholderTextColor={placeholderColor}
-                    maxLength={4}
-                    keyboardType="numeric"
-                  />
-
-                  <ThemedText style={{ marginTop: 6, fontSize: 12 }}>Enter 3 or 4 digits. First two digits are km; remaining digits are decimals of km.</ThemedText>
-                </View>
-              ) : null}
-
-              {originError ? <ThemedText style={styles.error}>{originError}</ThemedText> : null}
-
-              <View style={styles.modalRow}>
-                <StyledButton variant="secondary" onPress={() => { setOriginModalVisible(false); }}>{'Cancel'}</StyledButton>
-                <View style={{ width: 12 }} />
-                <StyledButton variant="primary" onPress={handleConfirmOrigin}>{'Set'}</StyledButton>
-              </View>
-            </View>
-          </View>
-        </Modal>
       </ThemedView>
     </SafeAreaView>
   );
@@ -606,8 +403,8 @@ const styles = StyleSheet.create({
   modalContainer: { width: '90%', backgroundColor: 'white', padding: 16, borderRadius: 8 },
   input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 6, padding: 8, marginTop: 8 },
   modalRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 },
+  radioOuter: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: '#999', alignItems: 'center', justifyContent: 'center' },
+  radioOuterSelected: { borderColor: Colors.light.tint },
+  radioInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.light.tint },
   error: { color: 'red', marginTop: 8, marginBottom: 4 },
-  radioOuter: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: '#999', alignItems: 'center', justifyContent: 'center' },
-  radioOuterSelected: { borderColor: '#007AFF' },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#007AFF' },
 });

@@ -23,6 +23,23 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
   const placeholderColor = useThemeColor({}, 'icon');
   const borderColor = useThemeColor({}, 'tabIconDefault');
 
+  function parseGridValue(value: string) {
+    const trimmed = value.trim();
+    if (!/^[0-9]+$/.test(trimmed)) return null;
+    const len = trimmed.length;
+    if (len < 1 || len > 5) return null;
+    const scaleByDigits: Record<number, number> = {
+      1: 10000,
+      2: 1000,
+      3: 100,
+      4: 10,
+      5: 1,
+    };
+    const scale = scaleByDigits[len];
+    const num = parseInt(trimmed, 10);
+    return { meters: num * scale, digits: len };
+  }
+
   function handleAdd() {
     setError(null);
     if (!mapGridOrigin) {
@@ -30,15 +47,20 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
       return;
     }
 
-    const e = parseFloat(easting);
-    const n = parseFloat(northing);
+    const eParsed = parseGridValue(easting);
+    const nParsed = parseGridValue(northing);
 
-    if (isNaN(e) || isNaN(n)) {
-      setError('Please enter valid numbers for Easting and Northing.');
+    if (!eParsed || !nParsed) {
+      setError('Enter grid digits only (1–5 digits each).');
       return;
     }
 
-    const loc = gridCoordsToLatLon(mapGridOrigin, e, n, gridConvergence ?? 0);
+    if (eParsed.digits !== nParsed.digits) {
+      setError('Easting and Northing must have the same number of digits (1–5).');
+      return;
+    }
+
+    const loc = gridCoordsToLatLon(mapGridOrigin, eParsed.meters, nParsed.meters, gridConvergence ?? 0);
     onAdd(loc);
     reset();
   }
@@ -56,20 +78,20 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
         <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
           <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Add by Grid Reference</ThemedText>
           
-          <ThemedText style={{ marginBottom: 4 }}>Easting (meters)</ThemedText>
+          <ThemedText style={{ marginBottom: 4 }}>Easting (grid digits)</ThemedText>
           <TextInput
             style={[styles.input, { color: textColor, borderColor }]}
-            placeholder="0"
+            placeholder="e.g. 12"
             placeholderTextColor={placeholderColor}
             keyboardType="numeric"
             value={easting}
             onChangeText={setEasting}
           />
 
-          <ThemedText style={{ marginBottom: 4, marginTop: 12 }}>Northing (meters)</ThemedText>
+          <ThemedText style={{ marginBottom: 4, marginTop: 12 }}>Northing (grid digits)</ThemedText>
           <TextInput
             style={[styles.input, { color: textColor, borderColor }]}
-            placeholder="0"
+            placeholder="e.g. 34"
             placeholderTextColor={placeholderColor}
             keyboardType="numeric"
             value={northing}
