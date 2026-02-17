@@ -1,13 +1,11 @@
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import StyledButton from './ui/StyledButton';
-// If geolib is not available, I'll implement a simple projection function.
-// Checking package.json... I don't see geolib. I'll implement a simple spherical projection.
 
 type ProjectPointModalProps = {
   visible: boolean;
@@ -34,10 +32,7 @@ function projectPoint(start: { latitude: number; longitude: number }, distanceMe
 
 export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModalProps) {
   const { lastLocation } = useGPS();
-  const { checkpoints } = useCheckpoints(); // Assuming we can get checkpoints to find the last one
-  // Actually useCheckpoints returns { selectedCheckpoint, ... } but maybe not the full list directly exposed in the hook return?
-  // Let's check hooks/checkpoints.tsx again. It returns { ...store } which includes checkpoints.
-  
+  const { checkpoints } = useCheckpoints();
   const [distance, setDistance] = useState('');
   const [bearing, setBearing] = useState('');
   const [useLastCheckpoint, setUseLastCheckpoint] = useState(true);
@@ -51,10 +46,12 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
   const canUseCheckpoint = !!lastCheckpoint;
   const canUseGPS = !!lastLocation;
 
-  // Default to GPS if no checkpoint
-  if (!canUseCheckpoint && useLastCheckpoint && canUseGPS) {
+  // Default to GPS if no checkpoint available
+  useEffect(() => {
+    if (!canUseCheckpoint && useLastCheckpoint && canUseGPS) {
       setUseLastCheckpoint(false);
-  }
+    }
+  }, [canUseCheckpoint, canUseGPS, useLastCheckpoint]);
 
   function handleAdd() {
     setError(null);
@@ -158,7 +155,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 14,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

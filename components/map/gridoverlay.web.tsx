@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useState } from 'react';
-import { computeGridCornersFromMapBounds, generateGridPoints, gridCoordsToLatLon } from './mapGrid';
+import { useEffect, useRef, useState } from 'react';
+import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
 type Origin = { latitude: number; longitude: number } | null;
 
@@ -24,11 +24,12 @@ export default function GridOverlay({
   const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [cellCenters, setCellCenters] = useState<Array<{ x: number; y: number; e: number; n: number }>>([]);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!map) return;
 
-    const update = () => {
+    const runUpdate = () => {
       if (!map) return;
       try {
         // project origin to screen
@@ -71,10 +72,14 @@ export default function GridOverlay({
         const es = Array.from(new Set(pts.map((p) => p.e))).sort((a, b) => a - b);
         const ns = Array.from(new Set(pts.map((p) => p.n))).sort((a, b) => a - b);
 
+        const key = (e: number, n: number) => `${e}:${n}`;
+        const ptMap = new Map<string, { x: number; y: number; e: number; n: number }>();
+        for (const p of pts) ptMap.set(key(p.e, p.n), p);
+
         const vertical: string[] = es.map((e) => {
           const linePts = ns
             .map((n) => {
-              const p = pts.find((q) => q.e === e && q.n === n);
+              const p = ptMap.get(key(e, n));
               return p ? `${p.x},${p.y}` : null;
             })
             .filter(Boolean) as string[];
@@ -84,16 +89,12 @@ export default function GridOverlay({
         const horizontal: string[] = ns.map((n) => {
           const linePts = es
             .map((e) => {
-              const p = pts.find((q) => q.e === e && q.n === n);
+              const p = ptMap.get(key(e, n));
               return p ? `${p.x},${p.y}` : null;
             })
             .filter(Boolean) as string[];
           return linePts.join(' ');
         });
-
-        const key = (e: number, n: number) => `${e}:${n}`;
-        const ptMap = new Map<string, { x: number; y: number; e: number; n: number }>();
-        for (const p of pts) ptMap.set(key(p.e, p.n), p);
 
         const verticalSub: string[] = [];
         const horizontalSub: string[] = [];
@@ -136,27 +137,23 @@ export default function GridOverlay({
           }
         }
 
-        // Compute cell centers for grid numbers
+        // Compute cell centers for grid numbers using projected corners
         const centers: Array<{ x: number; y: number; e: number; n: number }> = [];
         if (es.length >= 2 && ns.length >= 2) {
           for (let i = 0; i < es.length - 1; i++) {
             for (let j = 0; j < ns.length - 1; j++) {
-              // bottom left intersection
               const e0 = es[i];
               const n0 = ns[j];
               const e1 = es[i + 1];
               const n1 = ns[j + 1];
-              // center in e/n
-              const ec = (e0 + e1) / 2;
-              const nc = (n0 + n1) / 2;
-              // get lat/lon (grid coords -> true EN -> lat/lon)
-              const ll = gridCoordsToLatLon(originPt, ec, nc, gridConvergence ?? 0);
-              try {
-                const p = map.project([ll.longitude, ll.latitude]);
-                centers.push({ x: p.x, y: p.y, e: e0, n: n0 });
-              } catch {
-                // skip
-              }
+              const p00 = ptMap.get(key(e0, n0));
+              const p10 = ptMap.get(key(e1, n0));
+              const p01 = ptMap.get(key(e0, n1));
+              const p11 = ptMap.get(key(e1, n1));
+              if (!p00 || !p10 || !p01 || !p11) continue;
+              const x = (p00.x + p10.x + p01.x + p11.x) / 4;
+              const y = (p00.y + p10.y + p01.y + p11.y) / 4;
+              centers.push({ x, y, e: e0, n: n0 });
             }
           }
         }
@@ -169,20 +166,33 @@ export default function GridOverlay({
       }
     };
 
-    map.on('load', update);
-    map.on('move', update);
-    map.on('zoom', update);
-    setTimeout(update, 0);
+    const scheduleUpdate = () => {
+      if (!map) return;
+      if (rafRef.current != null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        runUpdate();
+      });
+    };
+
+    map.on('load', runUpdate);
+    map.on('move', scheduleUpdate);
+    map.on('zoom', scheduleUpdate);
+    map.on('moveend', runUpdate);
+    map.on('zoomend', runUpdate);
+    setTimeout(runUpdate, 0);
 
     return () => {
-      map.off('load', update);
-      map.off('move', update);
-      map.off('zoom', update);
+      map.off('load', runUpdate);
+      map.off('move', scheduleUpdate);
+      map.off('zoom', scheduleUpdate);
+      map.off('moveend', runUpdate);
+      map.off('zoomend', runUpdate);
     };
   }, [map, origin, minZoom, gridConvergence]);
 
   return (
-    <div style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 59 }}>
+    <div style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 40 }}>
       <svg style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}>
         {subdivisionsEnabled && gridSubLines.vertical.map((pts, i) => (
           <polyline key={`sv-${i}`} points={pts} stroke="#000" strokeWidth={0.7} fill="none" opacity={0.18} />
@@ -233,7 +243,7 @@ export default function GridOverlay({
             background: 'rgba(0,0,0,0.9)',
             border: '2px solid white',
             pointerEvents: 'none',
-            zIndex: 61,
+            zIndex: 41,
           }}
         />
       ) : null}

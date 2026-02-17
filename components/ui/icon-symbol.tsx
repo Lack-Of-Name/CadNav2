@@ -34,6 +34,9 @@ const MAPPING = {
   'ruler.fill': 'straighten',
   'map.fill': 'map',
   'compass.drawing': 'explore',
+  'arrow.down.circle.fill': 'download',
+  'icloud.and.arrow.down': 'cloud-download',
+  'trash.fill': 'delete',
 } as IconMapping;
 
 /**

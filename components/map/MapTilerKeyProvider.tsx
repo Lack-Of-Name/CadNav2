@@ -1,9 +1,12 @@
 import { alert as showAlert } from '@/components/alert';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
 
 const STORAGE_KEY = 'MAPTILER_API_KEY';
 
@@ -29,6 +32,9 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const [verifying, setVerifying] = useState(false);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
+  const inputTextColor = useThemeColor({}, 'text');
+  const inputBorderColor = useThemeColor({}, 'tabIconDefault');
+  const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
 
   useEffect(() => {
     (async () => {
@@ -275,21 +281,22 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
 
       <Modal visible={showModal} animationType="slide" transparent={true}>
         <View style={styles.backdrop}>
-          <View style={styles.container}>
-            <Text style={styles.title}>MapTiler API Key</Text>
-            <Text style={styles.help}>Woah there! This app needs a free MapTiler API key to load maps.</Text>
+          <ThemedView style={styles.container}>
+            <ThemedText style={styles.title}>MapTiler API Key</ThemedText>
+            <ThemedText style={styles.help}>Woah there! This app needs a free MapTiler API key to load maps.</ThemedText>
             <TextInput
               placeholder="Enter MapTiler API key"
+              placeholderTextColor={placeholderColor}
               value={input}
               onChangeText={(t) => {
                 setInput(t);
                 setError(null);
               }}
-              style={styles.input}
+              style={[styles.input, { color: inputTextColor, borderColor: inputBorderColor }]}
               autoCapitalize="none"
               autoCorrect={false}
             />
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={() => Linking.openURL('https://www.maptiler.com/')}>
                 Take Me There!
@@ -299,15 +306,15 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 {verifying ? <ActivityIndicator color="#fff" /> : 'Verify & Save'}
               </StyledButton>
             </View>
-          </View>
+          </ThemedView>
         </View>
       </Modal>
 
       <Modal visible={locationModalVisible} animationType="fade" transparent={true}>
         <View style={styles.backdrop}>
-          <View style={styles.container}>
-            <Text style={styles.title}>Location Permission Required</Text>
-            <Text style={styles.help}>This app requires location access to function. Please enable location for this app/site.</Text>
+          <ThemedView style={styles.container}>
+            <ThemedText style={styles.title}>Location Permission Required</ThemedText>
+            <ThemedText style={styles.help}>This app requires location access to function. Please enable location for this app/site.</ThemedText>
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={openSettings}>
                 Open Settings
@@ -323,15 +330,15 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 Retry
               </StyledButton>
             </View>
-          </View>
+          </ThemedView>
         </View>
       </Modal>
 
       <Modal visible={orientationModalVisible} animationType="fade" transparent={true}>
         <View style={styles.backdrop}>
-          <View style={styles.container}>
-            <Text style={styles.title}>Orientation Permission Required</Text>
-            <Text style={styles.help}>This app needs access to device orientation (compass) to show device heading. Please grant access to continue.</Text>
+          <ThemedView style={styles.container}>
+            <ThemedText style={styles.title}>Orientation Permission Required</ThemedText>
+            <ThemedText style={styles.help}>This app needs access to device orientation (compass) to show device heading. Please grant access to continue.</ThemedText>
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={() => { /* guide text only */ }}>
                 Help
@@ -344,7 +351,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                   if (ok) {
                     setOrientationModalVisible(false);
                   } else {
-                    // keep modal visible; user must grant to continue
                     setOrientationModalVisible(true);
                   }
                 }}
@@ -352,7 +358,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 Grant
               </StyledButton>
             </View>
-          </View>
+          </ThemedView>
         </View>
       </Modal>
     </MapTilerKeyContext.Provider>
@@ -368,9 +374,9 @@ const styles = StyleSheet.create({
   },
   container: {
     width: '90%',
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 8,
+    maxWidth: 500,
+    padding: 20,
+    borderRadius: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -384,14 +390,14 @@ const styles = StyleSheet.create({
   },
   help: {
     marginBottom: 12,
-    color: '#333',
+    opacity: 0.7,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: 8,
+    padding: 10,
     marginBottom: 12,
+    fontSize: 16,
   },
   row: {
     flexDirection: 'row',
@@ -399,7 +405,7 @@ const styles = StyleSheet.create({
   },
   spacer: { width: 12 },
   error: {
-    color: '#b00020',
+    color: '#FF3B30',
     marginBottom: 12,
   },
   
