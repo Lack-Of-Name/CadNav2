@@ -1,11 +1,12 @@
+import DownloadProgressOverlay from '@/components/DownloadProgressOverlay';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { useOfflineMaps } from '@/hooks/offline-maps';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { Camera, LineLayer, MapView, MarkerView, ShapeSource, UserLocation } from "@maplibre/maplibre-react-native";
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,11 +14,27 @@ import { ThemedView } from '../themed-view';
 import { bearingDegrees, CompassButton, haversineMeters, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 
+let maplibreModule: any | undefined | null;
+
+function getMaplibreModule() {
+  if (maplibreModule !== undefined) return maplibreModule;
+  try {
+    // Avoid hard-crashing Expo Go when the native module isn't available.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    maplibreModule = require('@maplibre/maplibre-react-native');
+  } catch {
+    maplibreModule = null;
+  }
+  return maplibreModule;
+}
+
 export default function MapLibreMap() {
+  const maplibre = getMaplibreModule();
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop } = useCheckpoints();
   const { angleUnit, mapHeading } = useSettings();
+  const { initOffline } = useOfflineMaps();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -131,11 +148,30 @@ export default function MapLibreMap() {
     }
   }, [lastLocation, cameraReady]);
 
+  // Initialize offline ambient cache on first mount
+  useEffect(() => {
+    initOffline();
+  }, [initOffline]);
+
   useEffect(() => {
     if (!following || !lastLocation || !cameraRef.current) return;
     const { latitude, longitude } = lastLocation.coords;
     cameraRef.current.flyTo([longitude, latitude]);
   }, [lastLocation, following]);
+
+  if (!maplibre) {
+    return (
+      <ThemedView style={styles.page}>
+        <Text style={styles.unavailableTitle}>Map unavailable in Expo Go</Text>
+        <Text style={styles.unavailableBody}>
+          This screen uses native MapLibre modules, which require a custom dev client or a prebuilt app.
+        </Text>
+        <Text style={styles.unavailableBody}>
+          Build with a dev client (or run a prebuilt app) to enable the native map view.
+        </Text>
+      </ThemedView>
+    );
+  }
 
   if (loading || !apiKey) {
     return (
@@ -176,6 +212,8 @@ export default function MapLibreMap() {
     } as any;
   })();
 
+
+  const { Camera, LineLayer, MapView, MarkerView, ShapeSource, UserLocation } = maplibre as any;
 
   return (
     <ThemedView style={styles.page}>
@@ -293,6 +331,8 @@ export default function MapLibreMap() {
           androidPreferredFramesPerSecond={60}
         />
       </MapView>
+
+      <DownloadProgressOverlay />
 
       <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />
 
@@ -453,5 +493,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 50,
     elevation: 6,
+  },
+  unavailableTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  unavailableBody: {
+    fontSize: 13,
+    textAlign: 'center',
+    opacity: 0.75,
+    paddingHorizontal: 18,
+    marginBottom: 6,
   },
 });

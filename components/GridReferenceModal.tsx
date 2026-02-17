@@ -123,7 +123,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 14,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

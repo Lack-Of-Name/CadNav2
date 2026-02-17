@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     maxHeight: '80%',
     padding: 20,
-    borderRadius: 12,
+    borderRadius: 14,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

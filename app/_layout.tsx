@@ -1,4 +1,5 @@
 import MapTilerKeyProvider from '@/components/map/MapTilerKeyProvider';
+import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -18,10 +19,12 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <SettingsProvider>
           <MapTilerKeyProvider>
-            <Stack>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-            </Stack>
+            <OfflineMapProvider>
+              <Stack>
+                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+              </Stack>
+            </OfflineMapProvider>
           </MapTilerKeyProvider>
         </SettingsProvider>
       </SafeAreaProvider>

@@ -3,6 +3,7 @@ import { Modal, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, Vie
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
+import DownloadMapsModal from '@/components/DownloadMapsModal';
 import { alert } from '@/components/alert';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { ThemedText } from '@/components/themed-text';
@@ -25,6 +26,7 @@ export default function SettingsScreen() {
   const { lastLocation, requestLocation } = useGPS();
   const { selectedCheckpoint } = useCheckpoints();
   const [infoOpen, setInfoOpen] = useState(false);
+  const [downloadMapsOpen, setDownloadMapsOpen] = useState(false);
   const [gridModalOpen, setGridModalOpen] = useState(false);
   const [gridPanel, setGridPanel] = useState<'menu' | 'overlays' | 'origin' | 'convergence'>('menu');
   const [originEasting, setOriginEasting] = useState('');
@@ -259,6 +261,13 @@ export default function SettingsScreen() {
 
         <SettingsSection title="Map">
           <SettingsRow 
+            icon="arrow.down.circle.fill" 
+            label="Download Maps" 
+            color="#5AC8FA"
+            value="Offline"
+            onPress={() => setDownloadMapsOpen(true)}
+          />
+          <SettingsRow 
             icon="map.fill" 
             label="MapTiler API Key" 
             color="#34C759"
@@ -444,6 +453,9 @@ export default function SettingsScreen() {
           </ThemedView>
         </View>
       </Modal>
+
+      {/* Download Maps Modal */}
+      <DownloadMapsModal visible={downloadMapsOpen} onClose={() => setDownloadMapsOpen(false)} />
 
       {/* About Modal */}
       <Modal visible={infoOpen} animationType="slide" transparent={true}>
