@@ -66,6 +66,12 @@ export default function RoutesScreen() {
     setActiveRouteColor,
     setCheckpointsColor,
     clearActiveRoute,
+    selectedId,
+    selectCheckpoint,
+    saveRoute: persistRoute,
+    saveLocation: persistLocation,
+    deleteRoute: deleteSavedRoute,
+    deleteLocation: deleteSavedLocation,
   } = useCheckpoints();
 
   const [routes, setRoutes] = useState<RouteItem[]>([]);
@@ -177,6 +183,29 @@ export default function RoutesScreen() {
   function handleReverseRoute() {
     if (checkpoints.length < 2) return;
     reorderCheckpoints([...checkpoints].reverse());
+  }
+
+  async function handleSaveRouteToLibrary(item: RouteItem) {
+    if (checkpoints.length === 0) {
+      void showAlert({ title: 'Save Route', message: 'Add some points first before saving.' });
+      return;
+    }
+    try {
+      await persistRoute(item.title);
+      void showAlert({ title: 'Saved!', message: `"${item.title}" saved. You can load it later with the Save option when adding points.` });
+    } catch (err) {
+      void showAlert({ title: 'Save failed', message: String(err) });
+    }
+  }
+
+  async function handleSaveLocationFromCheckpoint(cp: Checkpoint) {
+    const name = cp.label || `Location ${formatCoords(cp.latitude, cp.longitude)}`;
+    try {
+      await persistLocation(name, cp.latitude, cp.longitude);
+      void showAlert({ title: 'Saved!', message: `Location saved. You can load it later with the Saved option when adding points.` });
+    } catch (err) {
+      void showAlert({ title: 'Save failed', message: String(err) });
+    }
   }
 
   function handleClearPoints() {
@@ -358,33 +387,53 @@ export default function RoutesScreen() {
         {/* ── Checkpoint list ── */}
         {checkpoints.length > 0 ? (
           <View style={[styles.cpList, { borderColor, backgroundColor: subtleBg }]}>
-            {checkpoints.map((cp, idx) => (
-              <View
-                key={cp.id}
-                style={[
-                  styles.cpRow,
-                  idx < checkpoints.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
-                ]}
-              >
-                <View style={[styles.cpIndex, { backgroundColor: routeColor }]}>
-                  <ThemedText style={styles.cpIndexText}>{idx + 1}</ThemedText>
-                </View>
-                <View style={styles.cpInfo}>
-                  {cp.label ? <ThemedText style={styles.cpLabel}>{cp.label}</ThemedText> : null}
-                  <ThemedText style={styles.cpCoords}>{formatCoords(cp.latitude, cp.longitude)}</ThemedText>
-                </View>
+            {checkpoints.map((cp, idx) => {
+              const isCurrent = cp.id === selectedId;
+              return (
                 <TouchableOpacity
-                  onPress={() => handleRemovePoint(cp.id)}
-                  style={styles.cpDeleteBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  key={cp.id}
+                  activeOpacity={0.7}
+                  onPress={() => selectCheckpoint(cp.id)}
+                  style={[
+                    styles.cpRow,
+                    idx < checkpoints.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
+                    isCurrent && { backgroundColor: `${routeColor}15` },
+                  ]}
                 >
-                  <IconSymbol name="xmark" size={16} color={iconColor} />
+                  <View style={[styles.cpIndex, { backgroundColor: routeColor }]}>
+                    <ThemedText style={styles.cpIndexText}>{idx + 1}</ThemedText>
+                  </View>
+                  <View style={styles.cpInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {cp.label ? <ThemedText style={styles.cpLabel}>{cp.label}</ThemedText> : null}
+                      {isCurrent && (
+                        <View style={[styles.currentBadge, { backgroundColor: routeColor }]}>
+                          <ThemedText style={styles.currentBadgeText}>CURRENT</ThemedText>
+                        </View>
+                      )}
+                    </View>
+                    <ThemedText style={styles.cpCoords}>{formatCoords(cp.latitude, cp.longitude)}</ThemedText>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => handleSaveLocationFromCheckpoint(cp)}
+                    style={styles.cpSaveBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="square.and.arrow.down" size={16} color={iconColor} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleRemovePoint(cp.id)}
+                    style={styles.cpDeleteBtn}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <IconSymbol name="xmark" size={16} color={iconColor} />
+                  </TouchableOpacity>
                 </TouchableOpacity>
-              </View>
-            ))}
+              );
+            })}
           </View>
         ) : (
-          <ThemedText style={styles.emptyHint}>No points yet — add one below</ThemedText>
+          <ThemedText style={styles.emptyHint}>No points yet - add one below</ThemedText>
         )}
 
         {/* ── Action buttons ── */}
@@ -413,9 +462,14 @@ export default function RoutesScreen() {
         )}
 
         <View style={styles.actionRow}>
+          <StyledButton variant="secondary" onPress={() => handleSaveRouteToLibrary(item)} style={styles.actionBtn}>
+            Save Route
+          </StyledButton>
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
             Edit Details
           </StyledButton>
+        </View>
+        <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => deactivateRoute()} style={styles.actionBtn}>
             Deactivate
           </StyledButton>
@@ -600,9 +654,25 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     fontVariant: ['tabular-nums'],
   },
+  cpSaveBtn: {
+    padding: 4,
+    opacity: 0.5,
+    marginRight: 4,
+  },
   cpDeleteBtn: {
     padding: 4,
     opacity: 0.5,
+  },
+  currentBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+  },
+  currentBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
 
   // Actions

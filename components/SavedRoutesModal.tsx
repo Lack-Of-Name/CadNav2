@@ -2,6 +2,7 @@ import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useState } from 'react';
 import { FlatList, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { alert as showAlert } from './alert';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { IconSymbol } from './ui/icon-symbol';
@@ -15,7 +16,7 @@ type SavedRoutesModalProps = {
 };
 
 export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLocation }: SavedRoutesModalProps) {
-  const { savedRoutes, savedLocations } = useCheckpoints();
+  const { savedRoutes, savedLocations, deleteRoute, deleteLocation } = useCheckpoints();
   const [activeTab, setActiveTab] = useState<'routes' | 'locations'>('routes');
   
   const borderColor = useThemeColor({}, 'tabIconDefault');
@@ -31,6 +32,28 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
   function handleSelectLocation(location: SavedLocation) {
     onSelectLocation(location);
     onClose();
+  }
+
+  function handleDeleteRoute(route: SavedRoute) {
+    void showAlert({
+      title: 'Delete saved route?',
+      message: `Remove "${route.name}" from saved routes?`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteRoute(route.id) },
+      ],
+    });
+  }
+
+  function handleDeleteLocation(location: SavedLocation) {
+    void showAlert({
+      title: 'Delete saved location?',
+      message: `Remove "${location.name}" from saved locations?`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteLocation(location.id) },
+      ],
+    });
   }
 
   return (
@@ -83,6 +106,13 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
                           {new Date(item.createdAt).toLocaleDateString()} • {item.checkpoints.length} points
                         </ThemedText>
                       </View>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteRoute(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={styles.deleteBtn}
+                      >
+                        <IconSymbol name="trash" size={18} color="#FF3B30" />
+                      </TouchableOpacity>
                       <IconSymbol name="chevron.right" size={20} color={iconColor} />
                     </TouchableOpacity>
                   )}
@@ -113,6 +143,13 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
                           {new Date(item.createdAt).toLocaleDateString()} • {item.latitude.toFixed(4)}, {item.longitude.toFixed(4)}
                         </ThemedText>
                       </View>
+                      <TouchableOpacity
+                        onPress={() => handleDeleteLocation(item)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={styles.deleteBtn}
+                      >
+                        <IconSymbol name="trash" size={18} color="#FF3B30" />
+                      </TouchableOpacity>
                       <IconSymbol name="chevron.right" size={20} color={iconColor} />
                     </TouchableOpacity>
                   )}
@@ -191,6 +228,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     opacity: 0.7,
     marginTop: 2,
+  },
+  deleteBtn: {
+    padding: 6,
+    marginRight: 4,
   },
   emptyState: {
     padding: 24,
