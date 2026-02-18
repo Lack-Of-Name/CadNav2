@@ -13,29 +13,29 @@ type AddRoutePanelProps = {
 const OPTIONS = [
   { 
     id: 'place', 
-    label: 'Place', 
-    desc: 'Drop pin on map', 
+    label: 'Place on Map', 
+    desc: 'Tap to drop a pin', 
     color: '#34C759', // Green
     icon: 'mappin.and.ellipse' 
   },
   { 
     id: 'reference', 
-    label: 'Reference', 
-    desc: 'Enter grid coords', 
+    label: 'Grid Reference', 
+    desc: 'Enter grid coordinates', 
     color: '#007AFF', // Blue
     icon: 'square.grid.3x3' 
   },
   { 
     id: 'project', 
-    label: 'Project', 
-    desc: 'Bearing & distance', 
+    label: 'Project Point', 
+    desc: 'From bearing & distance', 
     color: '#AF52DE', // Purple
     icon: 'safari.fill' 
   },
   { 
     id: 'saved', 
-    label: 'Saved', 
-    desc: 'Load saved route', 
+    label: 'Saved Items', 
+    desc: 'Load from library', 
     color: '#FF9500', // Orange
     icon: 'folder.fill' 
   },
@@ -64,7 +64,7 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
             ]}
         >
             <View style={styles.header}>
-                <ThemedText type="subtitle">Add to Route</ThemedText>
+                <ThemedText type="subtitle">Add Waypoint</ThemedText>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                     <IconSymbol name="xmark" size={24} color={iconColor} />
                 </TouchableOpacity>

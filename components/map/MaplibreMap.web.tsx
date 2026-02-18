@@ -16,6 +16,15 @@ import { degreesToMils } from './converter';
 // map grid utilities
 import GridOverlay from './gridoverlay.web';
 
+function isLightColor(hex: string): boolean {
+  const c = hex.replace('#', '');
+  if (c.length < 6) return false;
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
+
 export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const [webLastLocation, setWebLastLocation] = useState<any | null>(null);
@@ -27,7 +36,8 @@ export default function MapLibreMap() {
   const errorReportedRef = useRef(false);
   const { lastLocation, requestLocation } = useGPS();
   const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, gridConvergence } = useSettings();
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop } = useCheckpoints();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
+  const [placedCount, setPlacedCount] = useState(0);
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelected = useThemeColor({}, 'tabIconSelected');
@@ -43,6 +53,8 @@ export default function MapLibreMap() {
   const [compassOpen, setCompassOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const compassButtonColor = compassOpen ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
+  const bannerAccent = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
+  const bannerAccentText = isLightColor(bannerAccent) ? '#000' : '#fff';
   const initialZoomDone = useRef(false);
   const checkpointMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   
@@ -304,6 +316,8 @@ export default function MapLibreMap() {
       if (!placementModeRequested) return;
       const { lng, lat } = ev.lngLat;
       await addCheckpoint(lat, lng);
+      setPlacedCount(c => c + 1);
+      // Stay in placement mode for continuous placement
       await consumePlacementModeRequest();
     };
     map.current.on('click', handleClick);
@@ -496,6 +510,22 @@ export default function MapLibreMap() {
     }
   }, [effectiveLastLocation, following]);
 
+  // Consume viewTarget from routes screen
+  useEffect(() => {
+    if (!viewTarget || !map.current || !mapReady) return;
+    const fly = async () => {
+      const target = await consumeViewTarget();
+      if (!target) return;
+      try {
+        map.current!.flyTo({ center: [target.longitude, target.latitude], zoom: target.zoom ?? 14, duration: 1000 });
+        setFollowing(false);
+      } catch {
+        // ignore
+      }
+    };
+    void fly();
+  }, [viewTarget, mapReady]);
+
   // Compute the orientation (degrees) for the arrow based on device heading
   useEffect(() => {
     if (!effectiveLastLocation) {
@@ -567,7 +597,70 @@ export default function MapLibreMap() {
         <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6, zIndex: 100 }} textStyle={styles.locationText} renderAs="web" />
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
-        {/* placement UI removed */}
+        {/* Placement mode banner */}
+        {placementModeRequested && (
+          <div style={{
+            position: 'absolute',
+            top: 12,
+            left: 0,
+            right: 0,
+            zIndex: 200,
+            display: 'flex',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              pointerEvents: 'auto',
+              background: colorScheme === 'dark' ? 'rgba(0,0,0,0.92)' : 'rgba(255,255,255,0.97)',
+              border: `2px solid ${bannerAccent}`,
+              borderRadius: 14,
+              padding: '12px 18px',
+              maxWidth: 300,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: 4, background: bannerAccent }} />
+                <span style={{ color: String(textColor), fontWeight: 700, fontSize: 15 }}>Placing waypoints</span>
+                {placedCount > 0 && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    background: bannerAccent,
+                    color: bannerAccentText,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    borderRadius: 11,
+                    minWidth: 22,
+                    height: 22,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingLeft: 6,
+                    paddingRight: 6,
+                  }}>{placedCount}</span>
+                )}
+              </div>
+              <div style={{ color: String(borderColor), fontSize: 13, lineHeight: '18px', marginBottom: 10 }}>
+                {placedCount === 0
+                  ? 'Click anywhere on the map to place your first waypoint.'
+                  : `${placedCount} waypoint${placedCount !== 1 ? 's' : ''} placed. Click to add more.`}
+              </div>
+              <button
+                onClick={() => { void cancelPlacementMode(); setPlacedCount(0); }}
+                style={{
+                  width: '100%',
+                  padding: '8px 0',
+                  border: 'none',
+                  borderRadius: 999,
+                  background: bannerAccent,
+                  color: bannerAccentText,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >Done</button>
+            </div>
+          </div>
+        )}
         <CompassOverlay
           open={compassOpen}
           onToggle={() => setCompassOpen((v) => !v)}

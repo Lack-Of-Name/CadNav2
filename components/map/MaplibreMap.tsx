@@ -28,11 +28,21 @@ function getMaplibreModule() {
   return maplibreModule;
 }
 
+function isLightColor(hex: string): boolean {
+  const c = hex.replace('#', '');
+  if (c.length < 6) return false;
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
+
 export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop } = useCheckpoints();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
+  const [placedCount, setPlacedCount] = React.useState(0);
   const { angleUnit, mapHeading } = useSettings();
   const { initOffline } = useOfflineMaps();
   const insets = useSafeAreaInsets();
@@ -51,6 +61,8 @@ export default function MapLibreMap() {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
+  const bannerAccent = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
+  const bannerAccentText = isLightColor(bannerAccent) ? '#000' : '#fff';
   const initialZoomDone = React.useRef(false);
 
   const compassHeadingDeg = (() => {
@@ -129,7 +141,14 @@ export default function MapLibreMap() {
     const { geometry } = feature;
     const [longitude, latitude] = geometry.coordinates;
     await addCheckpoint(latitude, longitude);
+    setPlacedCount(c => c + 1);
+    // Don't consume - stay in placement mode for continuous placement
     await consumePlacementModeRequest();
+  };
+
+  const handleDonePlacing = async () => {
+    await cancelPlacementMode();
+    setPlacedCount(0);
   };
 
   const handleMarkerPress = async (id: string) => {
@@ -158,6 +177,20 @@ export default function MapLibreMap() {
     const { latitude, longitude } = lastLocation.coords;
     cameraRef.current.flyTo([longitude, latitude]);
   }, [lastLocation, following]);
+
+  // Consume viewTarget from routes screen
+  useEffect(() => {
+    if (!viewTarget || !cameraRef.current || !cameraReady) return;
+    const fly = async () => {
+      const target = await consumeViewTarget();
+      if (!target) return;
+      cameraRef.current.zoomTo?.(target.zoom ?? 14, 200);
+      await sleep(200);
+      cameraRef.current.flyTo?.([target.longitude, target.latitude], 800);
+      setFollowing(false);
+    };
+    void fly();
+  }, [viewTarget, cameraReady]);
 
   if (!maplibre) {
     return (
@@ -366,12 +399,28 @@ export default function MapLibreMap() {
 
       {placementModeRequested ? (
         <View style={[styles.placementBannerWrap, { top: insets.top + 12, left: 0, right: 0 }]}> 
-          <View style={[styles.placementBanner, { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.95)', borderColor: String(borderColor) }]}>
+          <View style={[styles.placementBanner, { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.97)', borderColor: bannerAccent }]}>
             <View style={styles.placementBannerRow}>
-              <Text style={[styles.placementBannerTitle, { color: String(textColor) }]}>Place checkpoint</Text>
-              <Text style={[styles.placementBannerHint, { color: String(borderColor) }]}>Tap map</Text>
+              <View style={[styles.placementPulse, { backgroundColor: bannerAccent }]} />
+              <Text style={[styles.placementBannerTitle, { color: String(textColor) }]}>Placing waypoints</Text>
+              {placedCount > 0 && (
+                <View style={[styles.placedCountBadge, { backgroundColor: bannerAccent }]}>
+                  <Text style={[styles.placedCountText, { color: bannerAccentText }]}>{placedCount}</Text>
+                </View>
+              )}
             </View>
-            <Text style={[styles.placementBannerText, { color: String(borderColor) }]}>Tap anywhere on the map to drop a checkpoint.</Text>
+            <Text style={[styles.placementBannerText, { color: String(borderColor) }]}>
+              {placedCount === 0
+                ? 'Tap anywhere on the map to place your first waypoint.'
+                : `${placedCount} waypoint${placedCount !== 1 ? 's' : ''} placed. Tap to add more.`}
+            </Text>
+            <TouchableOpacity
+              onPress={handleDonePlacing}
+              activeOpacity={0.8}
+              style={[styles.placementDoneBtn, { backgroundColor: bannerAccent }]}
+            >
+              <Text style={[styles.placementDoneText, { color: bannerAccentText }]}>Done</Text>
+            </TouchableOpacity>
           </View>
         </View>
       ) : null}
@@ -415,30 +464,55 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   placementBanner: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    maxWidth: 280,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 2,
+    maxWidth: 300,
   },
   placementBannerText: {
-    fontSize: 12,
-    opacity: 0.9,
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 10,
   },
   placementBannerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 4,
+    marginBottom: 6,
   },
   placementBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  placementPulse: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  placedCountBadge: {
+    marginLeft: 'auto',
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  placedCountText: {
+    color: '#fff',
     fontSize: 12,
     fontWeight: '700',
   },
-  placementBannerHint: {
-    marginLeft: 'auto',
-    fontSize: 12,
-    opacity: 0.8,
+  placementDoneBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  placementDoneText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   compassOverlay: {
     // (unused)

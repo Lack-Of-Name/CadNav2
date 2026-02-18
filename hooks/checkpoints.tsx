@@ -48,6 +48,7 @@ type StoreState = {
   activeRouteColor: string | null;
   activeRouteStart: { latitude: number; longitude: number } | null;
   activeRouteLoop: boolean;
+  viewTarget: { latitude: number; longitude: number; zoom?: number } | null;
 };
 
 let store: StoreState = {
@@ -60,6 +61,7 @@ let store: StoreState = {
   activeRouteColor: null,
   activeRouteStart: null,
   activeRouteLoop: false,
+  viewTarget: null,
 };
 
 const listeners = new Set<() => void>();
@@ -147,7 +149,11 @@ async function initStore() {
       savedRoutes: hydratedRoutes.routes, 
       savedLocations: hydratedLocations.locations,
       isLoaded: true, 
-      placementModeRequested: false 
+      placementModeRequested: false,
+      activeRouteColor: null,
+      activeRouteStart: null,
+      activeRouteLoop: false,
+      viewTarget: null,
     });
 
     // Ensure storage is initialized with normalized shape.
@@ -265,8 +271,24 @@ export function useCheckpoints() {
 
   const consumePlacementModeRequest = useCallback(async () => {
     if (!store.placementModeRequested) return false;
-    setStore({ ...store, placementModeRequested: false });
+    // In continuous placement mode, we don't turn off the flag here.
+    // The user must explicitly cancel via cancelPlacementMode.
     return true;
+  }, []);
+
+  const cancelPlacementMode = useCallback(async () => {
+    setStore({ ...store, placementModeRequested: false });
+  }, []);
+
+  const setViewTarget = useCallback(async (target: { latitude: number; longitude: number; zoom?: number } | null) => {
+    setStore({ ...store, viewTarget: target });
+  }, []);
+
+  const consumeViewTarget = useCallback(async () => {
+    const target = store.viewTarget;
+    if (!target) return null;
+    setStore({ ...store, viewTarget: null });
+    return target;
   }, []);
 
   const addCheckpoint = useCallback(
@@ -421,6 +443,7 @@ export function useCheckpoints() {
     activeRouteColor: snapshot.activeRouteColor,
     activeRouteStart: snapshot.activeRouteStart,
     activeRouteLoop: snapshot.activeRouteLoop,
+    viewTarget: snapshot.viewTarget,
     addCheckpoint,
     removeCheckpoint,
     selectCheckpoint,
@@ -438,5 +461,8 @@ export function useCheckpoints() {
     deleteLocation,
     requestPlacementMode,
     consumePlacementModeRequest,
+    cancelPlacementMode,
+    setViewTarget,
+    consumeViewTarget,
   } as const;
 }

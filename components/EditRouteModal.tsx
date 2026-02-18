@@ -1,8 +1,7 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
-import { EmojiPicker } from './EmojiPicker';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
 import StyledButton from './ui/StyledButton';
@@ -29,6 +28,16 @@ const ROUTE_COLORS = [
   '#5E5CE6',
 ] as const;
 
+// Curated quick-pick emojis for route icons - the most useful for navigation
+const QUICK_EMOJIS = [
+  '📍','🚩','🏁','🧭','🗺️','🏔️','⛰️','🏕️','⛺',
+  '🏠','🏢','🏥','🏰','⛪','🌲','🌳','🌊','🏖️',
+  '🅿️','⛽','🚗','🚶','🏃','🚴','🚵','🚣','🏊',
+  '⭐','🔥','💧','❄️','⚡','🔴','🟢','🔵',
+  '🟡','🟠','🟣','⚪','🦅','🐻','🐟',
+  '☀️','🌙','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟',
+] as const;
+
 export function EditRouteModal({ 
   visible, 
   onClose, 
@@ -47,13 +56,13 @@ export function EditRouteModal({
   const [icon, setIcon] = useState(initialIcon);
   const [color, setColor] = useState(initialColor);
   const [error, setError] = useState<string | null>(null);
-  const [emojiPickerVisible, setEmojiPickerVisible] = useState(false);
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({}, 'icon');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const iconColor = useThemeColor({}, 'text');
+  const selectedBg = useThemeColor({ light: '#e8e8ea', dark: '#3a3a3c' }, 'background');
 
   useEffect(() => {
     if (visible) {
@@ -64,15 +73,6 @@ export function EditRouteModal({
       setError(null);
     }
   }, [visible, initialTitle, initialSubtitle, initialIcon, initialColor]);
-
-  function extractEmoji(s: string) {
-    try {
-      const m = s.match(/\p{Extended_Pictographic}/u);
-      return m ? m[0] : '';
-    } catch {
-      return s.replace(/[\w\d\s]/g, '').slice(0, 2);
-    }
-  }
 
   function handleSave() {
     const t = title.trim();
@@ -113,30 +113,28 @@ export function EditRouteModal({
             </View>
 
             <View style={styles.form}>
-                <View style={styles.iconRow}>
-                    <TouchableOpacity onPress={() => setEmojiPickerVisible(true)}>
-                        <View style={[styles.iconPreview, { borderColor }]}>
-                            <ThemedText style={{ fontSize: 32 }}>{icon || '?'}</ThemedText>
-                        </View>
+                {/* Icon picker - inline scroll strip */}
+                <ThemedText style={styles.label}>Icon</ThemedText>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.emojiStrip}
+                  style={styles.emojiStripContainer}
+                >
+                  {QUICK_EMOJIS.map((e) => (
+                    <TouchableOpacity
+                      key={e}
+                      onPress={() => { setIcon(e); setError(null); }}
+                      style={[
+                        styles.emojiOption,
+                        icon === e && { backgroundColor: selectedBg, borderColor: color, borderWidth: 2 },
+                      ]}
+                      activeOpacity={0.7}
+                    >
+                      <ThemedText style={{ fontSize: 26 }}>{e}</ThemedText>
                     </TouchableOpacity>
-                    <View style={{ flex: 1 }}>
-                        <ThemedText style={styles.label}>Icon (Emoji)</ThemedText>
-                        <TextInput
-                            placeholder="e.g. 🧭"
-                            value={icon}
-                            onChangeText={(t) => {
-                                const e = extractEmoji(t);
-                                if (e) setIcon(e);
-                                else setIcon('');
-                                setError(null);
-                            }}
-                            style={[styles.input, { color: textColor, borderColor }]}
-                            placeholderTextColor={placeholderColor}
-                            maxLength={2}
-                            autoCorrect={false}
-                        />
-                    </View>
-                </View>
+                  ))}
+                </ScrollView>
 
                 <ThemedText style={styles.label}>Title</ThemedText>
                 <TextInput 
@@ -178,16 +176,11 @@ export function EditRouteModal({
                 <View style={styles.footer}>
                     <StyledButton variant="secondary" onPress={onClose}>Cancel</StyledButton>
                     <View style={{ width: 12 }} />
-                    <StyledButton variant="primary" onPress={handleSave}>{isEditing ? 'Save Changes' : 'Create Route'}</StyledButton>
+                    <StyledButton variant="primary" onPress={handleSave} color={color}>{isEditing ? 'Save Changes' : 'Create Route'}</StyledButton>
                 </View>
             </View>
         </Animated.View>
       </View>
-      <EmojiPicker 
-        visible={emojiPickerVisible} 
-        onClose={() => setEmojiPickerVisible(false)} 
-        onSelect={(emoji) => { setIcon(emoji); setError(null); }} 
-      />
     </Modal>
   );
 }
@@ -219,21 +212,24 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   form: {
-    gap: 16,
+    gap: 12,
   },
-  iconRow: {
-    flexDirection: 'row',
-    gap: 16,
-    alignItems: 'flex-end',
+  emojiStripContainer: {
+    maxHeight: 54,
   },
-  iconPreview: {
-    width: 60,
-    height: 60,
+  emojiStrip: {
+    gap: 6,
+    paddingVertical: 2,
+    paddingHorizontal: 2,
+  },
+  emojiOption: {
+    width: 46,
+    height: 46,
     borderRadius: 12,
-    borderWidth: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(128,128,128,0.1)',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   label: {
     fontSize: 14,
@@ -253,13 +249,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   colorDot: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     borderWidth: 2,
   },
   colorDotSelected: {
     borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+    transform: [{ scale: 1.15 }],
   },
   error: {
     color: '#FF3B30',

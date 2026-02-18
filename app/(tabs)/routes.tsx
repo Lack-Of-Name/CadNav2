@@ -68,6 +68,8 @@ export default function RoutesScreen() {
     clearActiveRoute,
     selectedId,
     selectCheckpoint,
+    selectedCheckpoint,
+    setViewTarget,
     saveRoute: persistRoute,
     saveLocation: persistLocation,
     deleteRoute: deleteSavedRoute,
@@ -221,6 +223,15 @@ export default function RoutesScreen() {
   }
 
   function handleViewOnMap() {
+    // If a checkpoint is selected, fly to it; otherwise fly to the center of all checkpoints
+    if (selectedCheckpoint) {
+      void setViewTarget({ latitude: selectedCheckpoint.latitude, longitude: selectedCheckpoint.longitude, zoom: 14 });
+    } else if (checkpoints.length > 0) {
+      // Center on the midpoint of checkpoints
+      const avgLat = checkpoints.reduce((s, c) => s + c.latitude, 0) / checkpoints.length;
+      const avgLon = checkpoints.reduce((s, c) => s + c.longitude, 0) / checkpoints.length;
+      void setViewTarget({ latitude: avgLat, longitude: avgLon, zoom: 12 });
+    }
     router.push('/');
   }
 
@@ -389,87 +400,102 @@ export default function RoutesScreen() {
           <View style={[styles.cpList, { borderColor, backgroundColor: subtleBg }]}>
             {checkpoints.map((cp, idx) => {
               const isCurrent = cp.id === selectedId;
+              const prevCp = idx > 0 ? checkpoints[idx - 1] : null;
+              const legDist = prevCp
+                ? haversineMeters(prevCp.latitude, prevCp.longitude, cp.latitude, cp.longitude)
+                : null;
               return (
-                <TouchableOpacity
-                  key={cp.id}
-                  activeOpacity={0.7}
-                  onPress={() => selectCheckpoint(cp.id)}
-                  style={[
-                    styles.cpRow,
-                    idx < checkpoints.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
-                    isCurrent && { backgroundColor: `${routeColor}15` },
-                  ]}
-                >
-                  <View style={[styles.cpIndex, { backgroundColor: routeColor }]}>
-                    <ThemedText style={styles.cpIndexText}>{idx + 1}</ThemedText>
-                  </View>
-                  <View style={styles.cpInfo}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      {cp.label ? <ThemedText style={styles.cpLabel}>{cp.label}</ThemedText> : null}
-                      {isCurrent && (
-                        <View style={[styles.currentBadge, { backgroundColor: routeColor }]}>
-                          <ThemedText style={styles.currentBadgeText}>CURRENT</ThemedText>
-                        </View>
-                      )}
+                <View key={cp.id}>
+                  {legDist !== null && (
+                    <View style={styles.legDistRow}>
+                      <View style={[styles.legDistLine, { backgroundColor: routeColor }]} />
+                      <ThemedText style={styles.legDistText}>{formatDistance(legDist)}</ThemedText>
                     </View>
-                    <ThemedText style={styles.cpCoords}>{formatCoords(cp.latitude, cp.longitude)}</ThemedText>
-                  </View>
+                  )}
                   <TouchableOpacity
-                    onPress={() => handleSaveLocationFromCheckpoint(cp)}
-                    style={styles.cpSaveBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.7}
+                    onPress={() => selectCheckpoint(cp.id)}
+                    style={[
+                      styles.cpRow,
+                      idx < checkpoints.length - 1 && !legDist && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: borderColor },
+                      isCurrent && { backgroundColor: `${routeColor}15` },
+                    ]}
                   >
-                    <IconSymbol name="square.and.arrow.down" size={16} color={iconColor} />
+                    <View style={[styles.cpIndex, { backgroundColor: routeColor }]}>
+                      <ThemedText style={styles.cpIndexText}>{idx + 1}</ThemedText>
+                    </View>
+                    <View style={styles.cpInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {cp.label ? <ThemedText style={styles.cpLabel}>{cp.label}</ThemedText> : null}
+                        {isCurrent && (
+                          <View style={[styles.currentBadge, { backgroundColor: routeColor }]}>
+                            <ThemedText style={styles.currentBadgeText}>SELECTED</ThemedText>
+                          </View>
+                        )}
+                      </View>
+                      <ThemedText style={styles.cpCoords}>{formatCoords(cp.latitude, cp.longitude)}</ThemedText>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => handleSaveLocationFromCheckpoint(cp)}
+                      style={styles.cpActionBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="square.and.arrow.down" size={16} color={iconColor} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleRemovePoint(cp.id)}
+                      style={styles.cpActionBtn}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <IconSymbol name="trash" size={16} color="#FF453A" />
+                    </TouchableOpacity>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleRemovePoint(cp.id)}
-                    style={styles.cpDeleteBtn}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <IconSymbol name="xmark" size={16} color={iconColor} />
-                  </TouchableOpacity>
-                </TouchableOpacity>
+                </View>
               );
             })}
           </View>
         ) : (
-          <ThemedText style={styles.emptyHint}>No points yet - add one below</ThemedText>
+          <View style={styles.emptyCheckpoints}>
+            <IconSymbol name="mappin.and.ellipse" size={32} color={routeColor} />
+            <ThemedText style={styles.emptyCheckpointsTitle}>No waypoints yet</ThemedText>
+            <ThemedText style={styles.emptyCheckpointsHint}>Tap "Add Waypoint" to place your first point</ThemedText>
+          </View>
         )}
 
-        {/* ── Action buttons ── */}
+        {/* ── Primary action ── */}
         <View style={styles.actionRow}>
-          <StyledButton variant="primary" onPress={() => handleOpenAddPoints(item)} style={styles.actionBtn}>
-            Add Point
+          <StyledButton variant="primary" onPress={() => handleOpenAddPoints(item)} style={[styles.actionBtn, { flex: 1 }]}>
+            Add Waypoint
           </StyledButton>
-          <StyledButton variant="secondary" onPress={handleViewOnMap} style={styles.actionBtn}>
+          <StyledButton variant="primary" onPress={handleViewOnMap} style={[styles.actionBtn, { flex: 1 }]}>
             View on Map
           </StyledButton>
         </View>
 
-        {(checkpoints.length >= 2 || checkpoints.length > 0) && (
-          <View style={styles.actionRow}>
-            {checkpoints.length >= 2 && (
-              <StyledButton variant="secondary" onPress={handleReverseRoute} style={styles.actionBtn}>
-                Reverse
-              </StyledButton>
-            )}
-            {checkpoints.length > 0 && (
-              <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
-                Clear Points
-              </StyledButton>
-            )}
-          </View>
-        )}
-
+        {/* ── Secondary actions ── */}
         <View style={styles.actionRow}>
-          <StyledButton variant="secondary" onPress={() => handleSaveRouteToLibrary(item)} style={styles.actionBtn}>
-            Save Route
-          </StyledButton>
+          {checkpoints.length >= 2 && (
+            <StyledButton variant="secondary" onPress={handleReverseRoute} style={styles.actionBtn}>
+              Reverse
+            </StyledButton>
+          )}
+          {checkpoints.length > 0 && (
+            <StyledButton variant="secondary" onPress={() => handleSaveRouteToLibrary(item)} style={styles.actionBtn}>
+              Save
+            </StyledButton>
+          )}
+          {checkpoints.length > 0 && (
+            <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
+              Clear All
+            </StyledButton>
+          )}
+        </View>
+
+        {/* ── Management actions ── */}
+        <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
             Edit Details
           </StyledButton>
-        </View>
-        <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => deactivateRoute()} style={styles.actionBtn}>
             Deactivate
           </StyledButton>
@@ -524,8 +550,11 @@ export default function RoutesScreen() {
             renderItem={renderRouteCard}
             ListEmptyComponent={
               <View style={styles.emptyState}>
+                <IconSymbol name="map" size={48} color={tintColor} />
                 <ThemedText style={styles.emptyTitle}>No routes yet</ThemedText>
-                <ThemedText style={styles.emptySubtitle}>Create a route to start adding waypoints</ThemedText>
+                <ThemedText style={styles.emptySubtitle}>
+                  Routes let you plan and navigate a series of waypoints.{'\n'}Create one to get started!
+                </ThemedText>
                 <StyledButton variant="primary" onPress={() => { setEditingId(null); setEditingItem(null); setOpen(true); }}>
                   Create your first route
                 </StyledButton>
@@ -655,13 +684,17 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   cpSaveBtn: {
-    padding: 4,
-    opacity: 0.5,
+    padding: 6,
+    opacity: 0.6,
     marginRight: 4,
   },
   cpDeleteBtn: {
-    padding: 4,
-    opacity: 0.5,
+    padding: 6,
+    opacity: 0.6,
+  },
+  cpActionBtn: {
+    padding: 6,
+    marginLeft: 2,
   },
   currentBadge: {
     paddingHorizontal: 6,
@@ -687,9 +720,32 @@ const styles = StyleSheet.create({
   },
 
   // Empty / hints
-  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32 },
-  emptyTitle: { opacity: 0.5, textAlign: 'center', marginBottom: 4, fontSize: 16 },
-  emptySubtitle: { opacity: 0.4, textAlign: 'center', marginBottom: 16, fontSize: 13 },
+  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
+  emptyTitle: { opacity: 0.6, textAlign: 'center', marginBottom: 0, fontSize: 18, fontWeight: '600' },
+  emptySubtitle: { opacity: 0.4, textAlign: 'center', marginBottom: 12, fontSize: 14, lineHeight: 20 },
   emptyHint: { opacity: 0.5, textAlign: 'center', paddingVertical: 12 },
+  emptyCheckpoints: { alignItems: 'center', paddingVertical: 20, gap: 6 },
+  emptyCheckpointsTitle: { fontSize: 15, fontWeight: '600', opacity: 0.6 },
+  emptyCheckpointsHint: { fontSize: 13, opacity: 0.4, textAlign: 'center' },
   savedCount: { opacity: 0.6, marginBottom: 12 },
+
+  // Leg distance
+  legDistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 23,
+    paddingVertical: 2,
+  },
+  legDistLine: {
+    width: 2,
+    height: 18,
+    borderRadius: 1,
+    opacity: 0.35,
+    marginRight: 10,
+  },
+  legDistText: {
+    fontSize: 11,
+    opacity: 0.45,
+    fontVariant: ['tabular-nums'] as any,
+  },
 });
