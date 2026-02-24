@@ -53,6 +53,7 @@ type OfflineMapContextValue = {
   // Downloads
   activeDownload: ActiveDownload | null;
   startDownload: (preset: ZoomPreset, target: DownloadTarget, apiKey: string) => Promise<void>;
+  cancelDownload: () => Promise<void>;
 
   // Ambient cache
   initOffline: () => void;
@@ -65,6 +66,7 @@ const OfflineMapContext = createContext<OfflineMapContextValue>({
   deletePack: async () => {},
   activeDownload: null,
   startDownload: async () => {},
+  cancelDownload: async () => {},
   initOffline: () => {},
 });
 
@@ -235,6 +237,19 @@ export function OfflineMapProvider({ children }: { children: React.ReactNode }) 
     [getOfflineManager, loadPacks],
   );
 
+  const cancelDownload = useCallback(async () => {
+    if (!activeDownload) return;
+    const mgr = getOfflineManager();
+    if (!mgr) return;
+    try {
+      await mgr.deletePack(activeDownload.packName);
+    } catch {
+      // best-effort: pack may not exist yet
+    }
+    setActiveDownload(null);
+    void loadPacks();
+  }, [activeDownload, getOfflineManager, loadPacks]);
+
   return (
     <OfflineMapContext.Provider
       value={{
@@ -244,6 +259,7 @@ export function OfflineMapProvider({ children }: { children: React.ReactNode }) 
         deletePack,
         activeDownload,
         startDownload,
+        cancelDownload,
         initOffline,
       }}
     >

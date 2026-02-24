@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 import { bearingDegrees, CompassButton, haversineMeters, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
+import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
 let maplibreModule: any | undefined | null;
 
@@ -43,7 +44,7 @@ export default function MapLibreMap() {
   const { lastLocation, requestLocation } = useGPS();
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
   const [placedCount, setPlacedCount] = React.useState(0);
-  const { angleUnit, mapHeading } = useSettings();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled } = useSettings();
   const { initOffline } = useOfflineMaps();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -190,7 +191,198 @@ export default function MapLibreMap() {
       setFollowing(false);
     };
     void fly();
-  }, [viewTarget, cameraReady]);
+  }, [viewTarget, cameraReady, consumeViewTarget]);
+
+  const emptyGeo = React.useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
+
+  const routeLineShape = React.useMemo(() => {
+    if (!activeRouteColor) return emptyGeo;
+    const coords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
+    if (activeRouteStart) {
+      coords.unshift([activeRouteStart.longitude, activeRouteStart.latitude]);
+    }
+    if (activeRouteLoop && coords.length > 1) {
+      const first = coords[0];
+      coords.push(first);
+    }
+    if (coords.length < 2) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: coords,
+          },
+          properties: { kind: 'routeLine' },
+        },
+      ],
+    } as any;
+  }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
+
+  const gridShape = React.useMemo(() => {
+    if (!mapGridEnabled || zoomLevel < 12 || !visibleBounds) return emptyGeo;
+    const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
+    const sw = { latitude: visibleBounds[1][1], longitude: visibleBounds[1][0] };
+    const ne = { latitude: visibleBounds[0][1], longitude: visibleBounds[0][0] };
+
+    const gridOffsets = computeGridCornersFromMapBounds(originPt, sw, ne, 1000, gridConvergence ?? 0);
+    const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
+
+    const es = Array.from(new Set(intersections.map((p) => p.e))).sort((a, b) => a - b);
+    const ns = Array.from(new Set(intersections.map((p) => p.n))).sort((a, b) => a - b);
+
+    const key = (e: number, n: number) => `${e}:${n}`;
+    const ptMap = new Map<string, { latitude: number; longitude: number; e: number; n: number }>();
+    for (const p of intersections) ptMap.set(key(p.e, p.n), p);
+
+    const features: any[] = [];
+
+    // Main grid lines
+    for (const e of es) {
+      const coords = ns.map((n) => {
+        const p = ptMap.get(key(e, n));
+        return p ? [p.longitude, p.latitude] : null;
+      }).filter(Boolean);
+      if (coords.length > 1) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { kind: 'gridLine' },
+        });
+      }
+    }
+
+    for (const n of ns) {
+      const coords = es.map((e) => {
+        const p = ptMap.get(key(e, n));
+        return p ? [p.longitude, p.latitude] : null;
+      }).filter(Boolean);
+      if (coords.length > 1) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { kind: 'gridLine' },
+        });
+      }
+    }
+
+    // Subdivisions
+    if (mapGridSubdivisionsEnabled && es.length >= 2 && ns.length >= 2) {
+      const parts = 10;
+      for (let i = 0; i < es.length - 1; i++) {
+        const eA = es[i];
+        const eB = es[i + 1];
+        for (let k = 1; k < parts; k++) {
+          const t = k / parts;
+          const coords: any[] = [];
+          for (const n of ns) {
+            const a = ptMap.get(key(eA, n));
+            const b = ptMap.get(key(eB, n));
+            if (!a || !b) continue;
+            const lon = a.longitude + (b.longitude - a.longitude) * t;
+            const lat = a.latitude + (b.latitude - a.latitude) * t;
+            coords.push([lon, lat]);
+          }
+          if (coords.length > 1) {
+            features.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords },
+              properties: { kind: 'gridSubLine' },
+            });
+          }
+        }
+      }
+
+      for (let j = 0; j < ns.length - 1; j++) {
+        const nA = ns[j];
+        const nB = ns[j + 1];
+        for (let k = 1; k < parts; k++) {
+          const t = k / parts;
+          const coords: any[] = [];
+          for (const e of es) {
+            const a = ptMap.get(key(e, nA));
+            const b = ptMap.get(key(e, nB));
+            if (!a || !b) continue;
+            const lon = a.longitude + (b.longitude - a.longitude) * t;
+            const lat = a.latitude + (b.latitude - a.latitude) * t;
+            coords.push([lon, lat]);
+          }
+          if (coords.length > 1) {
+            features.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords },
+              properties: { kind: 'gridSubLine' },
+            });
+          }
+        }
+      }
+    }
+
+    // Grid numbers
+    if (mapGridNumbersEnabled && es.length >= 2 && ns.length >= 2) {
+      for (let i = 0; i < es.length - 1; i++) {
+        for (let j = 0; j < ns.length - 1; j++) {
+          const e0 = es[i];
+          const n0 = ns[j];
+          const e1 = es[i + 1];
+          const n1 = ns[j + 1];
+          const p00 = ptMap.get(key(e0, n0));
+          const p10 = ptMap.get(key(e1, n0));
+          const p01 = ptMap.get(key(e0, n1));
+          const p11 = ptMap.get(key(e1, n1));
+          if (p00 && p10 && p01 && p11) {
+            const centerLon = (p00.longitude + p10.longitude + p01.longitude + p11.longitude) / 4;
+            const centerLat = (p00.latitude + p10.latitude + p01.latitude + p11.latitude) / 4;
+            const eStr = Math.floor(Math.abs(e0) / 1000).toString().padStart(2, '0').slice(-2);
+            const nStr = Math.floor(Math.abs(n0) / 1000).toString().padStart(2, '0').slice(-2);
+            features.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [centerLon, centerLat] },
+              properties: { kind: 'gridNumber', label: `${eStr}${nStr}` },
+            });
+          }
+        }
+      }
+    }
+
+    return { type: 'FeatureCollection', features };
+  }, [mapGridEnabled, zoomLevel, visibleBounds, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, emptyGeo]);
+
+  const gridOriginShape = React.useMemo(() => {
+    if (!mapGridEnabled || !mapGridOrigin) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [mapGridOrigin.longitude, mapGridOrigin.latitude] },
+          properties: { kind: 'gridOrigin' },
+        },
+      ],
+    };
+  }, [mapGridEnabled, mapGridOrigin, emptyGeo]);
+
+  const checkpointsShape = React.useMemo(() => {
+    return {
+      type: 'FeatureCollection',
+      features: checkpoints.map((cp) => ({
+        type: 'Feature',
+        id: cp.id,
+        geometry: {
+          type: 'Point',
+          coordinates: [cp.longitude, cp.latitude],
+        },
+        properties: {
+          id: cp.id,
+          label: cp.label || '',
+          color: cp.color ?? activeRouteColor ?? tint,
+          selected: selectedId === cp.id,
+        },
+      })),
+    };
+  }, [checkpoints, selectedId, activeRouteColor, tint]);
 
   if (!maplibre) {
     return (
@@ -217,36 +409,7 @@ export default function MapLibreMap() {
 
   const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
-  const emptyGeo = { type: 'FeatureCollection', features: [] } as any;
-
-  const routeLineShape = (() => {
-    if (!activeRouteColor) return emptyGeo;
-    const coords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
-    if (activeRouteStart) {
-      coords.unshift([activeRouteStart.longitude, activeRouteStart.latitude]);
-    }
-    if (activeRouteLoop && coords.length > 1) {
-      const first = coords[0];
-      coords.push(first);
-    }
-    if (coords.length < 2) return emptyGeo;
-    return {
-      type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: coords,
-          },
-          properties: { kind: 'routeLine' },
-        },
-      ],
-    } as any;
-  })();
-
-
-  const { Camera, LineLayer, MapView, MarkerView, ShapeSource, UserLocation } = maplibre as any;
+  const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, UserLocation } = maplibre as any;
 
   return (
     <ThemedView style={styles.page}>
@@ -309,7 +472,7 @@ export default function MapLibreMap() {
         }}
       >
         <Camera
-          ref={(ref) => {
+          ref={(ref: any) => {
             cameraRef.current = ref;
             if (ref) setCameraReady(true);
           }}
@@ -318,6 +481,55 @@ export default function MapLibreMap() {
             zoomLevel: 1,
           }}
         />
+
+        <ShapeSource id="grid-source" shape={gridShape}>
+          <LineLayer
+            id="grid-lines"
+            filter={['==', 'kind', 'gridLine']}
+            style={{
+              lineColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+              lineWidth: 1.5,
+            }}
+          />
+          <LineLayer
+            id="grid-sublines"
+            filter={['==', 'kind', 'gridSubLine']}
+            style={{
+              lineColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
+              lineWidth: 1,
+            }}
+          />
+          <SymbolLayer
+            id="grid-numbers"
+            filter={['==', 'kind', 'gridNumber']}
+            style={{
+              textField: ['get', 'label'],
+              textSize: 14,
+              textColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
+              textHaloColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)',
+              textHaloWidth: 1,
+            }}
+          />
+        </ShapeSource>
+
+        <ShapeSource id="grid-origin-source" shape={gridOriginShape}>
+          <CircleLayer
+            id="grid-origin-circle"
+            style={{
+              circleRadius: 6,
+              circleColor: 'transparent',
+              circleStrokeWidth: 2,
+              circleStrokeColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)',
+            }}
+          />
+          <CircleLayer
+            id="grid-origin-dot"
+            style={{
+              circleRadius: 2,
+              circleColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)',
+            }}
+          />
+        </ShapeSource>
 
         <ShapeSource id="route-line-source" shape={routeLineShape}>
           <LineLayer
@@ -330,28 +542,53 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
 
-        {checkpoints.map((cp) => {
-          const selected = selectedId === cp.id;
-          const dotColor = cp.color ?? activeRouteColor ?? tint;
-          return (
-            <MarkerView key={cp.id} coordinate={[cp.longitude, cp.latitude]} anchor={{ x: 0.5, y: 0.5 }} allowOverlap={true}>
-              <TouchableOpacity onPress={() => handleMarkerPress(cp.id)} activeOpacity={0.85}>
-                <View style={styles.checkpointRoot}>
-                  <View style={styles.checkpointOuter}>
-                    <View style={styles.checkpointInner}>
-                      <View style={[styles.checkpointDot, { backgroundColor: dotColor }]} />
-                    </View>
-                  </View>
-                  {cp.label ? (
-                    <View style={[styles.checkpointLabelWrap, { backgroundColor: background, borderColor: selected ? String(tint) : String(borderColor) }]}> 
-                      <Text style={[styles.checkpointLabelText, { color: textColor }]}>{cp.label}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              </TouchableOpacity>
-            </MarkerView>
-          );
-        })}
+        <ShapeSource 
+          id="checkpoints-source" 
+          shape={checkpointsShape}
+          onPress={(event: any) => {
+            const feature = event.features[0];
+            if (feature && feature.properties && feature.properties.id) {
+              handleMarkerPress(feature.properties.id);
+            }
+          }}
+        >
+          <CircleLayer
+            id="checkpoints-outer"
+            style={{
+              circleRadius: 12,
+              circleColor: 'rgba(255,255,255,0.8)',
+              circleStrokeWidth: 1,
+              circleStrokeColor: 'rgba(0,0,0,0.1)',
+            }}
+          />
+          <CircleLayer
+            id="checkpoints-inner"
+            style={{
+              circleRadius: 8,
+              circleColor: '#fff',
+            }}
+          />
+          <CircleLayer
+            id="checkpoints-dot"
+            style={{
+              circleRadius: 6,
+              circleColor: ['get', 'color'],
+            }}
+          />
+          <SymbolLayer
+            id="checkpoints-labels"
+            style={{
+              textField: ['get', 'label'],
+              textSize: 12,
+              textColor: String(textColor),
+              textHaloColor: String(background),
+              textHaloWidth: 2,
+              textOffset: [0, 1.5],
+              textAnchor: 'top',
+              textOpacity: ['case', ['==', ['get', 'label'], ''], 0, 1],
+            }}
+          />
+        </ShapeSource>
 
         {/* Render the native location puck w/ heading indicator. */}
         {/* @ts-ignore - typing differs across forks */}
@@ -516,48 +753,6 @@ const styles = StyleSheet.create({
   },
   compassOverlay: {
     // (unused)
-  },
-  checkpointRoot: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkpointOuter: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#000000',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-  },
-  checkpointInner: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkpointDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  checkpointLabelWrap: {
-    marginTop: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    maxWidth: 160,
-  },
-  checkpointLabelText: {
-    fontSize: 11,
-    fontWeight: '600',
   },
   recenterButton: {
     position: 'absolute',

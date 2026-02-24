@@ -1,7 +1,7 @@
 import { useSettings } from '@/hooks/settings';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useState } from 'react';
-import { Modal, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, StyleSheet, TextInput, View, TouchableOpacity } from 'react-native';
 import { gridCoordsToLatLon } from './map/mapGrid';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -17,13 +17,15 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
   const { mapGridOrigin, gridConvergence } = useSettings();
   const [easting, setEasting] = useState('');
   const [northing, setNorthing] = useState('');
+  const [eastingSign, setEastingSign] = useState<1 | -1>(1);
+  const [northingSign, setNorthingSign] = useState<1 | -1>(1);
   const [error, setError] = useState<string | null>(null);
 
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({}, 'icon');
   const borderColor = useThemeColor({}, 'tabIconDefault');
 
-  function parseGridValue(value: string) {
+  function parseGridValue(value: string, sign: 1 | -1) {
     const trimmed = value.trim();
     if (!/^[0-9]+$/.test(trimmed)) return null;
     const len = trimmed.length;
@@ -37,7 +39,7 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
     };
     const scale = scaleByDigits[len];
     const num = parseInt(trimmed, 10);
-    return { meters: num * scale, digits: len };
+    return { meters: num * scale * sign, digits: len };
   }
 
   function handleAdd() {
@@ -47,8 +49,8 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
       return;
     }
 
-    const eParsed = parseGridValue(easting);
-    const nParsed = parseGridValue(northing);
+    const eParsed = parseGridValue(easting, eastingSign);
+    const nParsed = parseGridValue(northing, northingSign);
 
     if (!eParsed || !nParsed) {
       setError('Enter grid digits only (1–5 digits each).');
@@ -68,6 +70,8 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
   function reset() {
     setEasting('');
     setNorthing('');
+    setEastingSign(1);
+    setNorthingSign(1);
     setError(null);
     onClose();
   }
@@ -79,24 +83,42 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
           <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Add by Grid Reference</ThemedText>
           
           <ThemedText style={{ marginBottom: 4 }}>Easting (grid digits)</ThemedText>
-          <TextInput
-            style={[styles.input, { color: textColor, borderColor }]}
-            placeholder="e.g. 12"
-            placeholderTextColor={placeholderColor}
-            keyboardType="numeric"
-            value={easting}
-            onChangeText={setEasting}
-          />
+          <View style={[styles.inputContainer, { borderColor }]}>
+            <TouchableOpacity 
+              style={[styles.signButton, { borderRightColor: borderColor }]} 
+              onPress={() => setEastingSign(s => s === 1 ? -1 : 1)}
+            >
+              <ThemedText style={styles.signText}>{eastingSign === 1 ? '+' : '-'}</ThemedText>
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { color: textColor }]}
+              placeholder="e.g. 12"
+              placeholderTextColor={placeholderColor}
+              keyboardType="numeric"
+              value={easting}
+              onChangeText={(t) => { setEasting(t.replace(/[^0-9]/g, '')); setError(null); }}
+              maxLength={5}
+            />
+          </View>
 
           <ThemedText style={{ marginBottom: 4, marginTop: 12 }}>Northing (grid digits)</ThemedText>
-          <TextInput
-            style={[styles.input, { color: textColor, borderColor }]}
-            placeholder="e.g. 34"
-            placeholderTextColor={placeholderColor}
-            keyboardType="numeric"
-            value={northing}
-            onChangeText={setNorthing}
-          />
+          <View style={[styles.inputContainer, { borderColor }]}>
+            <TouchableOpacity 
+              style={[styles.signButton, { borderRightColor: borderColor }]} 
+              onPress={() => setNorthingSign(s => s === 1 ? -1 : 1)}
+            >
+              <ThemedText style={styles.signText}>{northingSign === 1 ? '+' : '-'}</ThemedText>
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.input, { color: textColor }]}
+              placeholder="e.g. 34"
+              placeholderTextColor={placeholderColor}
+              keyboardType="numeric"
+              value={northing}
+              onChangeText={(t) => { setNorthing(t.replace(/[^0-9]/g, '')); setError(null); }}
+              maxLength={5}
+            />
+          </View>
 
           {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
@@ -130,9 +152,27 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
   },
-  input: {
+  inputContainer: {
+    flexDirection: 'row',
     borderWidth: 1,
     borderRadius: 12,
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  signButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRightWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(128,128,128,0.1)',
+  },
+  signText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  input: {
+    flex: 1,
     padding: 12,
     fontSize: 16,
   },

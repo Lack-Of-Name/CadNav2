@@ -113,11 +113,6 @@ function buildDefaultSettings(): Settings {
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
     gridConvergence: SETTINGS_DEFS.gridConvergence.default,
-    mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.default,
-    mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.default,
-    mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
-    mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
-    gridConvergence: SETTINGS_DEFS.gridConvergence.default,
   } as Settings;
 }
 
@@ -125,11 +120,6 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.parse(persisted ? persisted['angleUnit'] : undefined),
     mapHeading: SETTINGS_DEFS.mapHeading.parse(persisted ? persisted['mapHeading'] : undefined),
-    mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.parse(persisted ? persisted['mapGridEnabled'] : undefined),
-    mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
-    mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),
-    mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),
-    gridConvergence: SETTINGS_DEFS.gridConvergence.parse(persisted ? persisted['gridConvergence'] : undefined),
     mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.parse(persisted ? persisted['mapGridEnabled'] : undefined),
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),

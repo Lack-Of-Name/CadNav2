@@ -31,6 +31,8 @@ export default function SettingsScreen() {
   const [gridPanel, setGridPanel] = useState<'menu' | 'overlays' | 'origin' | 'convergence'>('menu');
   const [originEasting, setOriginEasting] = useState('');
   const [originNorthing, setOriginNorthing] = useState('');
+  const [originEastingSign, setOriginEastingSign] = useState<1 | -1>(1);
+  const [originNorthingSign, setOriginNorthingSign] = useState<1 | -1>(1);
   const [originError, setOriginError] = useState<string | null>(null);
   
   const borderColor = useThemeColor({}, 'tabIconDefault');
@@ -81,7 +83,7 @@ export default function SettingsScreen() {
     }
   }
 
-  function parseGridValue(value: string) {
+  function parseGridValue(value: string, sign: 1 | -1) {
     const trimmed = value.trim();
     if (!/^[0-9]+$/.test(trimmed)) return null;
     const len = trimmed.length;
@@ -95,7 +97,7 @@ export default function SettingsScreen() {
     };
     const scale = scaleByDigits[len];
     const num = parseInt(trimmed, 10);
-    return { meters: num * scale, digits: len };
+    return { meters: num * scale * sign, digits: len };
   }
 
   async function setOriginToMyLocation() {
@@ -118,8 +120,8 @@ export default function SettingsScreen() {
       return;
     }
 
-    const eParsed = parseGridValue(originEasting);
-    const nParsed = parseGridValue(originNorthing);
+    const eParsed = parseGridValue(originEasting, originEastingSign);
+    const nParsed = parseGridValue(originNorthing, originNorthingSign);
 
     if (!eParsed || !nParsed) {
       setOriginError('Enter grid digits only (1–5 digits each).');
@@ -419,26 +421,42 @@ export default function SettingsScreen() {
                   </ThemedText>
 
                   <ThemedText style={{ marginTop: 8 }}>Easting</ThemedText>
-                  <TextInput
-                    style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
-                    placeholder="e.g. 12"
-                    placeholderTextColor={String(placeholderColor)}
-                    value={originEasting}
-                    onChangeText={(t) => { setOriginEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                    keyboardType="numeric"
-                    maxLength={5}
-                  />
+                  <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
+                    <TouchableOpacity 
+                      style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
+                      onPress={() => setOriginEastingSign(s => s === 1 ? -1 : 1)}
+                    >
+                      <ThemedText style={styles.signText}>{originEastingSign === 1 ? '+' : '-'}</ThemedText>
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.inputWithSign, { color: String(textColor) }]}
+                      placeholder="e.g. 12"
+                      placeholderTextColor={String(placeholderColor)}
+                      value={originEasting}
+                      onChangeText={(t) => { setOriginEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
+                      keyboardType="numeric"
+                      maxLength={5}
+                    />
+                  </View>
 
                   <ThemedText style={{ marginTop: 8 }}>Northing</ThemedText>
-                  <TextInput
-                    style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
-                    placeholder="e.g. 34"
-                    placeholderTextColor={String(placeholderColor)}
-                    value={originNorthing}
-                    onChangeText={(t) => { setOriginNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                    keyboardType="numeric"
-                    maxLength={5}
-                  />
+                  <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
+                    <TouchableOpacity 
+                      style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
+                      onPress={() => setOriginNorthingSign(s => s === 1 ? -1 : 1)}
+                    >
+                      <ThemedText style={styles.signText}>{originNorthingSign === 1 ? '+' : '-'}</ThemedText>
+                    </TouchableOpacity>
+                    <TextInput
+                      style={[styles.inputWithSign, { color: String(textColor) }]}
+                      placeholder="e.g. 34"
+                      placeholderTextColor={String(placeholderColor)}
+                      value={originNorthing}
+                      onChangeText={(t) => { setOriginNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
+                      keyboardType="numeric"
+                      maxLength={5}
+                    />
+                  </View>
 
                   <View style={{ marginTop: 10 }}>
                     <StyledButton variant="secondary" onPress={setOriginFromGridRef}>
@@ -583,6 +601,31 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     fontSize: 16,
     marginBottom: 20,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: 'center',
+    overflow: 'hidden',
+    marginBottom: 20,
+  },
+  signButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRightWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(128,128,128,0.1)',
+  },
+  signText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  inputWithSign: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
   },
   modalButtons: {
     flexDirection: 'row',

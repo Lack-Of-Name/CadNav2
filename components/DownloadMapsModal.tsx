@@ -43,7 +43,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
   const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
   const { apiKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { packs, loadingPacks, loadPacks, deletePack, activeDownload, startDownload } = useOfflineMaps();
+  const { packs, loadingPacks, loadPacks, deletePack, activeDownload, startDownload, cancelDownload } = useOfflineMaps();
 
   const [panel, setPanel] = useState<'main' | 'download'>('main');
   const [locationMode, setLocationMode] = useState<LocationMode>('my-location');
@@ -196,6 +196,14 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     <View style={styles.progressBarBg}>
                       <View style={[styles.progressBarFill, { width: `${Math.min(activeDownload.progress, 100)}%` }]} />
                     </View>
+                    <TouchableOpacity
+                      onPress={cancelDownload}
+                      activeOpacity={0.7}
+                      style={[styles.cancelDownloadBtn, { borderColor: separatorColor }]}
+                    >
+                      <IconSymbol name="xmark.circle.fill" size={16} color="#FF3B30" />
+                      <ThemedText style={styles.cancelDownloadText}>Cancel Download</ThemedText>
+                    </TouchableOpacity>
                   </View>
                 )}
 
@@ -513,6 +521,21 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     backgroundColor: '#34C759',
+  },
+  cancelDownloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 6,
+  },
+  cancelDownloadText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FF3B30',
   },
   segmentedRow: {
     flexDirection: 'row',

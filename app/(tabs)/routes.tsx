@@ -444,10 +444,10 @@ export default function RoutesScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleRemovePoint(cp.id)}
-                      style={styles.cpActionBtn}
+                      style={styles.cpDeleteBtn}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <IconSymbol name="trash" size={16} color="#FF453A" />
+                      <IconSymbol name="xmark" size={13} color="#8E8E93" />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 </View>
@@ -458,7 +458,7 @@ export default function RoutesScreen() {
           <View style={styles.emptyCheckpoints}>
             <IconSymbol name="mappin.and.ellipse" size={32} color={routeColor} />
             <ThemedText style={styles.emptyCheckpointsTitle}>No waypoints yet</ThemedText>
-            <ThemedText style={styles.emptyCheckpointsHint}>Tap "Add Waypoint" to place your first point</ThemedText>
+            <ThemedText style={styles.emptyCheckpointsHint}>Tap &quot;Add Waypoint&quot; to place your first point</ThemedText>
           </View>
         )}
 
@@ -688,13 +688,14 @@ const styles = StyleSheet.create({
     opacity: 0.6,
     marginRight: 4,
   },
-  cpDeleteBtn: {
-    padding: 6,
-    opacity: 0.6,
-  },
   cpActionBtn: {
     padding: 6,
     marginLeft: 2,
+  },
+  cpDeleteBtn: {
+    padding: 6,
+    marginLeft: 2,
+    opacity: 0.7,
   },
   currentBadge: {
     paddingHorizontal: 6,
