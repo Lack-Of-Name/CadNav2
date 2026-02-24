@@ -1,5 +1,5 @@
 import { triggerHaptic } from '@/components/haptic-tab';
-import { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
 import { degreesToMils } from './converter';
 

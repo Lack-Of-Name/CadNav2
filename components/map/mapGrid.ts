@@ -115,7 +115,7 @@ export function generateGridIntersections(
     topRight: { easting: number; northing: number };
   },
   step = 1000
-): Array<[number, number]> {
+): [number, number][] {
   const eStart = Math.min(offsets.bottomLeft.easting, offsets.topRight.easting);
   const eEnd = Math.max(offsets.bottomLeft.easting, offsets.topRight.easting);
   const nStart = Math.min(offsets.bottomLeft.northing, offsets.topRight.northing);
@@ -127,7 +127,7 @@ export function generateGridIntersections(
   const eCount = (eEnd - eStart) / step;
   const nCount = (nEnd - nStart) / step;
 
-  const points: Array<[number, number]> = [];
+  const points: [number, number][] = [];
   for (let i = 0; i <= eCount; i++) {
     const e = eStart + i * step;
     for (let j = 0; j <= nCount; j++) {
@@ -167,8 +167,8 @@ export function generateGridPoints(
   },
   step = 1000,
   gridConvergence = 0
-): Array<{ e: number; n: number; latitude: number; longitude: number }> {
-  const pts: Array<{ e: number; n: number; latitude: number; longitude: number }> = [];
+): { e: number; n: number; latitude: number; longitude: number }[] {
+  const pts: { e: number; n: number; latitude: number; longitude: number }[] = [];
   const intersections = generateGridIntersections(offsets, step);
   for (const [e, n] of intersections) {
     const ll = gridCoordsToLatLon(origin, e, n, gridConvergence);

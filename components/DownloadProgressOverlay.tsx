@@ -2,6 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useOfflineMaps } from '@/hooks/offline-maps';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 /**
@@ -11,7 +12,6 @@ import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
  */
 export default function DownloadProgressOverlay() {
   const colorScheme = useColorScheme() ?? 'light';
-  const background = useThemeColor({}, 'background');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const { activeDownload } = useOfflineMaps();
 
