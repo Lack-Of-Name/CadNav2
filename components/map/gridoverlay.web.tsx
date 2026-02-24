@@ -243,7 +243,7 @@ export default function GridOverlay({
             background: 'rgba(0,0,0,0.9)',
             border: '2px solid white',
             pointerEvents: 'none',
-            zIndex: 41,
+            zIndex: 19,
           }}
         />
       ) : null}

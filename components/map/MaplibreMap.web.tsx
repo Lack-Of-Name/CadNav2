@@ -148,9 +148,9 @@ export default function MapLibreMap() {
         })()
       : null;
 
-  const emptyGeo = { type: 'FeatureCollection', features: [] } as any;
+  const emptyGeo = React.useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
 
-  const buildRouteLineGeoJSON = () => {
+  const buildRouteLineGeoJSON = React.useCallback(() => {
     if (!activeRouteColor) return emptyGeo;
     const coords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
     if (activeRouteStart) {
@@ -174,7 +174,7 @@ export default function MapLibreMap() {
         },
       ],
     } as any;
-  };
+  }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
 
   function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
     return (
@@ -306,7 +306,7 @@ export default function MapLibreMap() {
       map.current.setPaintProperty(layerId, 'line-color', activeRouteColor ?? 'transparent');
       map.current.setPaintProperty(layerId, 'line-opacity', activeRouteColor ? 0.75 : 0);
     }
-  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop]);
+  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON]);
 
   // grid overlay removed
 
@@ -524,7 +524,7 @@ export default function MapLibreMap() {
       }
     };
     void fly();
-  }, [viewTarget, mapReady]);
+  }, [viewTarget, mapReady, consumeViewTarget]);
 
   // Compute the orientation (degrees) for the arrow based on device heading
   useEffect(() => {
