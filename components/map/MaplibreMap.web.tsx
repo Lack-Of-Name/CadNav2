@@ -8,13 +8,12 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
 import { bearingDegrees, CompassButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
-// map grid utilities
-import GridOverlay from './gridoverlay.web';
+import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
 function isLightColor(hex: string): boolean {
   const c = hex.replace('#', '');
@@ -52,6 +51,8 @@ export default function MapLibreMap() {
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [compassOpen, setCompassOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
   const compassButtonColor = compassOpen ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const bannerAccent = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
   const bannerAccentText = isLightColor(bannerAccent) ? '#000' : '#fff';
@@ -176,24 +177,106 @@ export default function MapLibreMap() {
     } as any;
   }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
 
-  function LocationMarker({ x, y, orientation }: { x: number; y: number; orientation: number | null }) {
-    return (
-      <div style={{ position: 'absolute', left: x - 12, top: y - 12, pointerEvents: 'none', zIndex: 20 }}>
-        <div style={overlayStyles.container}>
-          {orientation != null ? (
-            <svg width="14" height="14" viewBox="0 0 24 24" style={{ transform: `rotate(${orientation}deg)` }}>
-              <path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" />
-            </svg>
-          ) : (
-            <svg width="10" height="10" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="5" fill="white" />
-            </svg>
-          )}
-        </div>
-        <div style={overlayStyles.pulse} />
-      </div>
-    );
-  }
+  const buildLocationMarkerGeoJSON = React.useCallback(() => {
+    if (!effectiveLastLocation) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [effectiveLastLocation.coords.longitude, effectiveLastLocation.coords.latitude],
+          },
+          properties: {
+            kind: 'locationMarker',
+            orientation: orientation ?? 0,
+            hasOrientation: orientation != null,
+          },
+        },
+      ],
+    } as any;
+  }, [effectiveLastLocation, orientation, emptyGeo]);
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const sourceId = 'location-marker-source';
+    const data = buildLocationMarkerGeoJSON();
+
+    const existingSource = map.current.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existingSource) {
+      existingSource.setData(data);
+    } else {
+      map.current.addSource(sourceId, { type: 'geojson', data });
+    }
+
+    const pulseLayerId = 'location-marker-pulse';
+    if (!map.current.getLayer(pulseLayerId)) {
+      map.current.addLayer({
+        id: pulseLayerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 12,
+          'circle-color': 'rgba(0,122,255,0.15)',
+          'circle-stroke-width': 6,
+          'circle-stroke-color': 'rgba(0,122,255,0.15)',
+        },
+      });
+    }
+
+    const bgLayerId = 'location-marker-bg';
+    if (!map.current.getLayer(bgLayerId)) {
+      map.current.addLayer({
+        id: bgLayerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 12,
+          'circle-color': '#007AFF',
+        },
+      });
+    }
+
+    const iconLayerId = 'location-marker-icon';
+    if (!map.current.getLayer(iconLayerId)) {
+      // We need to add images for the icons if they don't exist
+      if (!map.current.hasImage('location-arrow')) {
+        const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
+        const arrowImg = new Image(24, 24);
+        arrowImg.src = 'data:image/svg+xml;base64,' + btoa(arrowSvg);
+        arrowImg.onload = () => {
+          if (map.current && !map.current.hasImage('location-arrow')) {
+            map.current.addImage('location-arrow', arrowImg);
+          }
+        };
+      }
+      if (!map.current.hasImage('location-dot')) {
+        const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
+        const dotImg = new Image(24, 24);
+        dotImg.src = 'data:image/svg+xml;base64,' + btoa(dotSvg);
+        dotImg.onload = () => {
+          if (map.current && !map.current.hasImage('location-dot')) {
+            map.current.addImage('location-dot', dotImg);
+          }
+        };
+      }
+
+      map.current.addLayer({
+        id: iconLayerId,
+        type: 'symbol',
+        source: sourceId,
+        layout: {
+          'icon-image': ['case', ['get', 'hasOrientation'], 'location-arrow', 'location-dot'],
+          'icon-size': 1,
+          'icon-rotate': ['get', 'orientation'],
+          'icon-rotation-alignment': 'map',
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+        },
+      });
+    }
+  }, [mapReady, buildLocationMarkerGeoJSON]);
 
   useEffect(() => {
     if (loading || !apiKey) return;
@@ -214,6 +297,16 @@ export default function MapLibreMap() {
       try {
         const bearing = typeof map.current.getBearing === 'function' ? map.current.getBearing() : 0;
         setMapBearing(bearing);
+
+        const z = typeof map.current.getZoom === 'function' ? map.current.getZoom() : 1;
+        setZoomLevel(z);
+
+        const bounds = map.current.getBounds();
+        if (bounds) {
+          const sw = bounds.getSouthWest();
+          const ne = bounds.getNorthEast();
+          setVisibleBounds([[ne.lng, ne.lat], [sw.lng, sw.lat]]);
+        }
 
         const ll = lastLocationRef.current;
         if (ll) {
@@ -308,7 +401,261 @@ export default function MapLibreMap() {
     }
   }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON]);
 
-  // grid overlay removed
+  const gridShape = React.useMemo(() => {
+    if (!mapGridEnabled || zoomLevel < 12 || !visibleBounds) return emptyGeo;
+    const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
+    const sw = { latitude: visibleBounds[1][1], longitude: visibleBounds[1][0] };
+    const ne = { latitude: visibleBounds[0][1], longitude: visibleBounds[0][0] };
+
+    const gridOffsets = computeGridCornersFromMapBounds(originPt, sw, ne, 1000, gridConvergence ?? 0);
+    const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
+
+    const es = Array.from(new Set(intersections.map((p) => p.e))).sort((a, b) => a - b);
+    const ns = Array.from(new Set(intersections.map((p) => p.n))).sort((a, b) => a - b);
+
+    const key = (e: number, n: number) => `${e}:${n}`;
+    const ptMap = new Map<string, { latitude: number; longitude: number; e: number; n: number }>();
+    for (const p of intersections) ptMap.set(key(p.e, p.n), p);
+
+    const features: any[] = [];
+
+    // Main grid lines
+    for (const e of es) {
+      const coords = ns.map((n) => {
+        const p = ptMap.get(key(e, n));
+        return p ? [p.longitude, p.latitude] : null;
+      }).filter(Boolean);
+      if (coords.length > 1) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { kind: 'gridLine' },
+        });
+      }
+    }
+
+    for (const n of ns) {
+      const coords = es.map((e) => {
+        const p = ptMap.get(key(e, n));
+        return p ? [p.longitude, p.latitude] : null;
+      }).filter(Boolean);
+      if (coords.length > 1) {
+        features.push({
+          type: 'Feature',
+          geometry: { type: 'LineString', coordinates: coords },
+          properties: { kind: 'gridLine' },
+        });
+      }
+    }
+
+    // Subdivisions
+    if (mapGridSubdivisionsEnabled && es.length >= 2 && ns.length >= 2) {
+      const parts = 10;
+      for (let i = 0; i < es.length - 1; i++) {
+        const eA = es[i];
+        const eB = es[i + 1];
+        for (let k = 1; k < parts; k++) {
+          const t = k / parts;
+          const coords: any[] = [];
+          for (const n of ns) {
+            const a = ptMap.get(key(eA, n));
+            const b = ptMap.get(key(eB, n));
+            if (!a || !b) continue;
+            const lon = a.longitude + (b.longitude - a.longitude) * t;
+            const lat = a.latitude + (b.latitude - a.latitude) * t;
+            coords.push([lon, lat]);
+          }
+          if (coords.length > 1) {
+            features.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords },
+              properties: { kind: 'gridSubLine' },
+            });
+          }
+        }
+      }
+
+      for (let j = 0; j < ns.length - 1; j++) {
+        const nA = ns[j];
+        const nB = ns[j + 1];
+        for (let k = 1; k < parts; k++) {
+          const t = k / parts;
+          const coords: any[] = [];
+          for (const e of es) {
+            const a = ptMap.get(key(e, nA));
+            const b = ptMap.get(key(e, nB));
+            if (!a || !b) continue;
+            const lon = a.longitude + (b.longitude - a.longitude) * t;
+            const lat = a.latitude + (b.latitude - a.latitude) * t;
+            coords.push([lon, lat]);
+          }
+          if (coords.length > 1) {
+            features.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: coords },
+              properties: { kind: 'gridSubLine' },
+            });
+          }
+        }
+      }
+    }
+
+    // Grid numbers
+    if (mapGridNumbersEnabled && es.length >= 2 && ns.length >= 2) {
+      for (let i = 0; i < es.length - 1; i++) {
+        for (let j = 0; j < ns.length - 1; j++) {
+          const e0 = es[i];
+          const n0 = ns[j];
+          const e1 = es[i + 1];
+          const n1 = ns[j + 1];
+          const p00 = ptMap.get(key(e0, n0));
+          const p10 = ptMap.get(key(e1, n0));
+          const p01 = ptMap.get(key(e0, n1));
+          const p11 = ptMap.get(key(e1, n1));
+          if (p00 && p10 && p01 && p11) {
+            const centerLon = (p00.longitude + p10.longitude + p01.longitude + p11.longitude) / 4;
+            const centerLat = (p00.latitude + p10.latitude + p01.latitude + p11.latitude) / 4;
+            const eStr = (e0 < 0 ? '-' : '') + Math.floor(Math.abs(e0) / 1000).toString().padStart(2, '0').slice(-2);
+            const nStr = (n0 < 0 ? '-' : '') + Math.floor(Math.abs(n0) / 1000).toString().padStart(2, '0').slice(-2);
+            features.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [centerLon, centerLat] },
+              properties: { kind: 'gridNumber', label: `${eStr} ${nStr}` },
+            });
+          }
+        }
+      }
+    }
+
+    return { type: 'FeatureCollection', features };
+  }, [mapGridEnabled, zoomLevel, visibleBounds, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, emptyGeo]);
+
+  const gridOriginShape = React.useMemo(() => {
+    if (!mapGridEnabled || !mapGridOrigin) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [mapGridOrigin.longitude, mapGridOrigin.latitude] },
+          properties: { kind: 'gridOrigin' },
+        },
+      ],
+    };
+  }, [mapGridEnabled, mapGridOrigin, emptyGeo]);
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const sourceId = 'grid-source';
+    const data = gridShape;
+
+    const existingSource = map.current.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existingSource) {
+      existingSource.setData(data);
+    } else {
+      map.current.addSource(sourceId, { type: 'geojson', data });
+    }
+
+    const sublinesLayerId = 'grid-sublines';
+    if (!map.current.getLayer(sublinesLayerId)) {
+      map.current.addLayer({
+        id: sublinesLayerId,
+        type: 'line',
+        source: sourceId,
+        filter: ['==', 'kind', 'gridSubLine'],
+        paint: {
+          'line-color': 'rgba(0,0,0,0.3)',
+          'line-width': 1,
+        },
+      });
+    } else {
+      map.current.setPaintProperty(sublinesLayerId, 'line-color', 'rgba(0,0,0,0.3)');
+    }
+
+    const linesLayerId = 'grid-lines';
+    if (!map.current.getLayer(linesLayerId)) {
+      map.current.addLayer({
+        id: linesLayerId,
+        type: 'line',
+        source: sourceId,
+        filter: ['==', 'kind', 'gridLine'],
+        paint: {
+          'line-color': 'rgba(0,0,0,0.8)',
+          'line-width': 1.5,
+        },
+      });
+    } else {
+      map.current.setPaintProperty(linesLayerId, 'line-color', 'rgba(0,0,0,0.8)');
+    }
+
+    const numbersLayerId = 'grid-numbers';
+    if (!map.current.getLayer(numbersLayerId)) {
+      map.current.addLayer({
+        id: numbersLayerId,
+        type: 'symbol',
+        source: sourceId,
+        filter: ['==', 'kind', 'gridNumber'],
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 14,
+        },
+        paint: {
+          'text-color': 'rgba(0,0,0,1)',
+          'text-halo-color': 'rgba(255, 255, 255, 0.8)',
+          'text-halo-width': 2,
+        },
+      });
+    } else {
+      map.current.setPaintProperty(numbersLayerId, 'text-color', 'rgba(0,0,0,1)');
+      map.current.setPaintProperty(numbersLayerId, 'text-halo-color', 'rgba(255, 255, 255, 0.8)');
+      map.current.setPaintProperty(numbersLayerId, 'text-halo-width', 2);
+    }
+  }, [mapReady, gridShape]);
+
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    const sourceId = 'grid-origin-source';
+    const data = gridOriginShape;
+
+    const existingSource = map.current.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existingSource) {
+      existingSource.setData(data);
+    } else {
+      map.current.addSource(sourceId, { type: 'geojson', data });
+    }
+
+    const circleLayerId = 'grid-origin-circle';
+    if (!map.current.getLayer(circleLayerId)) {
+      map.current.addLayer({
+        id: circleLayerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 6,
+          'circle-color': 'transparent',
+          'circle-stroke-width': 2,
+          'circle-stroke-color': 'rgba(0,0,0,0.8)',
+        },
+      });
+    } else {
+      map.current.setPaintProperty(circleLayerId, 'circle-stroke-color', 'rgba(0,0,0,0.8)');
+    }
+
+    const dotLayerId = 'grid-origin-dot';
+    if (!map.current.getLayer(dotLayerId)) {
+      map.current.addLayer({
+        id: dotLayerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-radius': 2,
+          'circle-color': 'rgba(0,0,0,0.8)',
+        },
+      });
+    } else {
+      map.current.setPaintProperty(dotLayerId, 'circle-color', 'rgba(0,0,0,0.8)');
+    }
+  }, [mapReady, gridOriginShape]);
 
   useEffect(() => {
     if (!map.current || !mapReady) return;
@@ -585,15 +932,6 @@ export default function MapLibreMap() {
         }}
       >
         <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
-        {effectiveLastLocation && mapGridEnabled && (
-          <GridOverlay
-            map={map.current}
-            origin={mapGridOrigin ?? { latitude: effectiveLastLocation.coords.latitude, longitude: effectiveLastLocation.coords.longitude }}
-            subdivisionsEnabled={mapGridSubdivisionsEnabled}
-            numbersEnabled={mapGridNumbersEnabled}
-            gridConvergence={typeof gridConvergence === 'number' ? gridConvergence : 0}
-          />
-        )}
         <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6, zIndex: 100 }} textStyle={styles.locationText} renderAs="web" />
         <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
         <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
@@ -686,8 +1024,6 @@ export default function MapLibreMap() {
             zIndex: 70,
           }}
         />
-        {screenPos && <LocationMarker x={screenPos.x} y={screenPos.y} orientation={orientation} />}
-        <style>{`@keyframes pulse { 0% { transform: scale(0.9); opacity: 0.6 } 50% { transform: scale(1.4); opacity: 0.15 } 100% { transform: scale(0.9); opacity: 0.6 } }`}</style>
       </div>
     </ThemedView>
   );

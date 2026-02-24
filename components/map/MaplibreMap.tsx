@@ -335,12 +335,12 @@ export default function MapLibreMap() {
           if (p00 && p10 && p01 && p11) {
             const centerLon = (p00.longitude + p10.longitude + p01.longitude + p11.longitude) / 4;
             const centerLat = (p00.latitude + p10.latitude + p01.latitude + p11.latitude) / 4;
-            const eStr = Math.floor(Math.abs(e0) / 1000).toString().padStart(2, '0').slice(-2);
-            const nStr = Math.floor(Math.abs(n0) / 1000).toString().padStart(2, '0').slice(-2);
+            const eStr = (e0 < 0 ? '-' : '') + Math.floor(Math.abs(e0) / 1000).toString().padStart(2, '0').slice(-2);
+            const nStr = (n0 < 0 ? '-' : '') + Math.floor(Math.abs(n0) / 1000).toString().padStart(2, '0').slice(-2);
             features.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [centerLon, centerLat] },
-              properties: { kind: 'gridNumber', label: `${eStr}${nStr}` },
+              properties: { kind: 'gridNumber', label: `${eStr} ${nStr}` },
             });
           }
         }
@@ -384,6 +384,30 @@ export default function MapLibreMap() {
     };
   }, [checkpoints, selectedId, activeRouteColor, tint]);
 
+  const locationMarkerShape = React.useMemo(() => {
+    if (!lastLocation) return emptyGeo;
+    const useMag = mapHeading === 'magnetic';
+    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
+    const orientation = typeof h === 'number' ? h : null;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [lastLocation.coords.longitude, lastLocation.coords.latitude],
+          },
+          properties: {
+            kind: 'locationMarker',
+            orientation: orientation ?? 0,
+            hasOrientation: orientation != null,
+          },
+        },
+      ],
+    } as any;
+  }, [lastLocation, mapHeading, emptyGeo]);
+
   if (!maplibre) {
     return (
       <ThemedView style={styles.page}>
@@ -409,7 +433,10 @@ export default function MapLibreMap() {
 
   const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
 
-  const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, UserLocation } = maplibre as any;
+  const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
+
+  const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
+  const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
 
   return (
     <ThemedView style={styles.page}>
@@ -482,12 +509,19 @@ export default function MapLibreMap() {
           }}
         />
 
+        <Images
+          images={{
+            'location-arrow': { uri: 'data:image/svg+xml;base64,' + btoa(arrowSvg) },
+            'location-dot': { uri: 'data:image/svg+xml;base64,' + btoa(dotSvg) },
+          }}
+        />
+
         <ShapeSource id="grid-source" shape={gridShape}>
           <LineLayer
             id="grid-lines"
             filter={['==', 'kind', 'gridLine']}
             style={{
-              lineColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)',
+              lineColor: 'rgba(0,0,0,0.8)',
               lineWidth: 1.5,
             }}
           />
@@ -495,7 +529,7 @@ export default function MapLibreMap() {
             id="grid-sublines"
             filter={['==', 'kind', 'gridSubLine']}
             style={{
-              lineColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
+              lineColor: 'rgba(0,0,0,0.3)',
               lineWidth: 1,
             }}
           />
@@ -505,9 +539,9 @@ export default function MapLibreMap() {
             style={{
               textField: ['get', 'label'],
               textSize: 14,
-              textColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
-              textHaloColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)',
-              textHaloWidth: 1,
+              textColor: 'rgba(0,0,0,1)',
+              textHaloColor: 'rgba(255,255,255,0.8)',
+              textHaloWidth: 2,
             }}
           />
         </ShapeSource>
@@ -519,14 +553,14 @@ export default function MapLibreMap() {
               circleRadius: 6,
               circleColor: 'transparent',
               circleStrokeWidth: 2,
-              circleStrokeColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)',
+              circleStrokeColor: 'rgba(0,0,0,0.8)',
             }}
           />
           <CircleLayer
             id="grid-origin-dot"
             style={{
               circleRadius: 2,
-              circleColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)',
+              circleColor: 'rgba(0,0,0,0.8)',
             }}
           />
         </ShapeSource>
@@ -590,16 +624,35 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
 
-        {/* Render the native location puck w/ heading indicator. */}
-        {/* @ts-ignore - typing differs across forks */}
-        <UserLocation
-          visible={true}
-          animated={true}
-          renderMode="native"
-          androidRenderMode="compass"
-          showsUserHeadingIndicator={true}
-          androidPreferredFramesPerSecond={60}
-        />
+        <ShapeSource id="location-marker-source" shape={locationMarkerShape}>
+          <CircleLayer
+            id="location-marker-pulse"
+            style={{
+              circleRadius: 12,
+              circleColor: 'rgba(0,122,255,0.15)',
+              circleStrokeWidth: 6,
+              circleStrokeColor: 'rgba(0,122,255,0.15)',
+            }}
+          />
+          <CircleLayer
+            id="location-marker-bg"
+            style={{
+              circleRadius: 12,
+              circleColor: '#007AFF',
+            }}
+          />
+          <SymbolLayer
+            id="location-marker-icon"
+            style={{
+              iconImage: ['case', ['get', 'hasOrientation'], 'location-arrow', 'location-dot'],
+              iconSize: 1,
+              iconRotate: ['get', 'orientation'],
+              iconRotationAlignment: 'map',
+              iconAllowOverlap: true,
+              iconIgnorePlacement: true,
+            }}
+          />
+        </ShapeSource>
       </MapView>
 
       <DownloadProgressOverlay />

@@ -1,5 +1,6 @@
 import { degreesToMils } from '@/components/map/converter';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import React from 'react';
 import { Text as RNText, View as RNView, TouchableOpacity } from 'react-native';
 
 export const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;

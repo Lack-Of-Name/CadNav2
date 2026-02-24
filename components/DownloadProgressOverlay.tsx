@@ -2,6 +2,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useOfflineMaps } from '@/hooks/offline-maps';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 /**

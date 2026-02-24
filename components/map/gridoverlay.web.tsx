@@ -1,5 +1,5 @@
 import maplibregl from 'maplibre-gl';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
 type Origin = { latitude: number; longitude: number } | null;

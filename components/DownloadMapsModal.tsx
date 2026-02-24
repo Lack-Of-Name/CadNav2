@@ -8,7 +8,7 @@ import { useGPS } from '@/hooks/gps';
 import { formatBytes, useOfflineMaps, ZOOM_PRESETS, type DownloadTarget, type ZoomPreset } from '@/hooks/offline-maps';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Modal,
