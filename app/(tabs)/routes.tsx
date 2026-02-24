@@ -72,8 +72,6 @@ export default function RoutesScreen() {
     setViewTarget,
     saveRoute: persistRoute,
     saveLocation: persistLocation,
-    deleteRoute: deleteSavedRoute,
-    deleteLocation: deleteSavedLocation,
   } = useCheckpoints();
 
   const [routes, setRoutes] = useState<RouteItem[]>([]);

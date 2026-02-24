@@ -21,7 +21,7 @@ function getMaplibreModule() {
   if (maplibreModule !== undefined) return maplibreModule;
   try {
     // Avoid hard-crashing Expo Go when the native module isn't available.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     maplibreModule = require('@maplibre/maplibre-react-native');
   } catch {
     maplibreModule = null;

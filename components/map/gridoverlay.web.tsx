@@ -23,7 +23,7 @@ export default function GridOverlay({
   const [gridSubLines, setGridSubLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
   const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
   const [showGrid, setShowGrid] = useState(false);
-  const [cellCenters, setCellCenters] = useState<Array<{ x: number; y: number; e: number; n: number }>>([]);
+  const [cellCenters, setCellCenters] = useState<{ x: number; y: number; e: number; n: number }[]>([]);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -59,7 +59,7 @@ export default function GridOverlay({
         const gridOffsets = computeGridCornersFromMapBounds(originPt, { latitude: sw.lat, longitude: sw.lng }, { latitude: ne.lat, longitude: ne.lng }, 1000, gridConvergence ?? 0);
         const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
 
-        const pts: Array<{ x: number; y: number; e: number; n: number }> = [];
+        const pts: { x: number; y: number; e: number; n: number }[] = [];
         for (const inter of intersections) {
           try {
             const p = map.project([inter.longitude, inter.latitude]);
@@ -138,7 +138,7 @@ export default function GridOverlay({
         }
 
         // Compute cell centers for grid numbers using projected corners
-        const centers: Array<{ x: number; y: number; e: number; n: number }> = [];
+        const centers: { x: number; y: number; e: number; n: number }[] = [];
         if (es.length >= 2 && ns.length >= 2) {
           for (let i = 0; i < es.length - 1; i++) {
             for (let j = 0; j < ns.length - 1; j++) {
