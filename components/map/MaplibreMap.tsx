@@ -83,6 +83,8 @@ export default function MapLibreMap() {
     ? selectedCheckpoint.label?.trim() || `Checkpoint ${selectedIndex + 1}`
     : null;
 
+  const compassTargetColor = selectedCheckpoint?.color || activeRouteColor;
+
   const compassTargetBearingDeg =
     lastLocation && selectedCheckpoint
       ? bearingDegrees(
@@ -669,6 +671,7 @@ export default function MapLibreMap() {
         targetBearingDeg={compassTargetBearingDeg}
         targetLabel={compassTargetLabel}
         headingReferenceLabel={compassHeadingDeg == null ? null : compassHeadingRefLabel}
+        targetColor={compassTargetColor}
         bearingText={compassBearingText}
         distanceText={compassDistanceText}
         panelBg={colorScheme === 'dark' ? 'rgba(0,0,0,0.82)' : 'rgba(255,255,255,0.96)'}
