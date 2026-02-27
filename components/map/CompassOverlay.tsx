@@ -13,6 +13,7 @@ type Props = {
   bearingText?: string | null;
   distanceText?: string | null;
   headingReferenceLabel?: string | null;
+  targetColor?: string | null;
   style?: ViewStyle;
   panelBg: string;
   borderColor: string;
@@ -65,6 +66,7 @@ export function CompassOverlay({
   bearingText,
   distanceText,
   headingReferenceLabel,
+  targetColor,
   style,
   panelBg,
   borderColor,
@@ -236,7 +238,17 @@ export function CompassOverlay({
             {/* Target bearing marker on the ring */}
             {targetRingRotation ? (
               <View style={[styles.targetMarkWrap, { transform: [{ rotate: targetRingRotation }] }]}>
-                <View style={[styles.targetMarkDot, { backgroundColor: primary }]} />
+                <View style={[styles.targetMarkStick, { 
+                  borderBottomColor: targetColor || primary, 
+                  marginTop: 0,
+                  borderLeftWidth: 5 * scale,
+                  borderRightWidth: 5 * scale,
+                  borderBottomWidth: 120 * scale,
+                  transform: [{ translateY: -60 * scale }],
+                }]} />
+                <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+                </View>
               </View>
             ) : null}
 
@@ -263,14 +275,18 @@ export function CompassOverlay({
                 style={[
                   styles.targetPointer,
                   {
-                    marginTop: 18 * scale,
-                    borderLeftWidth: 9 * scale,
-                    borderRightWidth: 9 * scale,
-                    borderBottomWidth: 18 * scale,
-                    borderBottomColor: primary,
+                    marginTop: 0,
+                    borderLeftWidth: 5 * scale,
+                    borderRightWidth: 5 * scale,
+                    borderBottomWidth: 120 * scale,
+                    borderBottomColor: targetColor || primary,
+                    transform: [{ translateY: -60 * scale }],
                   },
                 ]}
               />
+              <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+              </View>
             </View>
           ) : null}
         </View>
@@ -462,14 +478,15 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   targetPointer: {
-    marginTop: 16,
+    marginTop: 0,
     width: 0,
     height: 0,
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderBottomWidth: 16,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderBottomWidth: 120,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
   },
@@ -480,12 +497,13 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  targetMarkDot: {
-    marginTop: 8,
-    width: 6,
-    height: 6,
-    borderRadius: 999,
+  targetMarkStick: {
+    width: 0,
+    height: 0,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
   },
   readout: {
     marginTop: 12,
