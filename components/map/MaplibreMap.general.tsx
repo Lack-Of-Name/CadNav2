@@ -65,13 +65,28 @@ export function CompassButton({ onPress, style, color, active, renderAs = 'web' 
   if (renderAs === 'web') {
     return (
       <div onClick={onPress} role="button" aria-label="Compass" style={style}>
-        <IconSymbol size={26} name="safari.fill" color={String(active ? color : color)} />
+        <IconSymbol size={26} name="safari.fill" color={String(color)} />
       </div>
     );
   }
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress} accessibilityLabel="Compass" style={style}>
-      <IconSymbol size={26} name="safari.fill" color={String(active ? color : color)} />
+      <IconSymbol size={26} name="safari.fill" color={String(color)} />
+    </TouchableOpacity>
+  );
+}
+
+export function HudButton({ onPress, style, color, active, renderAs = 'web' }: { onPress: () => void; style?: any; color?: string; active?: boolean; renderAs?: RenderAs }) {
+  if (renderAs === 'web') {
+    return (
+      <div onClick={onPress} role="button" aria-label="Nav Mode" style={{ ...style }}>
+        <IconSymbol size={26} name={active ? "eye.slash.fill" : "eye.fill"} color={String(color)} />
+      </div>
+    );
+  }
+  return (
+    <TouchableOpacity activeOpacity={0.8} onPress={onPress} accessibilityLabel="Nav Mode" style={style}>
+      <IconSymbol size={26} name={active ? "eye.slash.fill" : "eye.fill"} color={String(color)} />
     </TouchableOpacity>
   );
 }

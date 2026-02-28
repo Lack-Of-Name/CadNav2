@@ -11,7 +11,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, HudButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
@@ -46,10 +46,10 @@ export default function MapLibreMap() {
   const background = useThemeColor({}, 'background');
   const [following, setFollowing] = useState(false);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
-  const [screenPos, setScreenPos] = useState<{ x: number; y: number } | null>(null);
   const [orientation, setOrientation] = useState<number | null>(null);
   const [mapBearing, setMapBearing] = useState<number>(0);
   const [compassOpen, setCompassOpen] = useState(false);
+  const [hudMode, setHudMode] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
@@ -92,6 +92,20 @@ export default function MapLibreMap() {
       cursor: 'pointer',
       backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)',
       border: active ? `1.5px solid ${String(tint)}` : '1.5px solid transparent',
+    }) as any,
+    hudButton: (bottom: number, active: boolean) => ({
+      position: 'absolute' as const,
+      bottom,
+      left: 12,
+      padding: 10,
+      borderRadius: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 100,
+      display: 'flex',
+      cursor: 'pointer',
+      backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)',
+      border: `1.5px solid ${active ? bannerAccent : 'transparent'}`,
     }) as any,
   };
 
@@ -312,8 +326,7 @@ export default function MapLibreMap() {
 
         const ll = lastLocationRef.current;
         if (ll) {
-          const p = map.current.project([ll.coords.longitude, ll.coords.latitude]);
-          setScreenPos({ x: p.x, y: p.y });
+          map.current.project([ll.coords.longitude, ll.coords.latitude]);
         }
 
         // grid computation moved to GridOverlay component
@@ -814,26 +827,14 @@ export default function MapLibreMap() {
         window.clearTimeout(lastLocationLossTimer.current);
         lastLocationLossTimer.current = null;
       }
-      if (!map.current) return;
-      try {
-        const p = map.current.project([effectiveLastLocation.coords.longitude, effectiveLastLocation.coords.latitude]);
-        setScreenPos({ x: p.x, y: p.y });
-      } catch (err) {
-        if (!errorReportedRef.current) {
-          errorReportedRef.current = true;
-          void showAlert({ title: 'MapLibreMap', message: String(err) });
-        }
-        // keep previous screenPos rather than clearing immediately
-      }
       return;
     }
 
-    // lastLocation became unavailable — clear the marker after a short delay
+    // lastLocation became unavailable
     if (lastLocationLossTimer.current) {
       window.clearTimeout(lastLocationLossTimer.current);
     }
     lastLocationLossTimer.current = window.setTimeout(() => {
-      setScreenPos(null);
       lastLocationLossTimer.current = null;
     }, 2000);
 
@@ -933,10 +934,102 @@ export default function MapLibreMap() {
           WebkitFontSmoothing: 'antialiased',
         }}
       >
-        <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0 }} />
-        <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6, zIndex: 100 }} textStyle={styles.locationText} renderAs="web" />
-        <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />
-        <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />
+        <div ref={mapDiv} style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 0, display: hudMode ? 'none' : 'block' }} />
+        {hudMode && (
+          <div style={{
+            position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 10,
+            backgroundColor: '#000', color: '#fff',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: 20
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+              {checkpoints.length > 1 && (
+                <button 
+                  onClick={() => {
+                    const idx = selectedIndex >= 0 ? selectedIndex : 0;
+                    const prev = (idx - 1 + checkpoints.length) % checkpoints.length;
+                    void selectCheckpoint(checkpoints[prev].id);
+                  }}
+                  style={{ background: 'transparent', border: 'none', color: '#888', fontSize: 24, cursor: 'pointer', padding: '10px 20px' }}
+                >
+                  ◀
+                </button>
+              )}
+              <Text style={{ fontSize: 24, fontWeight: '600', color: '#888', marginHorizontal: 10 }}>
+                {compassTargetLabel || 'No Target Selected'}
+              </Text>
+              {checkpoints.length > 1 && (
+                <button 
+                  onClick={() => {
+                    const idx = selectedIndex >= 0 ? selectedIndex : 0;
+                    const next = (idx + 1) % checkpoints.length;
+                    void selectCheckpoint(checkpoints[next].id);
+                  }}
+                  style={{ background: 'transparent', border: 'none', color: '#888', fontSize: 24, cursor: 'pointer', padding: '10px 20px' }}
+                >
+                  ▶
+                </button>
+              )}
+            </div>
+            
+            {compassTargetLabel && compassTargetBearingDeg !== null ? (
+              <>
+                <Text style={{ fontSize: 18, fontWeight: '500', color: '#aaa', marginBottom: 4 }}>TARGET BEARING</Text>
+                <Text style={{ fontSize: 72, fontWeight: 'bold', color: String(bannerAccent), marginBottom: 12 }}>
+                  {compassBearingText}
+                </Text>
+
+                <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 24, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: '#888', marginBottom: 2 }}>CURRENT HEADING</Text>
+                    <Text style={{ fontSize: 24, fontWeight: '600', color: '#ccc' }}>
+                      {compassHeadingDeg != null ? (angleUnit === 'mils' ? `${Math.round(degreesToMils(compassHeadingDeg, { normalize: true }))} mils` : `${Math.round(compassHeadingDeg)}°`) : '—'}
+                    </Text>
+                  </div>
+                  <div style={{ width: 1, height: 40, backgroundColor: '#333' }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: '#888', marginBottom: 2 }}>DISTANCE</Text>
+                    <Text style={{ fontSize: 28, fontWeight: '600', color: '#ddd' }}>
+                      {compassDistanceText || '—'}
+                    </Text>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 20, position: 'relative', width: 120, height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {(() => {
+                    const relativeRotation = (effectiveLastLocation && orientation != null) 
+                      ? normalizeDegrees(compassTargetBearingDeg - (effectiveLastLocation.coords.magHeading || effectiveLastLocation.coords.trueHeading || 0))
+                      : 0;
+                    return (
+                      <div style={{
+                        width: 0, height: 0,
+                        borderLeft: '30px solid transparent',
+                        borderRight: '30px solid transparent',
+                        borderBottom: `80px solid ${bannerAccent}`,
+                        transform: `rotate(${relativeRotation}deg)`,
+                        transition: 'transform 0.3s ease-out'
+                      }} />
+                    );
+                  })()}
+                </div>
+              </>
+            ) : (
+              <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center' }}>
+                Select a checkpoint to view navigation metrics
+              </Text>
+            )}
+          </div>
+        )}
+        {!hudMode && <InfoBox lastLocation={effectiveLastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 6, zIndex: 100 }} textStyle={styles.locationText} renderAs="web" />}
+        {!hudMode && <RecenterButton onPress={handleRecenterPress} style={overlayStyles.recenter(following)} color={buttonIconColor} renderAs="web" />}
+        <HudButton 
+          onPress={() => setHudMode(!hudMode)} 
+          style={overlayStyles.hudButton(12 + 58 + 58, hudMode)} 
+          color={hudMode ? bannerAccent : (colorScheme === 'light' ? tint : iconColor)} 
+          active={hudMode} 
+          renderAs="web" 
+        />
+        {!hudMode && <CompassButton onPress={() => setCompassOpen(true)} style={overlayStyles.floatingButton(12 + 58, compassOpen)} color={compassButtonColor} active={compassOpen} renderAs="web" />}
         {/* Placement mode banner */}
         {placementModeRequested && (
           <div style={{
@@ -1001,32 +1094,34 @@ export default function MapLibreMap() {
             </div>
           </div>
         )}
-        <CompassOverlay
-          open={compassOpen}
-          onToggle={() => setCompassOpen((v) => !v)}
-          headingDeg={compassHeadingDeg}
-          angleUnit={angleUnit}
-          targetBearingDeg={compassTargetBearingDeg}
-          targetLabel={compassTargetLabel}
-          headingReferenceLabel={compassHeadingDeg == null ? null : compassHeadingRefLabel}
-          targetColor={compassTargetColor}
-          bearingText={compassBearingText}
-          distanceText={compassDistanceText}
-          panelBg={colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)'}
-          borderColor={String(borderColor)}
-          background={String(background)}
-          textColor={String(textColor)}
-          textMuted={String(borderColor)}
-          textSubtle={String(borderColor)}
-          primary={String(tint)}
-          tick={String(borderColor)}
-          tickStrong={String(textColor)}
-          style={{
-            left: 12 + 58,
-            bottom: 12 + 58,
-            zIndex: 70,
-          }}
-        />
+        {!hudMode && (
+          <CompassOverlay
+            open={compassOpen}
+            onToggle={() => setCompassOpen((v) => !v)}
+            headingDeg={compassHeadingDeg}
+            angleUnit={angleUnit}
+            targetBearingDeg={compassTargetBearingDeg}
+            targetLabel={compassTargetLabel}
+            headingReferenceLabel={compassHeadingDeg == null ? null : compassHeadingRefLabel}
+            targetColor={compassTargetColor}
+            bearingText={compassBearingText}
+            distanceText={compassDistanceText}
+            panelBg={colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)'}
+            borderColor={String(borderColor)}
+            background={String(background)}
+            textColor={String(textColor)}
+            textMuted={String(borderColor)}
+            textSubtle={String(borderColor)}
+            primary={String(tint)}
+            tick={String(borderColor)}
+            tickStrong={String(textColor)}
+            style={{
+              left: 12 + 58,
+              bottom: 12 + 58,
+              zIndex: 70,
+            }}
+          />
+        )}
       </div>
     </ThemedView>
   );

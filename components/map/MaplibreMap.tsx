@@ -10,8 +10,9 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, haversineMeters, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, HudButton, haversineMeters, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
@@ -58,6 +59,7 @@ export default function MapLibreMap() {
   const mapRef = React.useRef<any>(null);
   const [following, setFollowing] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
+  const [hudMode, setHudMode] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
@@ -120,6 +122,20 @@ export default function MapLibreMap() {
           return `${Math.round(meters)} m`;
         })()
       : null;
+
+  const handleNextTarget = () => {
+    if (checkpoints.length <= 1) return;
+    const idx = selectedIndex >= 0 ? selectedIndex : 0;
+    const next = (idx + 1) % checkpoints.length;
+    void selectCheckpoint(checkpoints[next].id);
+  };
+
+  const handlePrevTarget = () => {
+    if (checkpoints.length <= 1) return;
+    const idx = selectedIndex >= 0 ? selectedIndex : 0;
+    const prev = (idx - 1 + checkpoints.length) % checkpoints.length;
+    void selectCheckpoint(checkpoints[prev].id);
+  };
 
   const centerOnLocation = async (loc: any) => {
     if (!loc || !cameraRef.current) return;
@@ -440,7 +456,7 @@ export default function MapLibreMap() {
   const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
   const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
 
-  return (
+  const mapContent = (
     <ThemedView style={styles.page}>
       <StatusBar animated={true} barStyle="dark-content" />
 
@@ -659,11 +675,108 @@ export default function MapLibreMap() {
 
       <DownloadProgressOverlay />
 
-      <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255 )') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />
+      {hudMode && (
+        <View style={{
+          position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 10,
+          backgroundColor: '#000',
+          alignItems: 'center', justifyContent: 'center',
+          padding: 20
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+            {checkpoints.length > 1 && (
+              <TouchableOpacity
+                onPress={handlePrevTarget}
+                style={{ padding: 10 }}
+              >
+                <Text style={{ fontSize: 24, color: '#888' }}>◀</Text>
+              </TouchableOpacity>
+            )}
+            <Text style={{ fontSize: 24, fontWeight: '600', color: '#888', marginHorizontal: 10 }}>
+              {compassTargetLabel || 'No Target Selected'}
+            </Text>
+            {checkpoints.length > 1 && (
+              <TouchableOpacity
+                onPress={handleNextTarget}
+                style={{ padding: 10 }}
+              >
+                <Text style={{ fontSize: 24, color: '#888' }}>▶</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-      <CompassButton onPress={() => setCompassOpen(true)} style={[styles.recenterButton, { bottom: insets.bottom + 12 + 58, left: insets.left + 12, backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)', borderWidth: 1.5, borderColor: compassOpen ? String(tint) : 'transparent' }]} color={compassOpen ? tabIconSelected : buttonIconColor} active={compassOpen} renderAs="native" />
+          {compassTargetLabel && compassTargetBearingDeg !== null ? (
+            <>
+              <Text style={{ fontSize: 18, fontWeight: '500', color: '#aaa', marginBottom: 4 }}>TARGET BEARING</Text>
+              <Text style={{ fontSize: 72, fontWeight: 'bold', color: String(bannerAccent), marginBottom: 12 }}>
+                {compassBearingText}
+              </Text>
 
-      <CompassOverlay
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24, marginBottom: 10 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#888', marginBottom: 2 }}>CURRENT HEADING</Text>
+                  <Text style={{ fontSize: 24, fontWeight: '600', color: '#ccc' }}>
+                    {compassHeadingDeg != null ? (angleUnit === 'mils' ? `${Math.round(degreesToMils(compassHeadingDeg, { normalize: true }))} mils` : `${Math.round(compassHeadingDeg)}°`) : '—'}
+                  </Text>
+                </View>
+                <View style={{ width: 1, height: 40, backgroundColor: '#333', marginHorizontal: 20 }} />
+                <View style={{ alignItems: 'center' }}>
+                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#888', marginBottom: 2 }}>DISTANCE</Text>
+                  <Text style={{ fontSize: 28, fontWeight: '600', color: '#ddd' }}>
+                    {compassDistanceText || '—'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 20, position: 'relative', width: 120, height: 120, alignItems: 'center', justifyContent: 'center' }}>
+                {(() => {
+                  let rotationDeg = 0;
+                  if (lastLocation?.coords) {
+                    const rawHeading = lastLocation.coords.magHeading ?? lastLocation.coords.trueHeading ?? 0;
+                    rotationDeg = compassTargetBearingDeg - rawHeading;
+                  }
+                  return (
+                    <View style={{
+                      width: 0, height: 0,
+                      borderLeftWidth: 30, borderLeftColor: 'transparent',
+                      borderRightWidth: 30, borderRightColor: 'transparent',
+                      borderBottomWidth: 80, borderBottomColor: String(bannerAccent),
+                      transform: [{ rotate: `${rotationDeg}deg` }]
+                    }} />
+                  );
+                })()}
+              </View>
+            </>
+          ) : (
+            <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center' }}>
+              Select a checkpoint to view navigation metrics
+            </Text>
+          )}
+        </View>
+      )}
+
+      {!hudMode && <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255)') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />}
+      {!hudMode && <CompassButton onPress={() => setCompassOpen(true)} style={[styles.recenterButton, { bottom: insets.bottom + 12 + 58, left: insets.left + 12, backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)', borderWidth: 1.5, borderColor: compassOpen ? String(tint) : 'transparent' }]} color={compassOpen ? tabIconSelected : buttonIconColor} active={compassOpen} renderAs="native" />}
+      
+      <HudButton 
+        onPress={() => setHudMode(!hudMode)} 
+        style={[
+          styles.recenterButton, 
+          { 
+            bottom: insets.bottom + 12 + 58 + 58, 
+            left: insets.left + 12, 
+            backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)', 
+            borderWidth: 1.5, 
+            borderColor: hudMode ? String(bannerAccent) : 'transparent',
+            zIndex: 100
+          }
+        ]} 
+        color={hudMode ? bannerAccent : (colorScheme === 'light' ? tint : iconColor)} 
+        active={hudMode} 
+        renderAs="native" 
+      />
+
+      {!hudMode && (
+        <CompassOverlay
         open={compassOpen}
         onToggle={() => setCompassOpen((v) => !v)}
         headingDeg={compassHeadingDeg}
@@ -689,8 +802,9 @@ export default function MapLibreMap() {
           bottom: insets.bottom + 12 + 58,
         }}
       />
+      )}
 
-      {placementModeRequested ? (
+      {placementModeRequested && !hudMode ? (
         <View style={[styles.placementBannerWrap, { top: insets.top + 12, left: 0, right: 0 }]}> 
           <View style={[styles.placementBanner, { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.97)', borderColor: bannerAccent }]}>
             <View style={styles.placementBannerRow}>
@@ -720,10 +834,47 @@ export default function MapLibreMap() {
 
       {/* Compass overlay replaced by CompassOverlay */}
 
-      {lastLocation ? (
+      {lastLocation && !hudMode ? (
         <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={[styles.locationOverlay, { top: insets.top + 12, right: insets.right + 12 }]} textStyle={styles.locationText} renderAs="native" />
       ) : null}
     </ThemedView>
+  );
+
+  const onFling = (event: any) => {
+    if (event.nativeEvent.state === State.ACTIVE) {
+      // Determine swipe direction based on velocity
+      const vx = event.nativeEvent.velocityX;
+      const vy = event.nativeEvent.velocityY;
+
+      if (Math.abs(vy) > Math.abs(vx)) {
+        // Vertical swipe
+        if (vy > 500 && hudMode) {
+          setHudMode(false); // Swipe down to exit HUD
+        } else if (vy < -500 && !hudMode) {
+          setHudMode(true);  // Swipe up to enter HUD
+        }
+      } else {
+        // Horizontal swipe
+        if (hudMode) {
+          if (vx < -500) {
+            handleNextTarget(); // Swipe left for next
+          } else if (vx > 500) {
+            handlePrevTarget(); // Swipe right for prev
+          }
+        }
+      }
+    }
+  };
+
+  return (
+    <FlingGestureHandler
+      direction={Directions.UP | Directions.DOWN | Directions.LEFT | Directions.RIGHT}
+      onHandlerStateChange={onFling}
+    >
+      <View style={{ flex: 1 }}>
+        {mapContent}
+      </View>
+    </FlingGestureHandler>
   );
 }
 
