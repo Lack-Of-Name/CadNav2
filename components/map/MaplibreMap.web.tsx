@@ -11,7 +11,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, HudButton, haversineMeters, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, haversineMeters, HudButton, InfoBox, normalizeDegrees, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 

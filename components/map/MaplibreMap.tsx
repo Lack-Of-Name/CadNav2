@@ -9,10 +9,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, HudButton, haversineMeters, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
