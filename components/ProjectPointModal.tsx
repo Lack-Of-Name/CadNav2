@@ -2,10 +2,11 @@ import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Modal, StyleSheet, TextInput, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import StyledButton from './ui/StyledButton';
+import { ThemeSwitch } from './ui/ThemeSwitch';
 
 type ProjectPointModalProps = {
   visible: boolean;
@@ -98,7 +99,7 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
           
           <View style={styles.row}>
             <ThemedText>From Last Checkpoint</ThemedText>
-            <Switch 
+            <ThemeSwitch 
                 value={useLastCheckpoint} 
                 onValueChange={setUseLastCheckpoint} 
                 disabled={!canUseCheckpoint}

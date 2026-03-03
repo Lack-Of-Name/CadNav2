@@ -7,11 +7,13 @@ import { useOfflineMaps } from '@/hooks/offline-maps';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { bearingDegrees, CompassButton, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
@@ -42,11 +44,13 @@ function isLightColor(hex: string): boolean {
 export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading } = useMapTilerKey();
-  const { lastLocation, requestLocation } = useGPS();
+  const [hudMode, setHudMode] = useState(false);
+  const { lastLocation, requestLocation } = useGPS({ lowPowerMode: hudMode });
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
   const [placedCount, setPlacedCount] = React.useState(0);
   const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled } = useSettings();
-  const { initOffline } = useOfflineMaps();
+  const { initOffline, packs } = useOfflineMaps();
+  const hasOfflinePacks = packs && packs.length > 0;
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const iconColor = useThemeColor({}, 'tabIconDefault');
@@ -55,11 +59,11 @@ export default function MapLibreMap() {
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
+  const router = useRouter();
   const cameraRef = React.useRef<any>(null);
   const mapRef = React.useRef<any>(null);
   const [following, setFollowing] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
-  const [hudMode, setHudMode] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
@@ -440,16 +444,35 @@ export default function MapLibreMap() {
     );
   }
 
-  if (loading || !apiKey) {
+  if (loading || (!apiKey && !hasOfflinePacks)) {
     return (
-      <ThemedView style={styles.page}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 8 }}>Waiting for MapTiler API key...</Text>
+      <ThemedView style={[styles.page, { justifyContent: 'center', alignItems: 'center' }]}>
+        {loading ? (
+          <ActivityIndicator size="large" color={typeof tint === 'string' ? tint : String(bannerAccent)} style={{ marginBottom: 16 }} />
+        ) : (
+          <IconSymbol name="map.fill" size={64} color={iconColor} style={{ marginBottom: 16, opacity: 0.5 }} />
+        )}
+        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8, color: textColor }}>
+          {loading ? 'MapTiler API' : 'Map Unavailable'}
+        </Text>
+        <Text style={{ fontSize: 14, textAlign: 'center', marginHorizontal: 32, marginBottom: 24, color: textColor, opacity: 0.7 }}>
+          {loading ? 'Waiting for MapTiler API key...' : 'No API key configured and no offline maps found. Please add an API key in settings or use downloaded maps.'}
+        </Text>
+        {!loading && (
+          <TouchableOpacity 
+            style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+            onPress={() => router.push('/(tabs)/settings')}
+          >
+            <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Configure Key in Settings</Text>
+          </TouchableOpacity>
+        )}
       </ThemedView>
     );
   }
 
-  const mapStyle = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
+  const mapStyle = apiKey 
+    ? `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`
+    : `https://api.maptiler.com/maps/outdoor-v4/style.json`;
 
   const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
 
@@ -460,6 +483,7 @@ export default function MapLibreMap() {
     <ThemedView style={styles.page}>
       <StatusBar animated={true} barStyle="dark-content" />
 
+      {!hudMode && (
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -672,6 +696,7 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
       </MapView>
+      )}
 
       <DownloadProgressOverlay />
 

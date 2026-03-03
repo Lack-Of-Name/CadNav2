@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -9,6 +9,7 @@ import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
+import { ThemeSwitch } from '@/components/ui/ThemeSwitch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
@@ -18,8 +19,67 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import * as turf from '@turf/turf';
 
-export default function SettingsScreen() {
+function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+  const sectionHeaderColor = useThemeColor({ light: '#666', dark: '#999' }, 'text');
+  const rowBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
+  const separatorColor = useThemeColor({ light: '#e5e5ea', dark: '#38383a' }, 'icon');
+
+  return (
+    <View style={styles.section}>
+      <ThemedText style={[styles.sectionTitle, { color: sectionHeaderColor }]}>{title.toUpperCase()}</ThemedText>
+      <View style={[styles.sectionContent, { backgroundColor: rowBg, borderColor: separatorColor }]}>
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function SettingsRow({ 
+  icon, 
+  label, 
+  value, 
+  onPress, 
+  rightElement,
+  isLast = false,
+  color
+}: { 
+  icon: string; 
+  label: string; 
+  value?: string; 
+  onPress?: () => void; 
+  rightElement?: React.ReactNode;
+  isLast?: boolean;
+  color?: string;
+}) {
   const colorScheme = useColorScheme() ?? 'light';
+  const separatorColor = useThemeColor({ light: '#e5e5ea', dark: '#38383a' }, 'icon');
+  const { activeRouteColor } = useCheckpoints();
+
+  return (
+    <TouchableOpacity 
+      onPress={onPress} 
+      disabled={!onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+      style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: separatorColor }]}
+    >
+      <View style={[styles.iconContainer, { backgroundColor: color ?? activeRouteColor ?? Colors[colorScheme].tint }]}>
+        <IconSymbol name={icon as any} size={18} color="#fff" />
+      </View>
+      <View style={styles.rowContent}>
+        <ThemedText style={styles.rowLabel}>{label}</ThemedText>
+        <View style={styles.rowRight}>
+          {value && <ThemedText style={styles.rowValue}>{value}</ThemedText>}
+          {rightElement}
+          {onPress && !rightElement && (
+            <IconSymbol name="chevron.right" size={20} color={Colors[colorScheme].tabIconDefault} style={{ marginLeft: 8 }} />
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+export default function SettingsScreen() {
   const safeBg = useThemeColor({}, 'background');
   const { angleUnit, mapHeading, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
@@ -39,9 +99,7 @@ export default function SettingsScreen() {
   const background = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
-  const sectionHeaderColor = useThemeColor({ light: '#666', dark: '#999' }, 'text');
   const rowBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
-  const separatorColor = useThemeColor({ light: '#e5e5ea', dark: '#38383a' }, 'icon');
 
   const [inputConvergence, setInputConvergence] = useState<string>('');
   useEffect(() => {
@@ -55,8 +113,6 @@ export default function SettingsScreen() {
 
   const isMils = angleUnit === 'mils';
   const isTrue = mapHeading === 'true';
-  const switchTrackOn = Colors[colorScheme].tint;
-  const switchThumb = '#fff'; // Standard iOS look
 
   async function handleResetApiKey() {
     await alert({
@@ -74,12 +130,12 @@ export default function SettingsScreen() {
     const n = parseFloat(v);
     if (!v) {
       await setSetting('gridConvergence', null);
-      setGridPanel('menu');
+      setGridModalOpen(false);
     } else if (!Number.isFinite(n)) {
       await alert({ title: 'Invalid', message: 'Please enter a valid number for convergence.' });
     } else {
       await setSetting('gridConvergence', n);
-      setGridPanel('menu');
+      setGridModalOpen(false);
     }
   }
 
@@ -109,7 +165,7 @@ export default function SettingsScreen() {
     }
     const { latitude, longitude } = lastLocation.coords;
     await setSetting('mapGridOrigin', { latitude, longitude });
-    setGridPanel('menu');
+    setGridModalOpen(false);
   }
 
   async function setOriginFromGridRef() {
@@ -149,61 +205,13 @@ export default function SettingsScreen() {
     const [originLon, originLat] = finalPoint.geometry.coordinates;
 
     await setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
-    setGridPanel('menu');
+    setGridModalOpen(false);
   }
 
   async function setOriginFromCheckpoint(latitude: number, longitude: number) {
     await setSetting('mapGridOrigin', { latitude, longitude });
-    setGridPanel('menu');
+    setGridModalOpen(false);
   }
-
-  const SettingsSection = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <View style={styles.section}>
-      <ThemedText style={[styles.sectionTitle, { color: sectionHeaderColor }]}>{title.toUpperCase()}</ThemedText>
-      <View style={[styles.sectionContent, { backgroundColor: rowBg, borderColor: separatorColor }]}>
-        {children}
-      </View>
-    </View>
-  );
-
-  const SettingsRow = ({ 
-    icon, 
-    label, 
-    value, 
-    onPress, 
-    rightElement,
-    isLast = false,
-    color
-  }: { 
-    icon: string; 
-    label: string; 
-    value?: string; 
-    onPress?: () => void; 
-    rightElement?: React.ReactNode;
-    isLast?: boolean;
-    color?: string;
-  }) => (
-    <TouchableOpacity 
-      onPress={onPress} 
-      disabled={!onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: separatorColor }]}
-    >
-      <View style={[styles.iconContainer, { backgroundColor: color ?? Colors[colorScheme].tint }]}>
-        <IconSymbol name={icon as any} size={18} color="#fff" />
-      </View>
-      <View style={styles.rowContent}>
-        <ThemedText style={styles.rowLabel}>{label}</ThemedText>
-        <View style={styles.rowRight}>
-          {value && <ThemedText style={styles.rowValue}>{value}</ThemedText>}
-          {rightElement}
-          {onPress && !rightElement && (
-            <IconSymbol name="chevron.right" size={20} color={Colors[colorScheme].tabIconDefault} style={{ marginLeft: 8 }} />
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: safeBg }]}> 
@@ -218,11 +226,9 @@ export default function SettingsScreen() {
             rightElement={
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ThemedText style={styles.rowValue}>{isMils ? 'Mils' : 'Degrees'}</ThemedText>
-                <Switch
+                <ThemeSwitch
                   value={isMils}
                   onValueChange={(v) => setSetting('angleUnit', v ? 'mils' : 'degrees')}
-                  trackColor={{ false: '#e9e9ea', true: switchTrackOn }}
-                  thumbColor={switchThumb}
                 />
               </View>
             }
@@ -234,11 +240,9 @@ export default function SettingsScreen() {
             rightElement={
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ThemedText style={styles.rowValue}>{isTrue ? 'True' : 'Magnetic'}</ThemedText>
-                <Switch
+                <ThemeSwitch
                   value={isTrue}
                   onValueChange={(v) => setSetting('mapHeading', v ? 'true' : 'magnetic')}
-                  trackColor={{ false: '#e9e9ea', true: switchTrackOn }}
-                  thumbColor={switchThumb}
                 />
               </View>
             }
@@ -247,14 +251,63 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title="Grid">
+          <SettingsRow 
+            icon="square.grid.3x3" 
+            label="Grid Overlay" 
+            color="#33eaad"
+            rightElement={
+              <ThemeSwitch 
+                value={mapGridEnabled} 
+                onValueChange={(v) => void setSetting('mapGridEnabled', v)} 
+              />
+            }
+            isLast={!mapGridEnabled}
+          />
+          {mapGridEnabled && (
+            <>
+              <SettingsRow 
+                icon="square.split.2x2" 
+                label="Subdivisions" 
+                color="#33eaad"
+                rightElement={
+                  <ThemeSwitch
+                    value={mapGridSubdivisionsEnabled}
+                    onValueChange={(v) => void setSetting('mapGridSubdivisionsEnabled', v)}
+                  />
+                }
+              />
+              <SettingsRow 
+                icon="textformat.123" 
+                label="Grid Labels" 
+                color="#33eaad"
+                rightElement={
+                  <ThemeSwitch
+                    value={mapGridNumbersEnabled}
+                    onValueChange={(v) => void setSetting('mapGridNumbersEnabled', v)}
+                  />
+                }
+              />
+            </>
+          )}
           <SettingsRow
-            icon="square.grid.3x3"
-            label="Grid Settings"
-            color="#AF52DE"
-            value={mapGridEnabled ? 'Enabled' : 'Disabled'}
+            icon="mappin.and.ellipse"
+            label="Grid Origin"
+            color="#5AC8FA"
+            value={mapGridOrigin ? 'Configured' : 'Not set'}
             onPress={() => {
               setOriginError(null);
-              setGridPanel('menu');
+              setGridPanel('origin');
+              setGridModalOpen(true);
+            }}
+          />
+          <SettingsRow
+            icon="compass.drawing"
+            label="Grid Convergence"
+            color="#AF52DE"
+            value={gridConvergence != null ? `${gridConvergence}°` : 'Not set'}
+            onPress={() => {
+              setOriginError(null);
+              setGridPanel('convergence');
               setGridModalOpen(true);
             }}
             isLast
@@ -297,17 +350,10 @@ export default function SettingsScreen() {
         <View style={styles.modalBackdrop}>
           <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}> 
             <View style={styles.modalHeaderRow}>
-              {gridPanel !== 'menu' ? (
-                <TouchableOpacity
-                  onPress={() => setGridPanel('menu')}
-                  style={[styles.headerButton, { borderColor: String(borderColor), backgroundColor: String(rowBg) }]}
-                >
-                  <ThemedText style={styles.headerButtonText}>Back</ThemedText>
-                </TouchableOpacity>
-              ) : (
-                <View style={{ width: 64 }} />
-              )}
-              <ThemedText type="subtitle">Grid Settings</ThemedText>
+              <View style={{ width: 64 }} />
+              <ThemedText type="subtitle">
+                {gridPanel === 'origin' ? 'Grid Origin' : 'Grid Convergence'}
+              </ThemedText>
               <TouchableOpacity
                 onPress={() => setGridModalOpen(false)}
                 style={[styles.headerButton, { borderColor: String(borderColor), backgroundColor: String(rowBg) }]}
@@ -315,61 +361,6 @@ export default function SettingsScreen() {
                 <ThemedText style={styles.headerButtonText}>Close</ThemedText>
               </TouchableOpacity>
             </View>
-
-            {gridPanel === 'menu' ? (
-              <View style={{ marginTop: 12 }}>
-                <TouchableOpacity style={[styles.menuRow, { backgroundColor: rowBg, borderColor: separatorColor }]} onPress={() => setGridPanel('overlays')}>
-                  <View style={[styles.menuIcon, { backgroundColor: '#33eaad' }]}>
-                    <IconSymbol name="square.grid.3x3" size={18} color="#fff" />
-                  </View>
-                  <ThemedText style={styles.menuLabel}>Overlays</ThemedText>
-                  <IconSymbol name="chevron.right" size={18} color={Colors[colorScheme].tabIconDefault} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.menuRow, { backgroundColor: rowBg, borderColor: separatorColor }]} onPress={() => setGridPanel('origin')}>
-                  <View style={[styles.menuIcon, { backgroundColor: '#5AC8FA' }]}>
-                    <IconSymbol name="mappin.and.ellipse" size={18} color="#fff" />
-                  </View>
-                  <ThemedText style={styles.menuLabel}>Origin</ThemedText>
-                  <IconSymbol name="chevron.right" size={18} color={Colors[colorScheme].tabIconDefault} />
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.menuRow, { backgroundColor: rowBg, borderColor: separatorColor }]} onPress={() => setGridPanel('convergence')}>
-                  <View style={[styles.menuIcon, { backgroundColor: '#AF52DE' }]}>
-                    <IconSymbol name="compass.drawing" size={18} color="#fff" />
-                  </View>
-                  <ThemedText style={styles.menuLabel}>Convergence</ThemedText>
-                  <IconSymbol name="chevron.right" size={18} color={Colors[colorScheme].tabIconDefault} />
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {gridPanel === 'overlays' ? (
-              <View style={{ marginTop: 12 }}>
-                <View style={styles.gridRowInline}>
-                  <ThemedText type="defaultSemiBold">Enabled</ThemedText>
-                  <Switch value={mapGridEnabled} onValueChange={(v) => void setSetting('mapGridEnabled', v)} />
-                </View>
-
-                <View style={styles.gridRowInline}>
-                  <ThemedText type="defaultSemiBold">Subdivisions</ThemedText>
-                  <Switch
-                    value={mapGridSubdivisionsEnabled}
-                    onValueChange={(v) => void setSetting('mapGridSubdivisionsEnabled', v)}
-                    disabled={!mapGridEnabled}
-                  />
-                </View>
-
-                <View style={styles.gridRowInline}>
-                  <ThemedText type="defaultSemiBold">Grid numbers</ThemedText>
-                  <Switch
-                    value={mapGridNumbersEnabled}
-                    onValueChange={(v) => void setSetting('mapGridNumbersEnabled', v)}
-                    disabled={!mapGridEnabled}
-                  />
-                </View>
-              </View>
-            ) : null}
 
             {gridPanel === 'convergence' ? (
               <View style={{ marginTop: 12 }}>
@@ -385,7 +376,7 @@ export default function SettingsScreen() {
                   autoFocus
                 />
                 <View style={styles.modalButtons}>
-                  <StyledButton variant="secondary" onPress={() => setGridPanel('menu')}>Cancel</StyledButton>
+                  <StyledButton variant="secondary" onPress={() => setGridModalOpen(false)}>Cancel</StyledButton>
                   <View style={{ width: 12 }} />
                   <StyledButton variant="primary" onPress={saveConvergence}>Save</StyledButton>
                 </View>

@@ -15,7 +15,11 @@ export type GPSLocation = {
   timestamp: number;
 };
 
-export function useGPS() {
+export type GPSOptions = {
+  lowPowerMode?: boolean;
+};
+
+export function useGPS(options?: GPSOptions) {
   const [lastLocation, setLastLocation] = useState<GPSLocation | null>(null);
   const lastLocationRef = useRef<GPSLocation | null>(null);
   const [permissionStatus, setPermissionStatus] = useState<Location.PermissionStatus | null>(null);
@@ -25,6 +29,7 @@ export function useGPS() {
   const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const retryTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
+  const lowPowerMode = options?.lowPowerMode ?? false;
   const [magHeading, setMagHeading] = useState<number | null>(null);
   const [trueHeading, setTrueHeading] = useState<number | null>(null);
   const magHeadingRef = useRef<number | null>(null);
@@ -137,8 +142,14 @@ export function useGPS() {
                 else if (typeof old.unsubscribe === 'function') old.unsubscribe();
               }
             } catch {}
+            let lastHeadingUpdate = 0;
             headingSubscriptionRef.current = await Location.watchHeadingAsync((h) => {
               if (cancelled) return;
+              const now = Date.now();
+              if (lowPowerMode && now - lastHeadingUpdate < 500) return;
+              if (!lowPowerMode && now - lastHeadingUpdate < 100) return;
+              lastHeadingUpdate = now;
+
               const mag = Number.isFinite(h.magHeading) ? h.magHeading : null;
               // temporarily set magnetic heading; convert to true if we have a location
               magHeadingRef.current = mag;
@@ -194,9 +205,9 @@ export function useGPS() {
         } catch {}
         subscriptionRef.current = await Location.watchPositionAsync(
           {
-            accuracy: Location.Accuracy.BestForNavigation,
-            distanceInterval: 1,
-            timeInterval: 1000,
+            accuracy: lowPowerMode ? Location.Accuracy.Balanced : Location.Accuracy.BestForNavigation,
+            distanceInterval: lowPowerMode ? 5 : 1,
+            timeInterval: lowPowerMode ? 5000 : 1000,
             mayShowUserSettingsDialog: true,
           },
           async (loc) => {
@@ -241,13 +252,20 @@ export function useGPS() {
       } catch {}
       headingSubscriptionRef.current = null;
     };
-  }, [computeAndSetTrueHeading, restartToken]);
+  }, [computeAndSetTrueHeading, restartToken, lowPowerMode]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
     if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) return;
 
+    let lastUpdate = 0;
+
     const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
+      const now = Date.now();
+      if (lowPowerMode && now - lastUpdate < 500) return;
+      if (!lowPowerMode && now - lastUpdate < 100) return;
+      lastUpdate = now;
+
       const mag = (ev as any).webkitCompassHeading ?? ev.alpha;
       if (mag == null) return;
       // set magnetic value first, then convert if we have a location

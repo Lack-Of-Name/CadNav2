@@ -40,6 +40,8 @@ const MAPPING = {
   'arrow.down.circle.fill': 'download',
   'icloud.and.arrow.down': 'cloud-download',
   'trash.fill': 'delete',
+  'square.split.2x2': 'space-dashboard',
+  'textformat.123': 'format-list-numbered',
 } as IconMapping;
 
 /**

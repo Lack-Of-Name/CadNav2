@@ -6,7 +6,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, TextInput, View, TouchableOpacity } from 'react-native';
 
 const STORAGE_KEY = 'MAPTILER_API_KEY';
 
@@ -48,7 +48,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
             setShowModal(true);
           }
           // if we have a valid saved key, ensure we have location permission
-          if (saved && res.ok) {
+          if (saved && res.ok && !res.isNetworkError) {
             const locOk = await requestLocationPermission();
             if (!locOk) setLocationModalVisible(true);
             else {
@@ -87,7 +87,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
               }
               if (!mounted) return;
               setApiKey(saved);
-              if (!locationModalVisible) {
+              if (!locationModalVisible && !res.isNetworkError) {
                 const locOk = await requestLocationPermission();
                 if (!locOk && mounted) setLocationModalVisible(true);
                 else {
@@ -122,12 +122,20 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       const y = Math.floor(Math.random() * max);
       const url = `https://api.maptiler.com/maps/outdoor-v4/256/${z}/${x}/${y}.png?key=${key}`;
       const res = await fetch(url, { method: 'GET' });
-      if (res.ok) return { ok: true };
+      if (res.ok) return { ok: true, isNetworkError: false };
+      
+      // If we got an unauthorized/forbidden, the key is definitely invalid
+      if (res.status === 401 || res.status === 403) {
+        return { ok: false, message: `Invalid API key: ${res.status} ${res.statusText}`, isNetworkError: false };
+      }
+      
+      // For rate limits (429) or server errors (5xx), we shouldn't assume the key is bad
+      // and lock the user out, especially if they are out in the field.
       // Provide status info for better debugging when used from the modal
-      return { ok: false, message: `Request failed: ${res.status} ${res.statusText}` };
+      return { ok: true, message: `Request failed but not resetting: ${res.status} ${res.statusText}`, isNetworkError: true };
     } catch (err: any) {
-      void showAlert({ title: 'MapTiler verifyKey', message: String(err) });
-      return { ok: false, message: err?.message ?? 'Network error' };
+      // Network error, probably offline. Don't remove the key!
+      return { ok: true, message: err?.message ?? 'Network error', isNetworkError: true };
     }
   }
 
@@ -306,6 +314,15 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 {verifying ? <ActivityIndicator color="#fff" /> : 'Verify & Save'}
               </StyledButton>
             </View>
+            <TouchableOpacity 
+              style={{ marginTop: 24, paddingVertical: 8, alignItems: 'center' }}
+              onPress={() => {
+                setShowModal(false);
+              }}>
+              <ThemedText style={{ textDecorationLine: 'underline', color: '#999', fontSize: 13 }}>
+                Use offline mode (no key)
+              </ThemedText>
+            </TouchableOpacity>
           </ThemedView>
         </View>
       </Modal>
