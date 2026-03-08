@@ -6,7 +6,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, TextInput, View, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 const STORAGE_KEY = 'MAPTILER_API_KEY';
 

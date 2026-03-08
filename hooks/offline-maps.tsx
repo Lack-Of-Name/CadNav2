@@ -20,13 +20,13 @@ export type ZoomPreset = {
   description: string;
   minZoom: number;
   maxZoom: number;
-  estimateLabel: string;
+  baseSizeMB: number; // Base size for a 15km radius
 };
 
 export const ZOOM_PRESETS: ZoomPreset[] = [
-  { label: 'Overview', description: 'Zoom 1–8 · Country / region scale', minZoom: 1, maxZoom: 8, estimateLabel: '~5 MB' },
-  { label: 'Navigation', description: 'Zoom 1–13 · Road & trail level', minZoom: 1, maxZoom: 13, estimateLabel: '~50 MB' },
-  { label: 'Detailed', description: 'Zoom 1–16 · Full detail for fieldwork', minZoom: 1, maxZoom: 16, estimateLabel: '~200+ MB' },
+  { label: 'Overview', description: 'Zoom 1–8 · Country / region scale', minZoom: 1, maxZoom: 8, baseSizeMB: 5 },
+  { label: 'Navigation', description: 'Zoom 1–13 · Road & trail level', minZoom: 1, maxZoom: 13, baseSizeMB: 50 },
+  { label: 'Detailed', description: 'Zoom 1–16 · Full detail for fieldwork', minZoom: 1, maxZoom: 16, baseSizeMB: 200 },
 ];
 
 export type DownloadTarget = {
@@ -128,16 +128,29 @@ export function OfflineMapProvider({ children }: { children: React.ReactNode }) 
     setLoadingPacks(true);
     try {
       const existing = await mgr.getPacks();
-      const mapped: OfflinePack[] = (existing ?? []).map((p: any) => ({
-        name: p.name ?? 'Unknown',
-        state: p.pack?._metadata?.state ?? 'complete',
-        progress: p.pack?.progress?.percentage ?? 100,
-        completedCount: p.pack?.progress?.countOfResourcesCompleted ?? 0,
-        requiredCount: p.pack?.progress?.countOfResourcesExpected ?? 0,
-        completedSize: p.pack?.progress?.countOfBytesCompleted ?? 0,
-        metadata: p.pack?._metadata,
+      
+      const mappedPacks = await Promise.all((existing ?? []).map(async (p: any) => {
+        let status: any = null;
+        try {
+          if (typeof p.status === 'function') {
+            status = await p.status();
+          }
+        } catch {
+          // ignore status fetch errors
+        }
+
+        return {
+          name: p.name ?? 'Unknown',
+          state: status?.state === 0 ? 'inactive' : 'complete',
+          progress: status?.percentage ?? 100,
+          completedCount: status?.completedTileCount ?? status?.completedResourceCount ?? 0,
+          requiredCount: status?.requiredResourceCount ?? 0,
+          completedSize: status?.completedTileSize ?? status?.completedResourceSize ?? 0,
+          metadata: p.metadata ?? {},
+        };
       }));
-      setPacks(mapped);
+
+      setPacks(mappedPacks);
     } catch (err) {
       void showAlert({ title: 'Offline Maps', message: `Failed to load packs: ${err}` });
     } finally {

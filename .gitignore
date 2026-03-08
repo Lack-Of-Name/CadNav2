@@ -44,3 +44,29 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# EAS / Expo CLI
+eas-build-*.tgz
+eas-build-*.tar.gz
+/.eas/
+credentials.json
+
+# Build Outputs / Artifacts
+*.apk
+*.aab
+*.ipa
+*.app
+
+# IDEs and Editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+*.iml
+*.swp

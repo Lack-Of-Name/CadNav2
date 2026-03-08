@@ -50,8 +50,8 @@ export default function AboutContent() {
     };
   }, [lastLocation]);
 
-  const appName = Constants.manifest?.name ?? (Constants.expoConfig as any)?.name ?? 'CadNav2';
-  const appVersion = Constants.manifest?.version ?? (Constants.expoConfig as any)?.version ?? '1.0.0';
+  const appName = Constants.expoConfig?.name ?? 'CadNav2';
+  const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
   const open = (url: string) => {
     void Linking.openURL(url);

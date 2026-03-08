@@ -16,7 +16,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.cadnav.CadNav",
-      "icon": "./assets/icons/CadNavIcon.icon"
+      "icon": "./assets/icons/CadNavIcon.icon",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "fetch"
+        ]
+      }
     },
     "android": {
       "icon": "./assets/icons/icon.png",
@@ -26,7 +32,13 @@
         "monochromeImage": "./assets/icons/monochromatic.png"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.cadnav.CadNav"
+      "package": "com.cadnav.CadNav",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/icons/icon.png"
@@ -36,7 +48,9 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "This app uses location for navigation.",
+          "locationWhenInUsePermission": "Allow CadNav 2 to use your location for offline navigation and map positioning.",
+          "locationAlwaysAndWhenInUsePermission": "Allow CadNav 2 to use your location to record routes and navigate while the app is in the background.",
+          "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
       ],
@@ -44,6 +58,12 @@
     ],
     "assetBundlePatterns": [
       "assets/*"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0d8348a4-8e40-40ea-a5ba-c083b8f8e2b5"
+      }
+    }
   }
 }

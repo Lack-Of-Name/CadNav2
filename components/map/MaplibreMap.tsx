@@ -1,6 +1,7 @@
 import DownloadProgressOverlay from '@/components/DownloadProgressOverlay';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useOfflineMaps } from '@/hooks/offline-maps';
@@ -13,7 +14,6 @@ import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View 
 import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
 import { bearingDegrees, CompassButton, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';

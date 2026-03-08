@@ -1,8 +1,7 @@
-import React from 'react';
-import { Platform, Switch, SwitchProps } from 'react-native';
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useCheckpoints } from '@/hooks/checkpoints';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Platform, Switch, SwitchProps } from 'react-native';
 
 export type ThemeSwitchProps = Omit<SwitchProps, 'trackColor' | 'thumbColor'>;
 

@@ -4,10 +4,12 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { formatBytes, useOfflineMaps, ZOOM_PRESETS, type DownloadTarget, type ZoomPreset } from '@/hooks/offline-maps';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import * as turf from '@turf/turf';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -22,10 +24,24 @@ import {
 
 const isWeb = Platform.OS === 'web';
 
+let maplibreModule: any | undefined | null;
+function getMaplibreModule() {
+  if (maplibreModule !== undefined) return maplibreModule;
+  if (isWeb) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const req = require('@maplibre/maplibre-react-native');
+    maplibreModule = req.default || req;
+  } catch {
+    maplibreModule = null;
+  }
+  return maplibreModule;
+}
+
 const RADIUS_OPTIONS = [5, 10, 15, 25, 50];
 const DEFAULT_RADIUS_KM = 15;
 
-type LocationMode = 'my-location' | 'coordinates';
+type LocationMode = 'my-location' | 'coordinates' | 'checkpoint';
 
 type Props = {
   visible: boolean;
@@ -44,12 +60,14 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
   const { apiKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
   const { packs, loadingPacks, loadPacks, deletePack, activeDownload, startDownload, cancelDownload } = useOfflineMaps();
+  const { checkpoints } = useCheckpoints();
 
   const [panel, setPanel] = useState<'main' | 'download'>('main');
   const [locationMode, setLocationMode] = useState<LocationMode>('my-location');
   const [customLat, setCustomLat] = useState('');
   const [customLon, setCustomLon] = useState('');
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM);
+  const [selectedCheckpointId, setSelectedCheckpointId] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible && !isWeb) {
@@ -60,11 +78,13 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
     }
   }, [visible, loadPacks]);
 
-  const buildTarget = useCallback((): DownloadTarget | null => {
+  const buildTarget = useCallback((silent: boolean = false): DownloadTarget | null => {
     if (locationMode === 'my-location') {
       if (!lastLocation) {
-        requestLocation();
-        void showAlert({ title: 'Offline Maps', message: 'Waiting for GPS fix. Please try again in a moment.' });
+        if (!silent) {
+          requestLocation();
+          void showAlert({ title: 'Offline Maps', message: 'Waiting for GPS fix. Please try again in a moment.' });
+        }
         return null;
       }
       return {
@@ -75,11 +95,29 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
       };
     }
 
+    if (locationMode === 'checkpoint') {
+      const cp = checkpoints.find((c) => c.id === selectedCheckpointId);
+      if (!cp) {
+        if (!silent) {
+          void showAlert({ title: 'Select Checkpoint', message: 'Please select a checkpoint first.' });
+        }
+        return null;
+      }
+      return {
+        latitude: cp.latitude,
+        longitude: cp.longitude,
+        label: cp.label || 'Selected Checkpoint',
+        radiusKm,
+      };
+    }
+
     // Custom coordinates
     const lat = parseFloat(customLat.trim());
     const lon = parseFloat(customLon.trim());
     if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      void showAlert({ title: 'Invalid Coordinates', message: 'Enter valid latitude (-90 to 90) and longitude (-180 to 180).' });
+      if (!silent) {
+        void showAlert({ title: 'Invalid Coordinates', message: 'Enter valid latitude (-90 to 90) and longitude (-180 to 180).' });
+      }
       return null;
     }
     return {
@@ -88,7 +126,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
       label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
       radiusKm,
     };
-  }, [locationMode, lastLocation, requestLocation, customLat, customLon, radiusKm]);
+  }, [locationMode, lastLocation, requestLocation, customLat, customLon, radiusKm, checkpoints, selectedCheckpointId]);
 
   const handleDownload = useCallback(
     async (preset: ZoomPreset) => {
@@ -96,13 +134,26 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
         void showAlert({ title: 'Offline Maps', message: 'Please set your MapTiler API key first.' });
         return;
       }
-      const target = buildTarget();
+      const target = buildTarget(false);
       if (!target) return;
       await startDownload(preset, target, apiKey);
       setPanel('main');
     },
     [apiKey, buildTarget, startDownload],
   );
+
+  const previewTarget = panel === 'download' ? buildTarget(true) : null;
+  const MapLibre = !isWeb ? getMaplibreModule() : null;
+
+  const getSizingEstimate = (preset: ZoomPreset) => {
+    // baseSizeMB is calibrated around the default 15km radius. Area scales with radius squared.
+    const baseArea = DEFAULT_RADIUS_KM * DEFAULT_RADIUS_KM;
+    const newArea = radiusKm * radiusKm;
+    const est = preset.baseSizeMB * (newArea / baseArea);
+    if (est < 1) return '< 1 MB';
+    if (est > 1000) return `~${(est / 1024).toFixed(1)} GB`;
+    return `~${Math.ceil(est)} MB`;
+  };
 
   const locationSummary =
     locationMode === 'my-location'
@@ -115,7 +166,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
 
   // ---------- Render ----------
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <ThemedView style={[styles.container, { backgroundColor: String(background), borderColor: String(borderColor) }]}>
           {/* Header */}
@@ -306,6 +357,22 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       Custom Location
                     </ThemedText>
                   </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setLocationMode('checkpoint')}
+                    style={[
+                      styles.segmentBtn,
+                      locationMode === 'checkpoint' && { backgroundColor: Colors[colorScheme].tint },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.segmentText,
+                        locationMode === 'checkpoint' && { color: '#fff' },
+                      ]}
+                    >
+                      Checkpoint
+                    </ThemedText>
+                  </TouchableOpacity>
                 </View>
 
                 {locationMode === 'my-location' && (
@@ -342,6 +409,37 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                   </View>
                 )}
 
+                {locationMode === 'checkpoint' && (
+                  <View style={[styles.coordInputs, { backgroundColor: rowBg, borderColor: separatorColor, maxHeight: 150 }]}>
+                    {checkpoints.length === 0 ? (
+                      <View style={{ padding: 16 }}>
+                        <ThemedText style={{ color: String(placeholderColor), textAlign: 'center' }}>
+                          No checkpoints plotted yet.
+                        </ThemedText>
+                      </View>
+                    ) : (
+                      <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+                        {checkpoints.map((cp, idx) => (
+                          <TouchableOpacity
+                            key={cp.id}
+                            onPress={() => setSelectedCheckpointId(cp.id)}
+                            style={{
+                              padding: 12,
+                              borderBottomWidth: StyleSheet.hairlineWidth,
+                              borderColor: String(separatorColor),
+                              backgroundColor: selectedCheckpointId === cp.id ? Colors[colorScheme].tint : 'transparent',
+                            }}
+                          >
+                            <ThemedText style={selectedCheckpointId === cp.id ? { color: '#fff', fontWeight: 'bold' } : {}}>
+                              {cp.label || `Checkpoint ${idx + 1}`}
+                            </ThemedText>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                )}
+
                 {/* Radius selector */}
                 <ThemedText style={[styles.sectionLabel, { color: sectionHeaderColor, marginTop: 16 }]}>
                   RADIUS
@@ -366,6 +464,38 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                   ))}
                 </View>
 
+                {/* Map Preview */}
+                {MapLibre && MapLibre.MapView && previewTarget && apiKey && (
+                  <View style={[styles.mapPreviewContainer, { borderColor: String(separatorColor) }]}>
+                    <MapLibre.MapView 
+                      style={StyleSheet.absoluteFillObject} 
+                      styleURL={`https://api.maptiler.com/maps/basic-v2/style.json?key=${apiKey}`}
+                      logoEnabled={false}
+                      compassEnabled={false}
+                      pitchEnabled={false}
+                      scrollEnabled={false}
+                      rotateEnabled={false}
+                      zoomEnabled={false}
+                    >
+                      <MapLibre.Camera 
+                        centerCoordinate={[previewTarget.longitude, previewTarget.latitude]} 
+                        zoomLevel={Math.max(1, 11 - Math.log2(radiusKm / 5))} 
+                        animationDuration={500}
+                      />
+                      <MapLibre.ShapeSource 
+                        id="radius-source" 
+                        shape={turf.circle([previewTarget.longitude, previewTarget.latitude], radiusKm, { units: 'kilometers', steps: 64 })}
+                      >
+                        <MapLibre.FillLayer id="radius-fill" style={{ fillColor: Colors[colorScheme].tint as string, fillOpacity: 0.15 }} />
+                        <MapLibre.LineLayer id="radius-line" style={{ lineColor: Colors[colorScheme].tint as string, lineWidth: 2 }} />
+                      </MapLibre.ShapeSource>
+                    </MapLibre.MapView>
+                    <View style={styles.mapPreviewOverlay} pointerEvents="none">
+                      <IconSymbol name="plus" size={24} color={Colors[colorScheme].tint} />
+                    </View>
+                  </View>
+                )}
+
                 {/* Zoom presets */}
                 <ThemedText style={[styles.sectionLabel, { color: sectionHeaderColor, marginTop: 16 }]}>
                   DETAIL LEVEL
@@ -388,8 +518,8 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                         <ThemedText type="defaultSemiBold">{preset.label}</ThemedText>
                         <ThemedText style={styles.presetDesc}>{preset.description}</ThemedText>
                       </View>
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <ThemedText style={styles.estimateText}>{preset.estimateLabel}</ThemedText>
+                      <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
+                        <ThemedText style={styles.estimateText}>{getSizingEstimate(preset)}</ThemedText>
                         <View style={[styles.downloadBtnCircle, { backgroundColor: Colors[colorScheme].tint }]}>
                           <IconSymbol name="arrow.down.circle.fill" size={20} color="#fff" />
                         </View>
@@ -630,6 +760,20 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  mapPreviewContainer: {
+    height: 180,
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  mapPreviewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyText: {
     fontSize: 14,
