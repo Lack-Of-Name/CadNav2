@@ -306,8 +306,8 @@ export default function MapLibreMap() {
     if (!mapDiv.current) return;
 
     const mapStyle = apiKey 
-      ? `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`
-      : `https://api.maptiler.com/maps/outdoor-v4/style.json`;
+      ? `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`
+      : `https://api.maptiler.com/maps/outdoor-v2/style.json`;
 
     map.current = new maplibregl.Map({
       container: mapDiv.current,

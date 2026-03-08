@@ -471,8 +471,8 @@ export default function MapLibreMap() {
   }
 
   const mapStyle = apiKey 
-    ? `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`
-    : `https://api.maptiler.com/maps/outdoor-v4/style.json`;
+    ? `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`
+    : `https://api.maptiler.com/maps/outdoor-v2/style.json`;
 
   const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
 

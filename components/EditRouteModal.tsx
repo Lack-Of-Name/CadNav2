@@ -98,7 +98,7 @@ export function EditRouteModal({
       <View style={styles.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <Animated.View 
-            entering={SlideInDown.springify().damping(15)} 
+            entering={SlideInDown.duration(250)} 
             exiting={SlideOutDown}
             style={[
                 styles.panel, 
@@ -115,7 +115,7 @@ export function EditRouteModal({
             <View style={styles.form}>
                 {/* Icon picker - inline scroll strip */}
                 <ThemedText style={styles.label}>Icon</ThemedText>
-                <ScrollView 
+                <ScrollView bounces={false} overScrollMode="never" 
                   horizontal 
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.emojiStrip}

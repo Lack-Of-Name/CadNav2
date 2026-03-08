@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -125,6 +125,36 @@ export default function SettingsScreen() {
     });
   }
 
+  async function handleClearCache() {
+    await alert({
+      title: 'Clear Tile Cache',
+      message: 'Are you sure you want to clear dynamically loaded map tiles? Downloaded offline maps will not be affected.',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Clear', 
+          style: 'destructive', 
+          onPress: async () => {
+            try {
+              if (Platform.OS !== 'web') {
+                const ml = require('@maplibre/maplibre-react-native');
+                const mgr = ml.offlineManager ?? ml.default?.offlineManager;
+                if (mgr) {
+                  await mgr.clearAmbientCache();
+                  await alert({ title: 'Cache Cleared', message: 'The map tile cache has been cleared.', buttons: [{ text: 'OK' }] });
+                }
+              } else {
+                 await alert({ title: 'Not Supported', message: 'Clearing cache is not supported on web.', buttons: [{ text: 'OK' }] });
+              }
+            } catch (e) {
+              await alert({ title: 'Error', message: String(e), buttons: [{ text: 'OK' }] });
+            }
+          }
+        },
+      ],
+    });
+  }
+
   async function saveConvergence() {
     const v = inputConvergence.trim();
     const n = parseFloat(v);
@@ -215,7 +245,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: safeBg }]}> 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
+      <ScrollView bounces={false} overScrollMode="never" style={styles.scroll} contentContainerStyle={styles.container}>
         <ThemedText type="title" style={styles.pageTitle}>Settings</ThemedText>
 
         <SettingsSection title="Navigation">
@@ -328,14 +358,20 @@ export default function SettingsScreen() {
             color="#34C759"
             value={apiKey ? 'Configured' : 'Missing'}
             onPress={handleResetApiKey}
+          />
+          <SettingsRow
+            icon="trash.fill"
+            label="Clear Tile Cache"
+            color="#FF3B30"
+            onPress={handleClearCache}
             isLast
           />
         </SettingsSection>
 
         <SettingsSection title="App">
-          <SettingsRow 
-            icon="info.circle.fill" 
-            label="About CadNav" 
+          <SettingsRow
+            icon="info.circle.fill"
+            label="About CadNav"
             color="#8E8E93"
             onPress={() => setInfoOpen(true)}
             isLast
@@ -474,7 +510,7 @@ export default function SettingsScreen() {
               <ThemedText type="title">About</ThemedText>
               <StyledButton variant="secondary" onPress={() => setInfoOpen(false)}>Close</StyledButton>
             </View>
-            <ScrollView contentContainerStyle={styles.modalScroll}>
+            <ScrollView bounces={false} overScrollMode="never" contentContainerStyle={styles.modalScroll}>
               <AboutContent />
             </ScrollView>
           </ThemedView>

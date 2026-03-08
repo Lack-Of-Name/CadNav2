@@ -541,7 +541,7 @@ export default function RoutesScreen() {
         </View>
 
         <View style={styles.stackContainer}>
-          <FlatList
+          <FlatList bounces={false} overScrollMode="never"
             data={routes}
             keyExtractor={(i) => i.id}
             contentContainerStyle={{ paddingBottom: 20 }}

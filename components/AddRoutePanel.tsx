@@ -57,7 +57,7 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
       <View style={styles.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <Animated.View 
-            entering={SlideInDown.springify().damping(15)} 
+            entering={SlideInDown.duration(250)} 
             exiting={SlideOutDown}
             style={[
                 styles.panel, 

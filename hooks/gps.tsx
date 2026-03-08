@@ -147,7 +147,7 @@ export function useGPS(options?: GPSOptions) {
               if (cancelled) return;
               const now = Date.now();
               if (lowPowerMode && now - lastHeadingUpdate < 500) return;
-              if (!lowPowerMode && now - lastHeadingUpdate < 100) return;
+              if (!lowPowerMode && now - lastHeadingUpdate < 33) return;
               lastHeadingUpdate = now;
 
               const mag = Number.isFinite(h.magHeading) ? h.magHeading : null;
@@ -263,7 +263,7 @@ export function useGPS(options?: GPSOptions) {
     const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
       const now = Date.now();
       if (lowPowerMode && now - lastUpdate < 500) return;
-      if (!lowPowerMode && now - lastUpdate < 100) return;
+      if (!lowPowerMode && now - lastUpdate < 33) return;
       lastUpdate = now;
 
       const mag = (ev as any).webkitCompassHeading ?? ev.alpha;

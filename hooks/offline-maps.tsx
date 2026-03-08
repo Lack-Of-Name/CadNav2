@@ -197,7 +197,7 @@ export function OfflineMapProvider({ children }: { children: React.ReactNode }) 
 
       const bounds = boundsFromCenter(target.latitude, target.longitude, target.radiusKm);
       const packName = `CadNav_${preset.label}_${Date.now()}`;
-      const styleUrl = `https://api.maptiler.com/maps/outdoor-v4/style.json?key=${apiKey}`;
+      const styleUrl = `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`;
 
       setActiveDownload({
         packName,

@@ -41,20 +41,15 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       try {
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
         if (saved) {
-          const res = await verifyKey(saved);
-          if (res.ok) setApiKey(saved);
+          setApiKey(saved);
+          // Instantly finish loading before permissions check
+          setLoading(false);
+          // Do not verify the key network request if we already have it to avoid locking out the app when offline!
+          const locOk = await requestLocationPermission();
+          if (!locOk) setLocationModalVisible(true);
           else {
-            await AsyncStorage.removeItem(STORAGE_KEY);
-            setShowModal(true);
-          }
-          // if we have a valid saved key, ensure we have location permission
-          if (saved && res.ok && !res.isNetworkError) {
-            const locOk = await requestLocationPermission();
-            if (!locOk) setLocationModalVisible(true);
-            else {
-              const orientOk = await requestOrientationPermission();
-              if (!orientOk) setOrientationModalVisible(true);
-            }
+            const orientOk = await requestOrientationPermission();
+            if (!orientOk) setOrientationModalVisible(true);
           }
         } else {
           setShowModal(true);
@@ -68,7 +63,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  // Re-check API key and location permission whenever the app becomes active
+  // Re-check location permission whenever the app becomes active, skip API key verification to prevent offline wait states
   useEffect(() => {
     let mounted = true;
     const handleAppState = (next: AppStateStatus) => {
@@ -77,17 +72,8 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
           try {
             const saved = await AsyncStorage.getItem(STORAGE_KEY);
             if (saved) {
-              const res = await verifyKey(saved);
-              if (!res.ok) {
-                await AsyncStorage.removeItem(STORAGE_KEY);
-                if (!mounted) return;
-                setApiKey(null);
-                setShowModal(true);
-                return;
-              }
               if (!mounted) return;
-              setApiKey(saved);
-              if (!locationModalVisible && !res.isNetworkError) {
+              if (!locationModalVisible) {
                 const locOk = await requestLocationPermission();
                 if (!locOk && mounted) setLocationModalVisible(true);
                 else {
@@ -120,7 +106,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       const max = 1 << z; // 2^20 = 1,048,576
       const x = Math.floor(Math.random() * max);
       const y = Math.floor(Math.random() * max);
-      const url = `https://api.maptiler.com/maps/outdoor-v4/256/${z}/${x}/${y}.png?key=${key}`;
+      const url = `https://api.maptiler.com/maps/outdoor-v2/256/${z}/${x}/${y}.png?key=${key}`;
       const res = await fetch(url, { method: 'GET' });
       if (res.ok) return { ok: true, isNetworkError: false };
       
@@ -202,7 +188,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 // Prompt user to enable high-accuracy network provider (Google Play services).
                 // Resolves when the user accepts; rejects if denied or unavailable.
                 // @ts-ignore: may not exist on all SDK versions
-                await Location.enableNetworkProviderAsync();
+                
               } catch {
                 // Show the location modal so user can open settings or retry.
                 setLocationModalVisible(true);

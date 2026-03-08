@@ -10,7 +10,7 @@ import { formatBytes, useOfflineMaps, ZOOM_PRESETS, type DownloadTarget, type Zo
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import * as turf from '@turf/turf';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Modal,
@@ -190,7 +190,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView bounces={false} overScrollMode="never" style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 20 }}>
             {/* ========== WEB: Disabled state ========== */}
             {isWeb && (
               <View style={styles.webDisabledContainer}>
@@ -263,7 +263,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                   onPress={() => setPanel('download')}
                   disabled={!!activeDownload}
                   activeOpacity={0.7}
-                  style={[styles.newDownloadBtn, { backgroundColor: Colors[colorScheme].tint }, activeDownload && { opacity: 0.5 }]}
+                  style={[styles.newDownloadBtn, { backgroundColor: '#007AFF' }, activeDownload && { opacity: 0.5 }]}
                 >
                   <IconSymbol name="arrow.down.circle.fill" size={22} color="#fff" />
                   <ThemedText style={styles.newDownloadText}>Download New Area</ThemedText>
@@ -329,7 +329,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     onPress={() => setLocationMode('my-location')}
                     style={[
                       styles.segmentBtn,
-                      locationMode === 'my-location' && { backgroundColor: Colors[colorScheme].tint },
+                      locationMode === 'my-location' && { backgroundColor: '#007AFF' },
                     ]}
                   >
                     <ThemedText
@@ -345,7 +345,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     onPress={() => setLocationMode('coordinates')}
                     style={[
                       styles.segmentBtn,
-                      locationMode === 'coordinates' && { backgroundColor: Colors[colorScheme].tint },
+                      locationMode === 'coordinates' && { backgroundColor: '#007AFF' },
                     ]}
                   >
                     <ThemedText
@@ -361,7 +361,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     onPress={() => setLocationMode('checkpoint')}
                     style={[
                       styles.segmentBtn,
-                      locationMode === 'checkpoint' && { backgroundColor: Colors[colorScheme].tint },
+                      locationMode === 'checkpoint' && { backgroundColor: '#007AFF' },
                     ]}
                   >
                     <ThemedText
@@ -377,7 +377,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
 
                 {locationMode === 'my-location' && (
                   <View style={[styles.locationInfo, { backgroundColor: rowBg, borderColor: separatorColor }]}>
-                    <IconSymbol name="location.fill.viewfinder" size={18} color={Colors[colorScheme].tint} />
+                    <IconSymbol name="location.fill.viewfinder" size={18} color={'#007AFF'} />
                     <ThemedText style={styles.locationInfoText}>{locationSummary}</ThemedText>
                   </View>
                 )}
@@ -418,7 +418,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                         </ThemedText>
                       </View>
                     ) : (
-                      <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+                      <ScrollView bounces={false} overScrollMode="never" nestedScrollEnabled showsVerticalScrollIndicator>
                         {checkpoints.map((cp, idx) => (
                           <TouchableOpacity
                             key={cp.id}
@@ -427,7 +427,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                               padding: 12,
                               borderBottomWidth: StyleSheet.hairlineWidth,
                               borderColor: String(separatorColor),
-                              backgroundColor: selectedCheckpointId === cp.id ? Colors[colorScheme].tint : 'transparent',
+                              backgroundColor: selectedCheckpointId === cp.id ? '#007AFF' : 'transparent',
                             }}
                           >
                             <ThemedText style={selectedCheckpointId === cp.id ? { color: '#fff', fontWeight: 'bold' } : {}}>
@@ -452,7 +452,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       style={[
                         styles.radiusChip,
                         { borderColor: separatorColor },
-                        radiusKm === r && { backgroundColor: Colors[colorScheme].tint, borderColor: Colors[colorScheme].tint },
+                        radiusKm === r && { backgroundColor: '#007AFF', borderColor: '#007AFF' },
                       ]}
                     >
                       <ThemedText
@@ -469,7 +469,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                   <View style={[styles.mapPreviewContainer, { borderColor: String(separatorColor) }]}>
                     <MapLibre.MapView 
                       style={StyleSheet.absoluteFillObject} 
-                      styleURL={`https://api.maptiler.com/maps/basic-v2/style.json?key=${apiKey}`}
+                      mapStyle={`https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`}
                       logoEnabled={false}
                       compassEnabled={false}
                       pitchEnabled={false}
@@ -479,19 +479,19 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     >
                       <MapLibre.Camera 
                         centerCoordinate={[previewTarget.longitude, previewTarget.latitude]} 
-                        zoomLevel={Math.max(1, 11 - Math.log2(radiusKm / 5))} 
+                        zoomLevel={Math.max(1, 9.5 - Math.log2(radiusKm / 5))} 
                         animationDuration={500}
                       />
                       <MapLibre.ShapeSource 
                         id="radius-source" 
                         shape={turf.circle([previewTarget.longitude, previewTarget.latitude], radiusKm, { units: 'kilometers', steps: 64 })}
                       >
-                        <MapLibre.FillLayer id="radius-fill" style={{ fillColor: Colors[colorScheme].tint as string, fillOpacity: 0.15 }} />
-                        <MapLibre.LineLayer id="radius-line" style={{ lineColor: Colors[colorScheme].tint as string, lineWidth: 2 }} />
+                        <MapLibre.FillLayer id="radius-fill" style={{ fillColor: '#007AFF' as string, fillOpacity: 0.15 }} />
+                        <MapLibre.LineLayer id="radius-line" style={{ lineColor: '#007AFF' as string, lineWidth: 2 }} />
                       </MapLibre.ShapeSource>
                     </MapLibre.MapView>
                     <View style={styles.mapPreviewOverlay} pointerEvents="none">
-                      <IconSymbol name="plus" size={24} color={Colors[colorScheme].tint} />
+                      <IconSymbol name="plus" size={24} color={'#007AFF'} />
                     </View>
                   </View>
                 )}
@@ -520,7 +520,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       </View>
                       <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
                         <ThemedText style={styles.estimateText}>{getSizingEstimate(preset)}</ThemedText>
-                        <View style={[styles.downloadBtnCircle, { backgroundColor: Colors[colorScheme].tint }]}>
+                        <View style={[styles.downloadBtnCircle, { backgroundColor: '#007AFF' }]}>
                           <IconSymbol name="arrow.down.circle.fill" size={20} color="#fff" />
                         </View>
                       </View>
