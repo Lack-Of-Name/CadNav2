@@ -1,5 +1,4 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
-import React from 'react';
 import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';

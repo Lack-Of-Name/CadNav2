@@ -1,6 +1,6 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
 import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, useWindowDimensions, KeyboardAvoidingView, Pressable, Keyboard, Platform } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
@@ -95,16 +95,21 @@ export function EditRouteModal({
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <Animated.View 
-            entering={SlideInDown.duration(250)} 
-            exiting={SlideOutDown}
-            style={[
-                styles.panel, 
-                { backgroundColor, width: isLargeScreen ? 400 : '90%' }
-            ]}
-        >
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <Pressable onPress={Keyboard.dismiss} style={styles.overlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+          <Animated.View
+              entering={SlideInDown.duration(250)}
+              exiting={SlideOutDown}
+              style={[
+                  styles.panel,
+                  { backgroundColor, width: isLargeScreen ? 400 : '90%' }
+              ]}
+              onStartShouldSetResponder={() => true}
+          >
             <View style={styles.header}>
                 <ThemedText type="subtitle">{isEditing ? 'Edit Route' : 'New Route'}</ThemedText>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -180,7 +185,8 @@ export function EditRouteModal({
                 </View>
             </View>
         </Animated.View>
-      </View>
+        </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

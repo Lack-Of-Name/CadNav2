@@ -310,7 +310,18 @@ export default function RoutesScreen() {
         const raw = await AsyncStorage.getItem(ROUTES_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as RouteItem[];
-          if (Array.isArray(parsed)) setRoutes(parsed);
+          if (Array.isArray(parsed)) {
+            // Sanitize older routes that might have string coordinates
+            const sanitized = parsed.map(route => ({
+              ...route,
+              checkpoints: (route.checkpoints || []).map(cp => ({
+                ...cp,
+                latitude: Number(cp.latitude) || 0,
+                longitude: Number(cp.longitude) || 0,
+              }))
+            }));
+            setRoutes(sanitized);
+          }
         }
       } catch (err) {
         void showAlert({ title: 'Routes', message: String(err) });

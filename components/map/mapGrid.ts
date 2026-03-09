@@ -87,11 +87,12 @@ export function computeGridCornersFromMapBounds(
 
   const roundKm = (v: number) => Math.round(v / step) * step;
 
-  // Expand by 1km on each side to ensure coverage, then round to nearest step
-  const adjEastingBL = roundKm(eMin - step);
-  const adjNorthingBL = roundKm(nMin - step);
-  const adjEastingTR = roundKm(eMax + step);
-  const adjNorthingTR = roundKm(nMax + step);
+  // Expand by 3 steps on each side to ensure coverage during panning, then round to nearest step
+  const pad = 3 * step;
+  const adjEastingBL = roundKm(eMin - pad);
+  const adjNorthingBL = roundKm(nMin - pad);
+  const adjEastingTR = roundKm(eMax + pad);
+  const adjNorthingTR = roundKm(nMax + pad);
 
   return {
     offsets: {

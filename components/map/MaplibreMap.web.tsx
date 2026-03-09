@@ -355,8 +355,8 @@ export default function MapLibreMap() {
     };
 
     map.current.on('load', handleLoad);
-    map.current.on('move', update);
-    map.current.on('zoom', update);
+    map.current.on('moveend', update);
+    map.current.on('zoomend', update);
     map.current.on('dragstart', handleUserInteraction);
     map.current.on('zoomstart', handleUserInteraction);
     map.current.on('rotatestart', handleUserInteraction);

@@ -161,11 +161,19 @@ export default function MapLibreMap() {
     setFollowing(true);
   };
 
-  const onMapPress = async (feature: any) => {
+  const onMapPress = async (event: any) => {
     if (!placementModeRequested) return;
-    const { geometry } = feature;
-    const [longitude, latitude] = geometry.coordinates;
-    await addCheckpoint(latitude, longitude);
+    let coords;
+    if (event?.geometry?.coordinates) coords = event.geometry.coordinates;
+    else if (event?.coordinates) coords = event.coordinates;
+
+    if (!coords || !Array.isArray(coords) || coords.length < 2) return;
+    
+    const lon = Number(coords[0]);
+    const lat = Number(coords[1]);
+    if (Number.isNaN(lon) || Number.isNaN(lat)) return;
+
+    await addCheckpoint(lat, lon);
     setPlacedCount(c => c + 1);
     // Don't consume - stay in placement mode for continuous placement
     await consumePlacementModeRequest();
@@ -226,8 +234,9 @@ export default function MapLibreMap() {
 
   const routeLineShape = React.useMemo(() => {
     if (!activeRouteColor) return emptyGeo;
-    const coords = checkpoints.map((cp) => [cp.longitude, cp.latitude]);
-    if (activeRouteStart) {
+    const validCps = checkpoints.filter(cp => Number.isFinite(cp.latitude) && Number.isFinite(cp.longitude));
+    const coords = validCps.map((cp) => [cp.longitude, cp.latitude]);
+    if (activeRouteStart && Number.isFinite(activeRouteStart.longitude) && Number.isFinite(activeRouteStart.latitude)) {
       coords.unshift([activeRouteStart.longitude, activeRouteStart.latitude]);
     }
     if (activeRouteLoop && coords.length > 1) {
@@ -394,9 +403,10 @@ export default function MapLibreMap() {
   }, [mapGridEnabled, mapGridOrigin, emptyGeo]);
 
   const checkpointsShape = React.useMemo(() => {
+    const validCps = checkpoints.filter(cp => Number.isFinite(cp.latitude) && Number.isFinite(cp.longitude));
     return {
       type: 'FeatureCollection',
-      features: checkpoints.map((cp) => ({
+      features: validCps.map((cp) => ({
         type: 'Feature',
         id: cp.id,
         geometry: {
@@ -526,24 +536,6 @@ export default function MapLibreMap() {
           );
           if (following && isUserInteraction) {
             setFollowing(false);
-          }
-          // Update continuously while the camera is moving so grid follows the camera.
-          const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
-          if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
-          const getBounds = mapRef.current?.getVisibleBounds;
-          if (typeof getBounds === 'function') {
-            // Use the same Promise-based approach as onRegionDidChange so both async and sync
-            // implementations of getVisibleBounds are handled consistently.
-            Promise.resolve()
-              .then(() => getBounds.call ? getBounds.call(mapRef.current) : getBounds())
-              .then((b: any) => {
-                if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
-                  setVisibleBounds(b as [[number, number], [number, number]]);
-                }
-              })
-              .catch(() => {
-                // ignore
-              });
           }
         }}
       >
