@@ -144,10 +144,12 @@ export default function MapLibreMap() {
   const centerOnLocation = async (loc: any) => {
     if (!loc || !cameraRef.current) return;
     const { latitude, longitude } = loc.coords;
-    cameraRef.current.zoomTo?.(12, 200);
-    await sleep(200);
-    cameraRef.current.flyTo?.([longitude, latitude], 800);
-    await sleep(800)
+    cameraRef.current.setCamera({
+      centerCoordinate: [longitude, latitude],
+      zoomLevel: 14,
+      animationDuration: 1000,
+    });
+    await sleep(1000);
   };
 
   const handleRecenterPress = async () => {
@@ -198,7 +200,10 @@ export default function MapLibreMap() {
   useEffect(() => {
     if (!following || !lastLocation || !cameraRef.current) return;
     const { latitude, longitude } = lastLocation.coords;
-    cameraRef.current.flyTo([longitude, latitude]);
+    cameraRef.current.setCamera({
+      centerCoordinate: [longitude, latitude],
+      animationDuration: 800,
+    });
   }, [lastLocation, following]);
 
   // Consume viewTarget from routes screen
@@ -207,9 +212,11 @@ export default function MapLibreMap() {
     const fly = async () => {
       const target = await consumeViewTarget();
       if (!target) return;
-      cameraRef.current.zoomTo?.(target.zoom ?? 14, 200);
-      await sleep(200);
-      cameraRef.current.flyTo?.([target.longitude, target.latitude], 800);
+      cameraRef.current.setCamera({
+        centerCoordinate: [target.longitude, target.latitude],
+        zoomLevel: target.zoom ?? 14,
+        animationDuration: 1000,
+      });
       setFollowing(false);
     };
     void fly();

@@ -11,8 +11,8 @@ import StyledButton from './ui/StyledButton';
 type SavedRoutesModalProps = {
   visible: boolean;
   onClose: () => void;
-  onSelectRoute: (route: SavedRoute) => void;
-  onSelectLocation: (location: SavedLocation) => void;
+  onSelectRoute: (route: SavedRoute) => void | Promise<void>;
+  onSelectLocation: (location: SavedLocation) => void | Promise<void>;
 };
 
 export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLocation }: SavedRoutesModalProps) {
@@ -24,14 +24,22 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
   const cardColor = useThemeColor({ light: '#f9f9f9', dark: '#202020' }, 'background');
   const activeTabBg = useThemeColor({ light: '#e0e0e0', dark: '#333' }, 'background');
 
-  function handleSelectRoute(route: SavedRoute) {
-    onSelectRoute(route);
-    onClose();
+  async function handleSelectRoute(route: SavedRoute) {
+    try {
+      await onSelectRoute(route);
+      onClose();
+    } catch (err) {
+      void showAlert({ title: 'Saved Route', message: String(err) });
+    }
   }
 
-  function handleSelectLocation(location: SavedLocation) {
-    onSelectLocation(location);
-    onClose();
+  async function handleSelectLocation(location: SavedLocation) {
+    try {
+      await onSelectLocation(location);
+      onClose();
+    } catch (err) {
+      void showAlert({ title: 'Saved Location', message: String(err) });
+    }
   }
 
   function handleDeleteRoute(route: SavedRoute) {
@@ -98,7 +106,7 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.item, { backgroundColor: cardColor, borderColor }]}
-                      onPress={() => handleSelectRoute(item)}
+                      onPress={() => { void handleSelectRoute(item); }}
                     >
                       <View style={styles.itemContent}>
                         <ThemedText type="defaultSemiBold">{item.name}</ThemedText>
@@ -134,7 +142,7 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
                   renderItem={({ item }) => (
                     <TouchableOpacity
                       style={[styles.item, { backgroundColor: cardColor, borderColor }]}
-                      onPress={() => handleSelectLocation(item)}
+                      onPress={() => { void handleSelectLocation(item); }}
                     >
                       <View style={styles.itemContent}>
                         <ThemedText type="defaultSemiBold">{item.name}</ThemedText>

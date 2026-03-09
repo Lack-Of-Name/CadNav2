@@ -134,16 +134,18 @@ export default function RoutesScreen() {
 
   function handleAddPanelSelect(option: string) {
     setAddPanelVisible(false);
-    if (option === 'place') {
-      void requestPlacementMode();
-      router.push('/');
-    } else if (option === 'reference') {
-      setReferenceModalVisible(true);
-    } else if (option === 'project') {
-      setProjectModalVisible(true);
-    } else if (option === 'saved') {
-      setSavedRoutesModalVisible(true);
-    }
+    setTimeout(() => {
+      if (option === 'place') {
+        void requestPlacementMode();
+        router.push('/');
+      } else if (option === 'reference') {
+        setReferenceModalVisible(true);
+      } else if (option === 'project') {
+        setProjectModalVisible(true);
+      } else if (option === 'saved') {
+        setSavedRoutesModalVisible(true);
+      }
+    }, 350);
   }
 
   function handleAddPoint(location: { latitude: number; longitude: number }) {

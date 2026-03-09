@@ -1,6 +1,7 @@
 import { triggerHaptic } from '@/components/haptic-tab';
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { degreesToMils } from './converter';
 
 type Props = {
@@ -95,17 +96,37 @@ export function CompassOverlay({
 
   const scale = useMemo(() => dialSize / 280, [dialSize]);
 
-  const ringRotation = useMemo(() => {
-    if (heading == null) return '0deg';
-    return `${-heading}deg`;
+  const animatedHeading = useSharedValue(heading ?? 0);
+
+  useEffect(() => {
+    if (heading != null) {
+      const current = animatedHeading.value;
+      const target = heading;
+      // shortest path
+      let diff = ((target - (current % 360) + 540) % 360) - 180;
+      animatedHeading.value = withTiming(current + diff, {
+        duration: 250,
+        easing: Easing.out(Easing.quad),
+      });
+    }
   }, [heading]);
 
-  const pointerRotation = useMemo(() => {
-    if (heading == null || typeof targetBearingDeg !== 'number') return null;
+  const ringStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${-animatedHeading.value}deg` }],
+    };
+  });
+
+  const pointerStyle = useAnimatedStyle(() => {
+    if (heading == null || typeof targetBearingDeg !== 'number') return { opacity: 0 };
     const target = normalize360(targetBearingDeg);
-    const relative = normalize360(target - heading);
-    return `${relative}deg`;
-  }, [heading, targetBearingDeg]);
+    const currHeading = ((animatedHeading.value % 360) + 360) % 360;
+    const relative = target - currHeading;
+    return {
+      opacity: 1,
+      transform: [{ rotate: `${relative}deg` }],
+    };
+  });
 
   const targetRingRotation = useMemo(() => {
     if (typeof targetBearingDeg !== 'number') return null;
@@ -184,7 +205,7 @@ export function CompassOverlay({
         </View>
 
         <View style={[styles.dial, { backgroundColor: background, borderColor, width: dialSize, height: dialSize }]}>
-          <View style={[styles.ring, { transform: [{ rotate: ringRotation }] }]}>
+          <Animated.View style={[styles.ring, ringStyle]}>
             {TICKS.map((deg) => {
               const isMajor = deg % 45 === 0;
               const cardinal = isCardinal(deg);
@@ -258,7 +279,7 @@ export function CompassOverlay({
                 <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
               </View>
             </View>
-          </View>
+          </Animated.View>
 
           {/* Heading needle */}
           <View
@@ -269,8 +290,8 @@ export function CompassOverlay({
           />
 
           {/* Target pointer */}
-          {pointerRotation ? (
-            <View style={[styles.targetPointerWrap, { transform: [{ rotate: pointerRotation }] }]}>
+          {typeof targetBearingDeg === 'number' ? (
+            <Animated.View style={[styles.targetPointerWrap, pointerStyle]}>
               <View
                 style={[
                   styles.targetPointer,
@@ -287,7 +308,7 @@ export function CompassOverlay({
               <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
               </View>
-            </View>
+            </Animated.View>
           ) : null}
         </View>
 

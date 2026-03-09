@@ -1,7 +1,6 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
 import React from 'react';
 import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
 
@@ -53,12 +52,10 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
   if (!visible) return null;
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <Animated.View 
-            entering={SlideInDown.duration(250)} 
-            exiting={SlideOutDown}
+        <View 
             style={[
                 styles.panel, 
                 { backgroundColor, width: isLargeScreen ? 400 : '90%' }
@@ -92,7 +89,7 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
                     </TouchableOpacity>
                 ))}
             </View>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
