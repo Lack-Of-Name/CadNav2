@@ -1,7 +1,8 @@
-// Ensure non-standard assets (like .COF) are bundled correctly by Metro.
-const { getDefaultConfig } = require('expo/metro-config');
+const {
+  getSentryExpoConfig
+} = require("@sentry/react-native/metro");
 
-const config = getDefaultConfig(__dirname);
+const config = getSentryExpoConfig(__dirname);
 
 config.resolver.assetExts = Array.from(new Set([...(config.resolver.assetExts ?? []), 'cof', 'COF']));
 

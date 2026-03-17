@@ -9,6 +9,12 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://5302fc03e1b9e181c2a567764b74c597@o4511058552750080.ingest.us.sentry.io/4511058557468672',
+  debug: __DEV__, // If `true`, Sentry will try to print out useful debugging information
+});
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -85,7 +91,7 @@ function RuntimeErrorBanner() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   const colorScheme = useColorScheme();
 
   useEffect(() => installGlobalRuntimeErrorHandler(), []);
@@ -110,6 +116,8 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(RootLayout);
 
 const styles = StyleSheet.create({
   errorOverlay: {
