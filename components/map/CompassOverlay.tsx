@@ -27,7 +27,10 @@ type Props = {
   tickStrong: string;
 };
 
-const normalize360 = (value: number) => ((value % 360) + 360) % 360;
+const normalize360 = (value: number) => {
+  'worklet';
+  return ((value % 360) + 360) % 360;
+};
 
 /**
  * 24 ticks total (every 15°):
