@@ -155,6 +155,42 @@ export function gridCoordsToLatLon(origin: LatLon, easting: number, northing: nu
 }
 
 /**
+ * Convert latitude/longitude to grid coordinates (easting, northing) in meters from origin.
+ */
+export function latLonToGridCoords(origin: LatLon, target: LatLon, gridConvergence = 0): { easting: number; northing: number } {
+  const originPoint = turf.point([origin.longitude, origin.latitude]);
+  const targetPoint = turf.point([target.longitude, target.latitude]);
+
+  const dist = turf.distance(originPoint, targetPoint, { units: 'meters' });
+  const bearing = turf.bearing(originPoint, targetPoint);
+  
+  const rad = (bearing * Math.PI) / 180;
+  const eTrue = dist * Math.sin(rad);
+  const nTrue = dist * Math.cos(rad);
+
+  // rotate into grid coordinates (grid north = true north + gridConvergence)
+  const convRad = (-gridConvergence * Math.PI) / 180;
+  const cos = Math.cos(convRad);
+  const sin = Math.sin(convRad);
+  
+  const easting = eTrue * cos - nTrue * sin;
+  const northing = eTrue * sin + nTrue * cos;
+
+  return { easting, northing };
+}
+
+/**
+ * Format easting and northing as a grid reference string (e.g. "+12345, -67890").
+ */
+export function formatGridReference(easting: number, northing: number): string {
+  const eSign = easting >= 0 ? '+' : '-';
+  const nSign = northing >= 0 ? '+' : '-';
+  const eVal = Math.round(Math.abs(easting)).toString().padStart(5, '0');
+  const nVal = Math.round(Math.abs(northing)).toString().padStart(5, '0');
+  return `E${eSign}${eVal} N${nSign}${nVal}`;
+}
+
+/**
  * Generate grid intersections as lat/lon points. Returns an array of objects
  * containing the original grid `e` and `n` values (in meters) and the
  * corresponding `latitude`/`longitude` computed after applying

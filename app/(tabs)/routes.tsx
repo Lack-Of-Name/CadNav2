@@ -2,6 +2,7 @@ import { AddRoutePanel } from '@/components/AddRoutePanel';
 import { alert as showAlert } from '@/components/alert';
 import { EditRouteModal } from '@/components/EditRouteModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
+import { formatGridReference, latLonToGridCoords } from '@/components/map/mapGrid';
 import { haversineMeters } from '@/components/map/MaplibreMap.general';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { SavedRoutesModal } from '@/components/SavedRoutesModal';
@@ -12,6 +13,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import StyledButton from '@/components/ui/StyledButton';
 import { Colors } from '@/constants/theme';
 import { Checkpoint, SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
+import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -55,7 +57,14 @@ function formatDistance(meters: number): string {
   return `${Math.round(meters)} m`;
 }
 
+function formatGrid(lat: number, lon: number, origin: { latitude: number, longitude: number } | null, conv: number): string {
+  if (!origin) return '';
+  const { easting, northing } = latLonToGridCoords(origin, { latitude: lat, longitude: lon }, conv);
+  return ` · Grid: ${formatGridReference(easting, northing)}`;
+}
+
 export default function RoutesScreen() {
+  const { mapGridOrigin, gridConvergence } = useSettings();
   const router = useRouter();
   const {
     requestPlacementMode,
@@ -444,7 +453,10 @@ export default function RoutesScreen() {
                           </View>
                         )}
                       </View>
-                      <ThemedText style={styles.cpCoords}>{formatCoords(cp.latitude, cp.longitude)}</ThemedText>
+                      <ThemedText style={styles.cpCoords}>
+                        {formatCoords(cp.latitude, cp.longitude)}
+                        {formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0)}
+                      </ThemedText>
                     </View>
                     <TouchableOpacity
                       onPress={() => handleSaveLocationFromCheckpoint(cp)}

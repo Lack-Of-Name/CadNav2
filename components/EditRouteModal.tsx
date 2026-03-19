@@ -1,6 +1,6 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
-import React, { useEffect, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, TextInput, TouchableOpacity, View, useWindowDimensions, KeyboardAvoidingView, Pressable, Keyboard, Platform } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
@@ -101,15 +101,15 @@ export function EditRouteModal({
       >
         <Pressable onPress={Keyboard.dismiss} style={styles.overlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-          <Animated.View
-              entering={SlideInDown.duration(250)}
-              exiting={SlideOutDown}
-              style={[
-                  styles.panel,
-                  { backgroundColor, width: isLargeScreen ? 400 : '90%' }
-              ]}
-              onStartShouldSetResponder={() => true}
-          >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <Animated.View
+                entering={SlideInDown.duration(250)}
+                exiting={SlideOutDown}
+                style={[
+                    styles.panel,
+                    { backgroundColor, width: isLargeScreen ? 400 : '90%' }
+                ]}
+            >
             <View style={styles.header}>
                 <ThemedText type="subtitle">{isEditing ? 'Edit Route' : 'New Route'}</ThemedText>
                 <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -185,6 +185,7 @@ export function EditRouteModal({
                 </View>
             </View>
         </Animated.View>
+        </TouchableWithoutFeedback>
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>
@@ -280,3 +281,4 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+

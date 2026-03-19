@@ -1,7 +1,7 @@
 import { useSettings } from '@/hooks/settings';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useState } from 'react';
-import { Modal, StyleSheet, TextInput, View, TouchableOpacity, KeyboardAvoidingView, Pressable, Keyboard, Platform } from 'react-native';
+import { Modal, StyleSheet, TextInput, View, TouchableOpacity, KeyboardAvoidingView, Pressable, Keyboard, Platform, TouchableWithoutFeedback } from 'react-native';
 import { gridCoordsToLatLon } from './map/mapGrid';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -84,7 +84,9 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
       >
         <Pressable style={styles.overlay} onPress={Keyboard.dismiss}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={reset} activeOpacity={1} />
-          <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]} onStartShouldSetResponder={() => true}>
+          
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Add by Grid Reference</ThemedText>
           
           <ThemedText style={{ marginBottom: 4 }}>Easting (grid digits)</ThemedText>
@@ -133,6 +135,7 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
             <StyledButton variant="primary" onPress={handleAdd}>Add Point</StyledButton>
           </View>
         </ThemedView>
+          </TouchableWithoutFeedback>
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>
@@ -192,3 +195,5 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
+
+

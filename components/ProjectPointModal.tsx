@@ -2,7 +2,7 @@ import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useEffect, useState } from 'react';
-import { Modal, StyleSheet, TextInput, View, Keyboard, Pressable, KeyboardAvoidingView, Platform } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import StyledButton from './ui/StyledButton';
@@ -95,9 +95,11 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
     <Modal visible={visible} transparent animationType="fade" onRequestClose={reset}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <Pressable style={styles.overlay} onPress={Keyboard.dismiss}>
-          <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400, alignItems: 'center' }}>
-            <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
-              <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Project Point</ThemedText>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={reset} activeOpacity={1} />
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={{ width: '100%', maxWidth: 400, alignItems: 'center' }}>
+              <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
+                <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Project Point</ThemedText>
           
           <View style={styles.row}>
             <ThemedText>From Last Checkpoint</ThemedText>
@@ -141,7 +143,8 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
             <StyledButton variant="primary" onPress={handleAdd}>Add Point</StyledButton>
           </View>
         </ThemedView>
-          </Pressable>
+            </View>
+          </TouchableWithoutFeedback>
         </Pressable>
       </KeyboardAvoidingView>
     </Modal>
@@ -193,3 +196,5 @@ const styles = StyleSheet.create({
       marginBottom: 8,
   }
 });
+
+

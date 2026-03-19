@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 import { bearingDegrees, CompassButton, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
@@ -41,6 +42,94 @@ function isLightColor(hex: string): boolean {
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 }
 
+function HudCompassArrow({ targetBearingDeg, rawHeading, color }: { targetBearingDeg: number, rawHeading: number, color: string }) {
+  const animatedRotation = useSharedValue(targetBearingDeg - rawHeading);
+
+  useEffect(() => {
+    const target = targetBearingDeg - rawHeading;
+    const current = animatedRotation.value;
+    let diff = ((target - (current % 360) + 540) % 360) - 180;
+    animatedRotation.value = withTiming(current + diff, {
+      duration: 300,
+      easing: Easing.out(Easing.quad),
+    });
+  }, [targetBearingDeg, rawHeading]);
+
+  const style = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${animatedRotation.value}deg` }]
+    };
+  });
+
+  return (
+    <Animated.View style={[{
+      width: 0, height: 0,
+      borderLeftWidth: 30, borderLeftColor: 'transparent',
+      borderRightWidth: 30, borderRightColor: 'transparent',
+      borderBottomWidth: 80, borderBottomColor: color,
+    }, style]} />
+  );
+}
+
+const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
+const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
+
+const gridLinesStyle = { 
+  lineColor: 'rgba(0,0,0,0.8)', 
+  lineWidth: 1.5,
+  lineOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
+const gridSublinesStyle = { 
+  lineColor: 'rgba(0,0,0,0.3)', 
+  lineWidth: 1,
+  lineOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
+const gridNumbersStyle = {
+  textField: ['get', 'label'],
+  textSize: 14,
+  textColor: 'rgba(0,0,0,1)',
+  textHaloColor: 'rgba(255,255,255,0.8)',
+  textHaloWidth: 2,
+  textOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
+const gridOriginCircleStyle = {
+  circleRadius: 6,
+  circleColor: 'transparent',
+  circleStrokeWidth: 2,
+  circleStrokeColor: 'rgba(0,0,0,0.8)',
+  circleStrokeOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
+const gridOriginDotStyle = { 
+  circleRadius: 2, 
+  circleColor: 'rgba(0,0,0,0.8)',
+  circleOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
+
+const checkpointsOuterStyle = {
+  circleRadius: 12,
+  circleColor: 'rgba(255,255,255,0.8)',
+  circleStrokeWidth: 1,
+  circleStrokeColor: 'rgba(0,0,0,0.1)',
+};
+const checkpointsInnerStyle = { circleRadius: 8, circleColor: '#fff' };
+const checkpointsDotStyle = { circleRadius: 6, circleColor: ['get', 'color'] };
+
+const locationMarkerPulseStyle = {
+  circleRadius: 12,
+  circleColor: 'rgba(0,122,255,0.15)',
+  circleStrokeWidth: 6,
+  circleStrokeColor: 'rgba(0,122,255,0.15)',
+};
+const locationMarkerBgStyle = { circleRadius: 12, circleColor: '#007AFF' };
+const locationMarkerIconStyle = {
+  iconImage: ['case', ['get', 'hasOrientation'], 'location-arrow', 'location-dot'],
+  iconSize: 1,
+  iconRotate: ['get', 'orientation'],
+  iconRotationAlignment: 'map',
+  iconAllowOverlap: true,
+  iconIgnorePlacement: true,
+};
+
 export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading } = useMapTilerKey();
@@ -59,6 +148,28 @@ export default function MapLibreMap() {
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
+  const mapImages = React.useMemo(() => ({
+    'location-arrow': { uri: 'data:image/svg+xml;base64,' + btoa(arrowSvg) },
+    'location-dot': { uri: 'data:image/svg+xml;base64,' + btoa(dotSvg) },
+  }), []);
+
+  const routeLineStyle = React.useMemo(() => ({
+    lineColor: activeRouteColor ?? 'transparent',
+    lineOpacity: activeRouteColor ? 0.75 : 0,
+    lineWidth: 3,
+  }), [activeRouteColor]);
+
+  const checkpointsLabelsStyle = React.useMemo(() => ({
+    textField: ['get', 'label'],
+    textSize: 12,
+    textColor: String(textColor),
+    textHaloColor: String(background),
+    textHaloWidth: 2,
+    textOffset: [0, 1.5],
+    textAnchor: 'top',
+    textOpacity: ['case', ['==', ['get', 'label'], ''], 0, 1],
+  }) as any, [textColor, background]);
+
   const router = useRouter();
   const cameraRef = React.useRef<any>(null);
   const mapRef = React.useRef<any>(null);
@@ -260,10 +371,22 @@ export default function MapLibreMap() {
   }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
 
   const gridShape = React.useMemo(() => {
-    if (!mapGridEnabled || zoomLevel < 12 || !visibleBounds) return emptyGeo;
+    if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
     const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
-    const sw = { latitude: visibleBounds[1][1], longitude: visibleBounds[1][0] };
-    const ne = { latitude: visibleBounds[0][1], longitude: visibleBounds[0][0] };
+    
+    // Pad the visible bounds by 1 screen size in all directions to prevent grid lines 
+    // from popping into existence while panning.
+    const latSpan = visibleBounds[0][1] - visibleBounds[1][1];
+    const lngSpan = visibleBounds[0][0] - visibleBounds[1][0];
+    
+    const sw = { 
+      latitude: visibleBounds[1][1] - latSpan, 
+      longitude: visibleBounds[1][0] - lngSpan 
+    };
+    const ne = { 
+      latitude: visibleBounds[0][1] + latSpan, 
+      longitude: visibleBounds[0][0] + lngSpan 
+    };
 
     const gridOffsets = computeGridCornersFromMapBounds(originPt, sw, ne, 1000, gridConvergence ?? 0);
     const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
@@ -493,9 +616,6 @@ export default function MapLibreMap() {
 
   const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
 
-  const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
-  const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
-
   const mapContent = (
     <ThemedView style={styles.page}>
       <StatusBar animated={true} barStyle="dark-content" />
@@ -551,69 +671,42 @@ export default function MapLibreMap() {
         />
 
         <Images
-          images={{
-            'location-arrow': { uri: 'data:image/svg+xml;base64,' + btoa(arrowSvg) },
-            'location-dot': { uri: 'data:image/svg+xml;base64,' + btoa(dotSvg) },
-          }}
+          images={mapImages}
         />
 
         <ShapeSource id="grid-source" shape={gridShape}>
           <LineLayer
             id="grid-lines"
             filter={['==', 'kind', 'gridLine']}
-            style={{
-              lineColor: 'rgba(0,0,0,0.8)',
-              lineWidth: 1.5,
-            }}
+            style={gridLinesStyle}
           />
           <LineLayer
             id="grid-sublines"
             filter={['==', 'kind', 'gridSubLine']}
-            style={{
-              lineColor: 'rgba(0,0,0,0.3)',
-              lineWidth: 1,
-            }}
+            style={gridSublinesStyle}
           />
           <SymbolLayer
             id="grid-numbers"
             filter={['==', 'kind', 'gridNumber']}
-            style={{
-              textField: ['get', 'label'],
-              textSize: 14,
-              textColor: 'rgba(0,0,0,1)',
-              textHaloColor: 'rgba(255,255,255,0.8)',
-              textHaloWidth: 2,
-            }}
+            style={gridNumbersStyle}
           />
         </ShapeSource>
 
         <ShapeSource id="grid-origin-source" shape={gridOriginShape}>
           <CircleLayer
             id="grid-origin-circle"
-            style={{
-              circleRadius: 6,
-              circleColor: 'transparent',
-              circleStrokeWidth: 2,
-              circleStrokeColor: 'rgba(0,0,0,0.8)',
-            }}
+            style={gridOriginCircleStyle}
           />
           <CircleLayer
             id="grid-origin-dot"
-            style={{
-              circleRadius: 2,
-              circleColor: 'rgba(0,0,0,0.8)',
-            }}
+            style={gridOriginDotStyle}
           />
         </ShapeSource>
 
         <ShapeSource id="route-line-source" shape={routeLineShape}>
           <LineLayer
             id="route-line"
-            style={{
-              lineColor: activeRouteColor ?? 'transparent',
-              lineOpacity: activeRouteColor ? 0.75 : 0,
-              lineWidth: 3,
-            }}
+            style={routeLineStyle}
           />
         </ShapeSource>
 
@@ -629,69 +722,34 @@ export default function MapLibreMap() {
         >
           <CircleLayer
             id="checkpoints-outer"
-            style={{
-              circleRadius: 12,
-              circleColor: 'rgba(255,255,255,0.8)',
-              circleStrokeWidth: 1,
-              circleStrokeColor: 'rgba(0,0,0,0.1)',
-            }}
+            style={checkpointsOuterStyle}
           />
           <CircleLayer
             id="checkpoints-inner"
-            style={{
-              circleRadius: 8,
-              circleColor: '#fff',
-            }}
+            style={checkpointsInnerStyle}
           />
           <CircleLayer
             id="checkpoints-dot"
-            style={{
-              circleRadius: 6,
-              circleColor: ['get', 'color'],
-            }}
+            style={checkpointsDotStyle}
           />
           <SymbolLayer
             id="checkpoints-labels"
-            style={{
-              textField: ['get', 'label'],
-              textSize: 12,
-              textColor: String(textColor),
-              textHaloColor: String(background),
-              textHaloWidth: 2,
-              textOffset: [0, 1.5],
-              textAnchor: 'top',
-              textOpacity: ['case', ['==', ['get', 'label'], ''], 0, 1],
-            }}
+            style={checkpointsLabelsStyle}
           />
         </ShapeSource>
 
         <ShapeSource id="location-marker-source" shape={locationMarkerShape}>
           <CircleLayer
             id="location-marker-pulse"
-            style={{
-              circleRadius: 12,
-              circleColor: 'rgba(0,122,255,0.15)',
-              circleStrokeWidth: 6,
-              circleStrokeColor: 'rgba(0,122,255,0.15)',
-            }}
+            style={locationMarkerPulseStyle}
           />
           <CircleLayer
             id="location-marker-bg"
-            style={{
-              circleRadius: 12,
-              circleColor: '#007AFF',
-            }}
+            style={locationMarkerBgStyle}
           />
           <SymbolLayer
             id="location-marker-icon"
-            style={{
-              iconImage: ['case', ['get', 'hasOrientation'], 'location-arrow', 'location-dot'],
-              iconSize: 1,
-              iconRotate: ['get', 'orientation'],
-              iconRotationAlignment: 'map',
-              iconAllowOverlap: true,
-              iconIgnorePlacement: true,
-            }}
+            style={locationMarkerIconStyle}
           />
         </ShapeSource>
       </MapView>
@@ -752,22 +810,11 @@ export default function MapLibreMap() {
               </View>
 
               <View style={{ marginTop: 20, position: 'relative', width: 120, height: 120, alignItems: 'center', justifyContent: 'center' }}>
-                {(() => {
-                  let rotationDeg = 0;
-                  if (lastLocation?.coords) {
-                    const rawHeading = lastLocation.coords.magHeading ?? lastLocation.coords.trueHeading ?? 0;
-                    rotationDeg = compassTargetBearingDeg - rawHeading;
-                  }
-                  return (
-                    <View style={{
-                      width: 0, height: 0,
-                      borderLeftWidth: 30, borderLeftColor: 'transparent',
-                      borderRightWidth: 30, borderRightColor: 'transparent',
-                      borderBottomWidth: 80, borderBottomColor: String(bannerAccent),
-                      transform: [{ rotate: `${rotationDeg}deg` }]
-                    }} />
-                  );
-                })()}
+                <HudCompassArrow
+                  targetBearingDeg={compassTargetBearingDeg}
+                  rawHeading={lastLocation?.coords ? (lastLocation.coords.magHeading ?? lastLocation.coords.trueHeading ?? 0) : 0}
+                  color={String(bannerAccent)}
+                />
               </View>
             </>
           ) : (

@@ -146,28 +146,42 @@ export function useGPS(options?: GPSOptions) {
             headingSubscriptionRef.current = await Location.watchHeadingAsync((h) => {
               if (cancelled) return;
               const now = Date.now();
-              if (lowPowerMode && now - lastHeadingUpdate < 500) return;
+              if (lowPowerMode && now - lastHeadingUpdate < 250) return;
               if (!lowPowerMode && now - lastHeadingUpdate < 33) return;
               lastHeadingUpdate = now;
 
-              const mag = Number.isFinite(h.magHeading) ? h.magHeading : null;
-              // temporarily set magnetic heading; convert to true if we have a location
-              magHeadingRef.current = mag;
+              const mag = typeof h.magHeading === 'number' && h.magHeading >= 0 ? h.magHeading : null;
+              const nativeTrue = typeof h.trueHeading === 'number' && h.trueHeading >= 0 ? h.trueHeading : null;
+              
+              const prevMag = magHeadingRef.current;
+              // Only update if changed significantly (e.g. > 1 degree) to avoid state spam
+              if (mag != null && prevMag != null && Math.abs(mag - prevMag) < 1) {
+                return;
+              }
+
+              magHeadingRef.current = mag ?? magHeadingRef.current;
+              if (nativeTrue != null) {
+                trueHeadingRef.current = nativeTrue;
+                setTrueHeading(nativeTrue);
+              }
               setMagHeading(mag);
+
               setLastLocation((prev) =>
                 prev
                   ? {
                       ...prev,
                       coords: {
                         ...prev.coords,
-                        magHeading: mag,
+                        magHeading: magHeadingRef.current,
+                        trueHeading: trueHeadingRef.current,
                       },
                     }
                   : prev
               );
 
               const loc = lastLocationRef.current;
-              if (mag != null && loc) {
+              // Only do heavy manual True Heading computation if native iOS/Android didn't provide one
+              if (nativeTrue == null && mag != null && loc) {
                 void computeAndSetTrueHeading(mag, loc.coords.latitude, loc.coords.longitude, loc.coords.altitude ?? null);
               }
             });
@@ -185,7 +199,7 @@ export function useGPS(options?: GPSOptions) {
             const next = toGPSLocation(current);
             setLastLocation(next);
             // If we already have a magnetic heading, convert it to true now that we have coordinates
-            if (magHeadingRef.current != null) {
+            if (magHeadingRef.current != null && trueHeadingRef.current == null) {
               void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
             }
           }
@@ -215,7 +229,7 @@ export function useGPS(options?: GPSOptions) {
             const next = toGPSLocation(loc);
             setLastLocation(next);
             // Convert any existing magnetic heading to true using updated location
-            if (magHeadingRef.current != null) {
+            if (magHeadingRef.current != null && trueHeadingRef.current == null) {
               await computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
             }
           }
@@ -262,12 +276,16 @@ export function useGPS(options?: GPSOptions) {
 
     const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
       const now = Date.now();
-      if (lowPowerMode && now - lastUpdate < 500) return;
+      if (lowPowerMode && now - lastUpdate < 250) return;
       if (!lowPowerMode && now - lastUpdate < 33) return;
       lastUpdate = now;
 
       const mag = (ev as any).webkitCompassHeading ?? ev.alpha;
       if (mag == null) return;
+      
+      const prevMag = magHeadingRef.current;
+      if (prevMag != null && Math.abs(mag - prevMag) < 1) return;
+      
       // set magnetic value first, then convert if we have a location
       magHeadingRef.current = mag;
       setMagHeading(mag);
@@ -291,7 +309,7 @@ export function useGPS(options?: GPSOptions) {
 
     window.addEventListener('deviceorientation', handler as EventListener);
     return () => window.removeEventListener('deviceorientation', handler as EventListener);
-  }, [computeAndSetTrueHeading]);
+  }, [computeAndSetTrueHeading, lowPowerMode]);
 
   const requestLocation = useCallback(() => {
     // Force the startup effect to run again; useful when permission/services change

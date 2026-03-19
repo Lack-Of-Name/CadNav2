@@ -167,7 +167,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
   // ---------- Render ----------
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
         <ThemedView style={[styles.container, { backgroundColor: String(background), borderColor: String(borderColor) }]}>
           {/* Header */}
           <View style={styles.headerRow}>
@@ -190,7 +190,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView bounces={false} overScrollMode="never" style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 20 }}>
+          <ScrollView bounces={false} overScrollMode="never" style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
             {/* ========== WEB: Disabled state ========== */}
             {isWeb && (
               <View style={styles.webDisabledContainer}>
@@ -531,7 +531,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
             )}
           </ScrollView>
         </ThemedView>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 }
@@ -831,3 +831,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
 });
+
+
+
+
+

@@ -425,10 +425,22 @@ export default function MapLibreMap() {
   }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON]);
 
   const gridShape = React.useMemo(() => {
-    if (!mapGridEnabled || zoomLevel < 12 || !visibleBounds) return emptyGeo;
+    if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
     const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
-    const sw = { latitude: visibleBounds[1][1], longitude: visibleBounds[1][0] };
-    const ne = { latitude: visibleBounds[0][1], longitude: visibleBounds[0][0] };
+    
+    // Pad the visible bounds by 1 screen size in all directions to prevent grid lines 
+    // from popping into existence while panning.
+    const latSpan = visibleBounds[0][1] - visibleBounds[1][1];
+    const lngSpan = visibleBounds[0][0] - visibleBounds[1][0];
+    
+    const sw = { 
+      latitude: visibleBounds[1][1] - latSpan, 
+      longitude: visibleBounds[1][0] - lngSpan 
+    };
+    const ne = { 
+      latitude: visibleBounds[0][1] + latSpan, 
+      longitude: visibleBounds[0][0] + lngSpan 
+    };
 
     const gridOffsets = computeGridCornersFromMapBounds(originPt, sw, ne, 1000, gridConvergence ?? 0);
     const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
@@ -589,6 +601,7 @@ export default function MapLibreMap() {
         paint: {
           'line-color': 'rgba(0,0,0,0.3)',
           'line-width': 1,
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
         },
       });
     } else {
@@ -605,6 +618,7 @@ export default function MapLibreMap() {
         paint: {
           'line-color': 'rgba(0,0,0,0.8)',
           'line-width': 1.5,
+          'line-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
         },
       });
     } else {
@@ -626,6 +640,7 @@ export default function MapLibreMap() {
           'text-color': 'rgba(0,0,0,1)',
           'text-halo-color': 'rgba(255, 255, 255, 0.8)',
           'text-halo-width': 2,
+          'text-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
         },
       });
     } else {
@@ -658,6 +673,7 @@ export default function MapLibreMap() {
           'circle-color': 'transparent',
           'circle-stroke-width': 2,
           'circle-stroke-color': 'rgba(0,0,0,0.8)',
+          'circle-stroke-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
         },
       });
     } else {
@@ -673,6 +689,7 @@ export default function MapLibreMap() {
         paint: {
           'circle-radius': 2,
           'circle-color': 'rgba(0,0,0,0.8)',
+          'circle-opacity': ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
         },
       });
     } else {
