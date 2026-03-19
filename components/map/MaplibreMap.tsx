@@ -496,8 +496,8 @@ export default function MapLibreMap() {
           if (p00 && p10 && p01 && p11) {
             const centerLon = (p00.longitude + p10.longitude + p01.longitude + p11.longitude) / 4;
             const centerLat = (p00.latitude + p10.latitude + p01.latitude + p11.latitude) / 4;
-            const eStr = (e0 < 0 ? '-' : '') + Math.floor(Math.abs(e0) / 1000).toString().padStart(2, '0').slice(-2);
-            const nStr = (n0 < 0 ? '-' : '') + Math.floor(Math.abs(n0) / 1000).toString().padStart(2, '0').slice(-2);
+            const eStr = (e0 < 0 ? '-' : '') + Math.abs(Math.floor(e0 / 1000)).toString().padStart(2, '0').slice(-2);
+            const nStr = (n0 < 0 ? '-' : '') + Math.abs(Math.floor(n0 / 1000)).toString().padStart(2, '0').slice(-2);
             features.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [centerLon, centerLat] },

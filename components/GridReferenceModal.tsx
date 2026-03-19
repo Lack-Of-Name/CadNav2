@@ -39,7 +39,16 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
     };
     const scale = scaleByDigits[len];
     const num = parseInt(trimmed, 10);
-    return { meters: num * scale * sign, digits: len };
+    
+    if (sign === 1) {
+      return { meters: num * scale, digits: len };
+    } else {
+      const metersAbs = num * scale;
+      const km = Math.floor(metersAbs / 1000);
+      const remainder = metersAbs % 1000;
+      const trueMeters = (-km * 1000) + remainder;
+      return { meters: trueMeters, digits: len };
+    }
   }
 
   function handleAdd() {
@@ -82,10 +91,10 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <Pressable style={styles.overlay} onPress={Keyboard.dismiss}>
+        <Pressable style={styles.overlay} onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={reset} activeOpacity={1} />
           
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
           <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Add by Grid Reference</ThemedText>
           
@@ -195,5 +204,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
+
 
 

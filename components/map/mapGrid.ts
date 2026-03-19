@@ -85,14 +85,12 @@ export function computeGridCornersFromMapBounds(
   const nMin = Math.min(...nVals);
   const nMax = Math.max(...nVals);
 
-  const roundKm = (v: number) => Math.round(v / step) * step;
-
-  // Expand by 3 steps on each side to ensure coverage during panning, then round to nearest step
+  // Expand by 3 steps on each side to ensure coverage during panning, then snap to grid steps
   const pad = 3 * step;
-  const adjEastingBL = roundKm(eMin - pad);
-  const adjNorthingBL = roundKm(nMin - pad);
-  const adjEastingTR = roundKm(eMax + pad);
-  const adjNorthingTR = roundKm(nMax + pad);
+  const adjEastingBL = Math.floor((eMin - pad) / step) * step;
+  const adjNorthingBL = Math.floor((nMin - pad) / step) * step;
+  const adjEastingTR = Math.ceil((eMax + pad) / step) * step;
+  const adjNorthingTR = Math.ceil((nMax + pad) / step) * step;
 
   return {
     offsets: {
@@ -183,11 +181,17 @@ export function latLonToGridCoords(origin: LatLon, target: LatLon, gridConvergen
  * Format easting and northing as a grid reference string (e.g. "+12345, -67890").
  */
 export function formatGridReference(easting: number, northing: number): string {
-  const eSign = easting >= 0 ? '+' : '-';
-  const nSign = northing >= 0 ? '+' : '-';
-  const eVal = Math.round(Math.abs(easting)).toString().padStart(5, '0');
-  const nVal = Math.round(Math.abs(northing)).toString().padStart(5, '0');
-  return `E${eSign}${eVal} N${nSign}${nVal}`;
+  const formatVal = (val: number) => {
+    if (val >= 0) {
+      return '+' + Math.round(val).toString().padStart(5, '0');
+    } else {
+      const km = Math.floor(val / 1000);
+      const remainder = Math.round(val - (km * 1000));
+      const formatted = (Math.abs(km) * 1000 + remainder).toString().padStart(5, '0');
+      return '-' + formatted;
+    }
+  };
+  return `E${formatVal(easting)} N${formatVal(northing)}`;
 }
 
 /**

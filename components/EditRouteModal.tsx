@@ -99,9 +99,9 @@ export function EditRouteModal({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <Pressable onPress={Keyboard.dismiss} style={styles.overlay}>
+        <Pressable onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} style={styles.overlay}>
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
             <Animated.View
                 entering={SlideInDown.duration(250)}
                 exiting={SlideOutDown}
@@ -281,4 +281,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 });
+
 
