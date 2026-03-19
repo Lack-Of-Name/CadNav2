@@ -70,5 +70,4 @@ credentials.json
 !.vscode/launch.json
 *.iml
 *.swp
-
-.env.local
+current_tool.txt

@@ -219,15 +219,19 @@ export default function MapLibreMap() {
         : `${Math.round(compassTargetBearingDeg)}°`
       : null;
 
+  const compassDistanceMeters = lastLocation && selectedCheckpoint
+    ? haversineMeters(
+        lastLocation.coords.latitude,
+        lastLocation.coords.longitude,
+        selectedCheckpoint.latitude,
+        selectedCheckpoint.longitude
+      )
+    : null;
+
   const compassDistanceText =
-    lastLocation && selectedCheckpoint
+    compassDistanceMeters != null
       ? (() => {
-          const meters = haversineMeters(
-            lastLocation.coords.latitude,
-            lastLocation.coords.longitude,
-            selectedCheckpoint.latitude,
-            selectedCheckpoint.longitude
-          );
+          const meters = compassDistanceMeters;
           if (!Number.isFinite(meters)) return null;
           if (meters >= 1000) {
             const km = meters / 1000;
@@ -237,6 +241,30 @@ export default function MapLibreMap() {
           return `${Math.round(meters)} m`;
         })()
       : null;
+
+  const [hudProgressDistances, setHudProgressDistances] = useState<Record<string, number>>({});
+  
+  useEffect(() => {
+    if (selectedId && lastLocation && !hudProgressDistances[selectedId]) {
+      const sp = checkpoints.find((c) => c.id === selectedId);
+      if (sp) {
+        const dist = haversineMeters(
+          lastLocation.coords.latitude,
+          lastLocation.coords.longitude,
+          sp.latitude,
+          sp.longitude
+        );
+        if (Number.isFinite(dist)) {
+          setHudProgressDistances((prev) => ({ ...prev, [selectedId]: dist }));
+        }
+      }
+    }
+  }, [selectedId, lastLocation, checkpoints, hudProgressDistances]);
+
+  const startDistance = selectedId ? hudProgressDistances[selectedId] : null;
+  const currentProgress = (startDistance && compassDistanceMeters != null && startDistance > 0)
+    ? Math.max(0, Math.min(1, 1 - (compassDistanceMeters / startDistance)))
+    : 0;
 
   const handleNextTarget = () => {
     if (checkpoints.length <= 1) return;
@@ -821,6 +849,29 @@ export default function MapLibreMap() {
             <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center' }}>
               Select a checkpoint to view navigation metrics
             </Text>
+          )}
+
+          {compassTargetLabel && startDistance != null && startDistance > 0 && (
+            <View style={{ position: 'absolute', right: 28, top: '20%', bottom: '20%', width: 24 }}>
+              <View style={{
+                position: 'absolute', right: 0, top: 0, bottom: 0, width: 8,
+                backgroundColor: '#333', borderRadius: 4, overflow: 'hidden'
+              }}>
+                <View style={{
+                  position: 'absolute', left: 0, right: 0, bottom: 0,
+                  height: `${currentProgress * 100}%`,
+                  backgroundColor: String(bannerAccent),
+                  borderRadius: 4
+                }} />
+              </View>
+              <View style={{
+                position: 'absolute', right: 12, bottom: `${Math.min(100, Math.max(0, currentProgress * 100))}%`,
+                transform: [{ translateY: 6 }],
+                borderTopWidth: 6, borderTopColor: 'transparent',
+                borderBottomWidth: 6, borderBottomColor: 'transparent',
+                borderLeftWidth: 10, borderLeftColor: String(bannerAccent),
+              }} />
+            </View>
           )}
         </View>
       )}

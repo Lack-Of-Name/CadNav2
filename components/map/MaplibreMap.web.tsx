@@ -152,15 +152,19 @@ export default function MapLibreMap() {
         : `${Math.round(compassTargetBearingDeg)}°`
       : null;
 
+  const compassDistanceMeters = effectiveLastLocation && selectedCheckpoint
+    ? haversineMeters(
+        effectiveLastLocation.coords.latitude,
+        effectiveLastLocation.coords.longitude,
+        selectedCheckpoint.latitude,
+        selectedCheckpoint.longitude
+      )
+    : null;
+
   const compassDistanceText =
-    effectiveLastLocation && selectedCheckpoint
+    compassDistanceMeters != null
       ? (() => {
-          const meters = haversineMeters(
-            effectiveLastLocation.coords.latitude,
-            effectiveLastLocation.coords.longitude,
-            selectedCheckpoint.latitude,
-            selectedCheckpoint.longitude
-          );
+          const meters = compassDistanceMeters;
           if (!Number.isFinite(meters)) return null;
           if (meters >= 1000) {
             const km = meters / 1000;
@@ -170,6 +174,30 @@ export default function MapLibreMap() {
           return `${Math.round(meters)} m`;
         })()
       : null;
+
+  const [hudProgressDistances, setHudProgressDistances] = useState<Record<string, number>>({});
+  
+  useEffect(() => {
+    if (selectedId && effectiveLastLocation && !hudProgressDistances[selectedId]) {
+      const sp = checkpoints.find((c) => c.id === selectedId);
+      if (sp) {
+        const dist = haversineMeters(
+          effectiveLastLocation.coords.latitude,
+          effectiveLastLocation.coords.longitude,
+          sp.latitude,
+          sp.longitude
+        );
+        if (Number.isFinite(dist)) {
+          setHudProgressDistances((prev) => ({ ...prev, [selectedId]: dist }));
+        }
+      }
+    }
+  }, [selectedId, effectiveLastLocation, checkpoints, hudProgressDistances]);
+
+  const startDistance = selectedId ? hudProgressDistances[selectedId] : null;
+  const currentProgress = (startDistance && compassDistanceMeters != null && startDistance > 0)
+    ? Math.max(0, Math.min(1, 1 - (compassDistanceMeters / startDistance)))
+    : 0;
 
   const emptyGeo = React.useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
 
@@ -221,7 +249,7 @@ export default function MapLibreMap() {
   }, [effectiveLastLocation, orientation, emptyGeo]);
 
   useEffect(() => {
-    if (!map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady) return;
     const sourceId = 'location-marker-source';
     const data = buildLocationMarkerGeoJSON();
 
@@ -298,7 +326,7 @@ export default function MapLibreMap() {
         },
       });
     }
-  }, [mapReady, buildLocationMarkerGeoJSON]);
+  }, [mapReady, buildLocationMarkerGeoJSON, hudMode]);
 
   useEffect(() => {
     if (loading || (!apiKey && !hasOfflinePacks)) return;
@@ -395,7 +423,7 @@ export default function MapLibreMap() {
   }, [apiKey, loading]);
 
   useEffect(() => {
-    if (!map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady) return;
     const sourceId = 'route-line-source';
     const layerId = 'route-line';
     const data = buildRouteLineGeoJSON();
@@ -422,7 +450,7 @@ export default function MapLibreMap() {
       map.current.setPaintProperty(layerId, 'line-color', activeRouteColor ?? 'transparent');
       map.current.setPaintProperty(layerId, 'line-opacity', activeRouteColor ? 0.75 : 0);
     }
-  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON]);
+  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON, hudMode]);
 
   const gridShape = React.useMemo(() => {
     if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
@@ -580,7 +608,7 @@ export default function MapLibreMap() {
   }, [mapGridEnabled, mapGridOrigin, emptyGeo]);
 
   useEffect(() => {
-    if (!map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady) return;
     const sourceId = 'grid-source';
     const data = gridShape;
 
@@ -648,10 +676,10 @@ export default function MapLibreMap() {
       map.current.setPaintProperty(numbersLayerId, 'text-halo-color', 'rgba(255, 255, 255, 0.8)');
       map.current.setPaintProperty(numbersLayerId, 'text-halo-width', 2);
     }
-  }, [mapReady, gridShape]);
+  }, [mapReady, gridShape, hudMode]);
 
   useEffect(() => {
-    if (!map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady) return;
     const sourceId = 'grid-origin-source';
     const data = gridOriginShape;
 
@@ -695,10 +723,10 @@ export default function MapLibreMap() {
     } else {
       map.current.setPaintProperty(dotLayerId, 'circle-color', 'rgba(0,0,0,0.8)');
     }
-  }, [mapReady, gridOriginShape]);
+  }, [mapReady, gridOriginShape, hudMode]);
 
   useEffect(() => {
-    if (!map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady) return;
     const handleClick = async (ev: maplibregl.MapMouseEvent) => {
       if (!placementModeRequested) return;
       const { lng, lat } = ev.lngLat;
@@ -711,10 +739,10 @@ export default function MapLibreMap() {
     return () => {
       map.current?.off('click', handleClick);
     };
-  }, [mapReady, placementModeRequested, addCheckpoint, consumePlacementModeRequest]);
+  }, [mapReady, placementModeRequested, addCheckpoint, consumePlacementModeRequest, hudMode]);
 
   useEffect(() => {
-    if (!map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady) return;
     const markers = checkpointMarkersRef.current;
 
     markers.forEach((marker) => marker.remove());
@@ -794,7 +822,7 @@ export default function MapLibreMap() {
       markers.forEach((marker) => marker.remove());
       markers.clear();
     };
-  }, [mapReady, checkpoints, selectedId, tint, tabIconSelected, textColor, borderColor, background, selectCheckpoint, activeRouteColor, colorScheme]);
+  }, [mapReady, checkpoints, selectedId, tint, tabIconSelected, textColor, borderColor, background, selectCheckpoint, activeRouteColor, colorScheme, hudMode]);
 
   // keep a ref copy of lastLocation so event handlers see latest value
   useEffect(() => {
@@ -1060,6 +1088,29 @@ export default function MapLibreMap() {
               <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center' }}>
                 Select a checkpoint to view navigation metrics
               </Text>
+            )}
+
+            {compassTargetLabel && startDistance != null && startDistance > 0 && (
+              <div style={{ position: 'absolute', right: 28, top: '20%', bottom: '20%', width: 24 }}>
+                <div style={{
+                  position: 'absolute', right: 0, top: 0, bottom: 0, width: 8,
+                  backgroundColor: '#333', borderRadius: 4, overflow: 'hidden'
+                }}>
+                  <div style={{
+                    position: 'absolute', left: 0, right: 0, bottom: 0,
+                    height: `${currentProgress * 100}%`,
+                    backgroundColor: String(bannerAccent),
+                    borderRadius: 4
+                  }} />
+                </div>
+                <div style={{
+                  position: 'absolute', right: 12, bottom: `${Math.min(100, Math.max(0, currentProgress * 100))}%`,
+                  transform: 'translateY(6px)',
+                  borderTop: '6px solid transparent',
+                  borderBottom: '6px solid transparent',
+                  borderLeft: `10px solid ${String(bannerAccent)}`,
+                }} />
+              </div>
             )}
           </div>
         )}

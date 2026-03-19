@@ -19,7 +19,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { FlatList, Share, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type RouteItem = {
@@ -206,6 +206,58 @@ export default function RoutesScreen() {
       void showAlert({ title: 'Saved!', message: `"${item.title}" saved. You can load it later with the Save option when adding points.` });
     } catch (err) {
       void showAlert({ title: 'Save failed', message: String(err) });
+    }
+  }
+
+  async function handleShareRoute(item: RouteItem) {
+    const cps = item.id === activeRouteId ? checkpoints : (item.checkpoints || []);
+    if (cps.length === 0) {
+      void showAlert({ title: 'Share Route', message: 'Add some points first before sharing.' });
+      return;
+    }
+    
+    const lines = [`Route: ${item.title}`];
+    if (item.subtitle) lines.push(item.subtitle);
+    lines.push('');
+    lines.push(`Total Distance: ${formatDistance(computeTotalDistance(cps))}`);
+    lines.push('');
+    
+    cps.forEach((cp, idx) => {
+      lines.push(`Waypoint ${idx + 1}${cp.label ? ` - ${cp.label}` : ''}`);
+      lines.push(`Lat/Lon: ${formatCoords(cp.latitude, cp.longitude)}`);
+      
+      const grid = formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0);
+      if (grid) {
+         lines.push(`Grid: ${grid}`);
+      }
+      lines.push('');
+    });
+
+    try {
+      await Share.share({
+        message: lines.join('\n'),
+        title: `CadNav Route: ${item.title}`
+      });
+    } catch (error: any) {
+      void showAlert({ title: 'Share failed', message: error.message });
+    }
+  }
+
+  async function handleExportBackup() {
+    try {
+      const raw = await AsyncStorage.getItem(ROUTES_KEY);
+      if (!raw) {
+        void showAlert({ title: 'Export', message: 'No routes to export.' });
+        return;
+      }
+      // Dump everything! Routes, Saved Checkpoints, Settings maybe? But just routes for now
+      // The user wants to persist/share routes easily with other users, a raw JSON dump string can be copied.
+      await Share.share({
+        message: raw,
+        title: 'CadNav Backup Data',
+      });
+    } catch (err: any) {
+      void showAlert({ title: 'Export failed', message: err.message });
     }
   }
 
@@ -508,6 +560,11 @@ export default function RoutesScreen() {
             </StyledButton>
           )}
           {checkpoints.length > 0 && (
+            <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
+              Share
+            </StyledButton>
+          )}
+          {checkpoints.length > 0 && (
             <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
               Clear All
             </StyledButton>
@@ -544,6 +601,16 @@ export default function RoutesScreen() {
           <StyledButton variant="primary" onPress={() => activateRoute(item)} style={styles.actionBtn}>
             Load Route
           </StyledButton>
+            {pointCount > 0 && (
+              <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
+                Share
+              </StyledButton>
+            )}
+            {pointCount > 0 && (
+              <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
+                Share
+              </StyledButton>
+            )}
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
             Edit
           </StyledButton>
@@ -582,6 +649,15 @@ export default function RoutesScreen() {
                   Create your first route
                 </StyledButton>
               </View>
+            }
+            ListFooterComponent={
+              routes.length > 0 ? (
+                <View style={{ marginTop: 24, paddingVertical: 16, alignItems: 'center' }}>
+                  <StyledButton variant="secondary" onPress={handleExportBackup} style={{ width: 250, opacity: 0.8 }}>
+                    Export All Data (Backup)
+                  </StyledButton>
+                </View>
+              ) : null
             }
           />
         </View>
