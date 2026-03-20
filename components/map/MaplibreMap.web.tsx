@@ -5,7 +5,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useOfflineMaps } from '@/hooks/offline-maps';
-import { useSettings } from '@/hooks/settings';
+import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useRouter } from 'expo-router';
@@ -38,7 +38,7 @@ export default function MapLibreMap() {
   const errorReportedRef = useRef(false);
   const [hudMode, setHudMode] = useState(false);
   const { lastLocation, requestLocation } = useGPS({ lowPowerMode: hudMode });
-  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, gridConvergence } = useSettings();
+  const { angleUnit, mapHeading, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, gridConvergence, mapLayer } = useSettings();
   const { packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
   const router = useRouter();
@@ -249,7 +249,7 @@ export default function MapLibreMap() {
   }, [effectiveLastLocation, orientation, emptyGeo]);
 
   useEffect(() => {
-    if (hudMode || !map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady || (typeof map.current.isStyleLoaded === 'function' && !map.current.isStyleLoaded())) return;
     const sourceId = 'location-marker-source';
     const data = buildLocationMarkerGeoJSON();
 
@@ -333,9 +333,7 @@ export default function MapLibreMap() {
     if (map.current) return; // stops map from initializing more than once
     if (!mapDiv.current) return;
 
-    const mapStyle = apiKey 
-      ? `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`
-      : `https://api.maptiler.com/maps/outdoor-v2/style.json`;
+const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
 
     map.current = new maplibregl.Map({
       container: mapDiv.current,
@@ -407,8 +405,7 @@ export default function MapLibreMap() {
       }
     }
 
-    return () => {
-      if (map.current) {
+    return () => { setMapReady(false); if (map.current) {
         map.current.off('load', handleLoad);
         map.current.off('move', update);
         map.current.off('zoom', update);
@@ -420,10 +417,9 @@ export default function MapLibreMap() {
       }
       map.current = null;
     };
-  }, [apiKey, loading]);
-
+    }, [apiKey, loading, mapLayer, colorScheme]);
   useEffect(() => {
-    if (hudMode || !map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady || (typeof map.current.isStyleLoaded === 'function' && !map.current.isStyleLoaded())) return;
     const sourceId = 'route-line-source';
     const layerId = 'route-line';
     const data = buildRouteLineGeoJSON();
@@ -608,7 +604,7 @@ export default function MapLibreMap() {
   }, [mapGridEnabled, mapGridOrigin, emptyGeo]);
 
   useEffect(() => {
-    if (hudMode || !map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady || (typeof map.current.isStyleLoaded === 'function' && !map.current.isStyleLoaded())) return;
     const sourceId = 'grid-source';
     const data = gridShape;
 
@@ -679,7 +675,7 @@ export default function MapLibreMap() {
   }, [mapReady, gridShape, hudMode]);
 
   useEffect(() => {
-    if (hudMode || !map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady || (typeof map.current.isStyleLoaded === 'function' && !map.current.isStyleLoaded())) return;
     const sourceId = 'grid-origin-source';
     const data = gridOriginShape;
 
@@ -726,7 +722,7 @@ export default function MapLibreMap() {
   }, [mapReady, gridOriginShape, hudMode]);
 
   useEffect(() => {
-    if (hudMode || !map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady || (typeof map.current.isStyleLoaded === 'function' && !map.current.isStyleLoaded())) return;
     const handleClick = async (ev: maplibregl.MapMouseEvent) => {
       if (!placementModeRequested) return;
       const { lng, lat } = ev.lngLat;
@@ -742,7 +738,7 @@ export default function MapLibreMap() {
   }, [mapReady, placementModeRequested, addCheckpoint, consumePlacementModeRequest, hudMode]);
 
   useEffect(() => {
-    if (hudMode || !map.current || !mapReady) return;
+    if (hudMode || !map.current || !mapReady || (typeof map.current.isStyleLoaded === 'function' && !map.current.isStyleLoaded())) return;
     const markers = checkpointMarkersRef.current;
 
     markers.forEach((marker) => marker.remove());

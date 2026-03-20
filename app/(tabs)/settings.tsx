@@ -81,7 +81,7 @@ function SettingsRow({
 
 export default function SettingsScreen() {
   const safeBg = useThemeColor({}, 'background');
-  const { angleUnit, mapHeading, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, setSetting } = useSettings();
+  const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
   const { selectedCheckpoint } = useCheckpoints();
@@ -345,6 +345,16 @@ export default function SettingsScreen() {
         </SettingsSection>
 
         <SettingsSection title="Map">
+          <SettingsRow 
+            icon="square.stack.3d.up.fill" 
+            label="Map Layer" 
+            color="#FF9500"
+            value={mapLayer === 'outdoor' ? 'Outdoor' : mapLayer === 'satellite' ? 'Satellite' : 'Auto Dark'}
+            onPress={() => {
+              const next = mapLayer === 'outdoor' ? 'satellite' : mapLayer === 'satellite' ? 'auto' : 'outdoor';
+              void setSetting('mapLayer', next);
+            }}
+          />
           <SettingsRow 
             icon="arrow.down.circle.fill" 
             label="Download Maps" 

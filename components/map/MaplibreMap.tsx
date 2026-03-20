@@ -5,7 +5,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useOfflineMaps } from '@/hooks/offline-maps';
-import { useSettings } from '@/hooks/settings';
+import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useRouter } from 'expo-router';
@@ -137,7 +137,7 @@ export default function MapLibreMap() {
   const { lastLocation, requestLocation } = useGPS({ lowPowerMode: hudMode });
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
   const [placedCount, setPlacedCount] = React.useState(0);
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled } = useSettings();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer } = useSettings();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
   const insets = useSafeAreaInsets();
@@ -148,10 +148,31 @@ export default function MapLibreMap() {
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
-  const mapImages = React.useMemo(() => ({
-    'location-arrow': { uri: 'data:image/svg+xml;base64,' + btoa(arrowSvg) },
-    'location-dot': { uri: 'data:image/svg+xml;base64,' + btoa(dotSvg) },
-  }), []);
+  
+  const mapImages = React.useMemo(() => {
+    const markerColorKey = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
+    
+    const getStartMarkerSvg = (color: string) => `
+<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+  <path d="M14 0 C21.732 0 28 6.268 28 14 C28 21.732 21.732 28 14 28 L0 28 L0 14 C0 6.268 6.268 0 14 0 Z" fill="${color}" stroke="#ffffff" stroke-width="1.5" />
+  <path d="M 17 11.5 C 17 8 11 8 11 11.5 C 11 15 17 14.5 17 17.5 C 17 21 11 21 11 17.5" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
+`;
+
+    const getFinishMarkerSvg = (color: string) => `
+<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+  <path d="M14 0 C6.268 0 0 6.268 0 14 C0 21.732 6.268 28 14 28 L28 28 L28 14 C28 6.268 21.732 0 14 0 Z" fill="${color}" stroke="#ffffff" stroke-width="1.5" />
+  <path d="M 16 9.5 L 12 9.5 L 12 18.5 M 12 14 L 15.5 14" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
+`;
+
+    return {
+      'location-arrow': { uri: 'data:image/svg+xml;base64,' + btoa(arrowSvg) },
+      'location-dot': { uri: 'data:image/svg+xml;base64,' + btoa(dotSvg) },
+      'start-marker': { uri: 'data:image/svg+xml;base64,' + btoa(getStartMarkerSvg(markerColorKey)) },
+      'finish-marker': { uri: 'data:image/svg+xml;base64,' + btoa(getFinishMarkerSvg(markerColorKey)) },
+    };
+  }, [activeRouteColor, colorScheme, tint]);
 
   const routeLineStyle = React.useMemo(() => ({
     lineColor: activeRouteColor ?? 'transparent',
@@ -398,6 +419,38 @@ export default function MapLibreMap() {
     } as any;
   }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
 
+  const markerColor = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
+  
+  const routeEndpointsShape = React.useMemo(() => {
+    if (!checkpoints || checkpoints.length < 2) return emptyGeo;
+    const start = checkpoints[0];
+    const end = checkpoints[checkpoints.length - 1];
+    
+    const features = [];
+    
+    if (Number.isFinite(start.latitude) && Number.isFinite(start.longitude)) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [start.longitude, start.latitude] },
+        properties: { 
+          kind: 'start'
+        },
+      });
+    }
+    
+if (!activeRouteLoop && Number.isFinite(end.latitude) && Number.isFinite(end.longitude) && end.id !== start.id) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [end.longitude, end.latitude] },
+        properties: {
+          kind: 'finish'
+        },
+      });
+    }
+
+    return { type: 'FeatureCollection', features };
+  }, [checkpoints, emptyGeo, activeRouteLoop]);
+
   const gridShape = React.useMemo(() => {
     if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
     const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
@@ -638,9 +691,7 @@ export default function MapLibreMap() {
     );
   }
 
-  const mapStyle = apiKey 
-    ? `https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`
-    : `https://api.maptiler.com/maps/outdoor-v2/style.json`;
+const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
 
   const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
 
@@ -735,6 +786,30 @@ export default function MapLibreMap() {
           <LineLayer
             id="route-line"
             style={routeLineStyle}
+          />
+        </ShapeSource>
+
+        <ShapeSource id="route-endpoints-source" shape={routeEndpointsShape}>
+          <SymbolLayer
+            id="route-endpoint-start"
+              filter={['==', ['get', 'kind'], 'start']}
+              style={{
+                iconImage: 'start-marker',
+                iconAnchor: 'bottom-left',
+                iconSize: 1,
+                iconOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1],
+                iconAllowOverlap: true,
+                iconIgnorePlacement: true,
+              }}
+            />
+            <SymbolLayer
+              id="route-endpoint-finish"
+              filter={['==', ['get', 'kind'], 'finish']}
+              style={{
+                iconImage: 'finish-marker',
+              iconAllowOverlap: true,
+              iconIgnorePlacement: true,
+            }}
           />
         </ShapeSource>
 

@@ -29,6 +29,7 @@ type RouteItem = {
   icon?: string;
   color?: string;
   checkpoints?: Checkpoint[];
+  isLoop?: boolean;
 };
 
 const ROUTES_KEY = 'APP_ROUTES';
@@ -37,13 +38,19 @@ function formatCoords(lat: number, lon: number): string {
   return `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
 }
 
-function computeTotalDistance(cps: Checkpoint[]): number {
+function computeTotalDistance(cps: Checkpoint[], isLoop: boolean = false): number {
   if (cps.length < 2) return 0;
   let total = 0;
   for (let i = 1; i < cps.length; i++) {
     total += haversineMeters(
       cps[i - 1].latitude, cps[i - 1].longitude,
       cps[i].latitude, cps[i].longitude,
+    );
+  }
+  if (isLoop) {
+    total += haversineMeters(
+      cps[cps.length - 1].latitude, cps[cps.length - 1].longitude,
+      cps[0].latitude, cps[0].longitude,
     );
   }
   return total;
@@ -81,6 +88,8 @@ export default function RoutesScreen() {
     setViewTarget,
     saveRoute: persistRoute,
     saveLocation: persistLocation,
+    activeRouteLoop,
+    setActiveRouteLoop,
   } = useCheckpoints();
 
   const [routes, setRoutes] = useState<RouteItem[]>([]);
@@ -106,6 +115,7 @@ export default function RoutesScreen() {
     const cps = routeItem.checkpoints ?? [];
     setActiveRouteId(routeItem.id);
     setActiveRouteColor(routeItem.color ?? null);
+    setActiveRouteLoop(!!routeItem.isLoop);
     reorderCheckpoints(cps);
     if (routeItem.color) setCheckpointsColor(routeItem.color);
     setTimeout(() => { isSyncingRef.current = false; }, 150);
@@ -116,6 +126,7 @@ export default function RoutesScreen() {
     isSyncingRef.current = true;
     setActiveRouteId(null);
     setActiveRouteColor(null);
+    setActiveRouteLoop(false);
     clearActiveRoute();
     setTimeout(() => { isSyncingRef.current = false; }, 150);
   }
@@ -124,7 +135,7 @@ export default function RoutesScreen() {
     if (!activeRouteId) return;
     setRoutes(r => r.map(it =>
       it.id === activeRouteId
-        ? { ...it, checkpoints: [...checkpoints] }
+        ? { ...it, checkpoints: [...checkpoints], isLoop: activeRouteLoop }
         : it,
     ));
   }
@@ -134,10 +145,10 @@ export default function RoutesScreen() {
     if (!activeRouteId || isSyncingRef.current) return;
     setRoutes(r => r.map(it =>
       it.id === activeRouteId
-        ? { ...it, checkpoints: [...checkpoints] }
+        ? { ...it, checkpoints: [...checkpoints], isLoop: activeRouteLoop }
         : it,
     ));
-  }, [checkpoints, activeRouteId]);
+  }, [checkpoints, activeRouteId, activeRouteLoop]);
 
   // ── Add / import points ───────────────────────────────────────────────
 
@@ -193,7 +204,31 @@ export default function RoutesScreen() {
 
   function handleReverseRoute() {
     if (checkpoints.length < 2) return;
-    reorderCheckpoints([...checkpoints].reverse());
+    if (activeRouteLoop) {
+      const reversed = [checkpoints[0], ...[...checkpoints.slice(1)].reverse()];
+      reorderCheckpoints(reversed);
+    } else {
+      reorderCheckpoints([...checkpoints].reverse());
+    }
+  }
+
+  function handleRandomiseRoute() {
+    if (checkpoints.length < 2) return;
+    if (activeRouteLoop) {
+      const shuffled = [...checkpoints.slice(1)];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      reorderCheckpoints([checkpoints[0], ...shuffled]);
+    } else {
+      const shuffled = [...checkpoints];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      reorderCheckpoints(shuffled);
+    }
   }
 
   async function handleSaveRouteToLibrary(item: RouteItem) {
@@ -210,16 +245,18 @@ export default function RoutesScreen() {
   }
 
   async function handleShareRoute(item: RouteItem) {
-    const cps = item.id === activeRouteId ? checkpoints : (item.checkpoints || []);
+    const isActive = item.id === activeRouteId;
+    const cps = isActive ? checkpoints : (item.checkpoints || []);
+    const loop = isActive ? activeRouteLoop : (item.isLoop || false);
     if (cps.length === 0) {
       void showAlert({ title: 'Share Route', message: 'Add some points first before sharing.' });
       return;
     }
-    
+
     const lines = [`Route: ${item.title}`];
     if (item.subtitle) lines.push(item.subtitle);
     lines.push('');
-    lines.push(`Total Distance: ${formatDistance(computeTotalDistance(cps))}`);
+    lines.push(`Total Distance: ${formatDistance(computeTotalDistance(cps, loop))}`);
     lines.push('');
     
     cps.forEach((cp, idx) => {
@@ -415,8 +452,9 @@ export default function RoutesScreen() {
   function renderRouteCard({ item }: { item: RouteItem }) {
     const isActive = activeRouteId === item.id;
     const cps = isActive ? checkpoints : (item.checkpoints ?? []);
+    const loop = isActive ? activeRouteLoop : !!item.isLoop;
     const pointCount = cps.length;
-    const totalDist = computeTotalDistance(cps);
+    const totalDist = computeTotalDistance(cps, loop);
     const distLabel = totalDist > 0 ? formatDistance(totalDist) : null;
     const routeColor = item.color ?? Colors[colorScheme].tint;
 
@@ -537,48 +575,52 @@ export default function RoutesScreen() {
           </View>
         )}
 
-        {/* ── Primary action ── */}
+        {/* ── Actions Matrix ── */}
         <View style={styles.actionRow}>
-          <StyledButton variant="primary" onPress={() => handleOpenAddPoints(item)} style={[styles.actionBtn, { flex: 1 }]}>
-            Add Waypoint
+          <StyledButton variant="primary" onPress={() => handleOpenAddPoints(item)} style={styles.actionBtn}>
+            Add Point
           </StyledButton>
-          <StyledButton variant="primary" onPress={handleViewOnMap} style={[styles.actionBtn, { flex: 1 }]}>
-            View on Map
+          <StyledButton variant="primary" onPress={handleViewOnMap} style={styles.actionBtn}>
+            View Map
+          </StyledButton>
+          <StyledButton variant="secondary" onPress={() => deactivateRoute()} style={styles.actionBtn}>
+            Close
           </StyledButton>
         </View>
 
-        {/* ── Secondary actions ── */}
-        <View style={styles.actionRow}>
-          {checkpoints.length >= 2 && (
-            <StyledButton variant="secondary" onPress={handleReverseRoute} style={styles.actionBtn}>
-              Reverse
-            </StyledButton>
-          )}
-          {checkpoints.length > 0 && (
+        {checkpoints.length > 0 && (
+          <View style={styles.actionRow}>
+            {checkpoints.length >= 2 && (
+              <>
+                <StyledButton variant="secondary" onPress={() => setActiveRouteLoop(!activeRouteLoop)} style={styles.actionBtn}>
+                  {activeRouteLoop ? 'Unloop' : 'Loop'}
+                </StyledButton>
+                <StyledButton variant="secondary" onPress={handleReverseRoute} style={styles.actionBtn}>
+                  Reverse
+                </StyledButton>
+                <StyledButton variant="secondary" onPress={handleRandomiseRoute} style={styles.actionBtn}>
+                  Random
+                </StyledButton>
+              </>
+            )}
             <StyledButton variant="secondary" onPress={() => handleSaveRouteToLibrary(item)} style={styles.actionBtn}>
               Save
             </StyledButton>
-          )}
-          {checkpoints.length > 0 && (
             <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
               Share
             </StyledButton>
-          )}
-          {checkpoints.length > 0 && (
-            <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
-              Clear All
-            </StyledButton>
-          )}
-        </View>
+          </View>
+        )}
 
-        {/* ── Management actions ── */}
         <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
-            Edit Details
+            Edit
           </StyledButton>
-          <StyledButton variant="secondary" onPress={() => deactivateRoute()} style={styles.actionBtn}>
-            Deactivate
-          </StyledButton>
+          {checkpoints.length > 0 && (
+            <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
+              Clear
+            </StyledButton>
+          )}
           <StyledButton variant="secondary" onPress={() => handleRemove(item.id)} style={styles.actionBtn}>
             Delete
           </StyledButton>
@@ -601,19 +643,16 @@ export default function RoutesScreen() {
           <StyledButton variant="primary" onPress={() => activateRoute(item)} style={styles.actionBtn}>
             Load Route
           </StyledButton>
-            {pointCount > 0 && (
-              <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
-                Share
-              </StyledButton>
-            )}
-            {pointCount > 0 && (
-              <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
-                Share
-              </StyledButton>
-            )}
+        </View>
+        <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
             Edit
           </StyledButton>
+          {pointCount > 0 && (
+            <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
+              Share
+            </StyledButton>
+          )}
           <StyledButton variant="secondary" onPress={() => handleRemove(item.id)} style={styles.actionBtn}>
             Delete
           </StyledButton>
@@ -811,12 +850,13 @@ const styles = StyleSheet.create({
   // Actions
   actionRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
     marginBottom: 8,
   },
   actionBtn: {
-    minWidth: 90,
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 4,
   },
 
   // Empty / hints

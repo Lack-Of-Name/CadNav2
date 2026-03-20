@@ -7,6 +7,7 @@ import { Colors } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { formatBytes, useOfflineMaps, ZOOM_PRESETS, type DownloadTarget, type ZoomPreset } from '@/hooks/offline-maps';
+import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import * as turf from '@turf/turf';
@@ -58,6 +59,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
   const { apiKey } = useMapTilerKey();
+  const { mapLayer } = useSettings();
   const { lastLocation, requestLocation } = useGPS();
   const { packs, loadingPacks, loadPacks, deletePack, activeDownload, startDownload, cancelDownload } = useOfflineMaps();
   const { checkpoints } = useCheckpoints();
@@ -469,7 +471,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                   <View style={[styles.mapPreviewContainer, { borderColor: String(separatorColor) }]}>
                     <MapLibre.MapView 
                       style={StyleSheet.absoluteFillObject} 
-                      mapStyle={`https://api.maptiler.com/maps/outdoor-v2/style.json?key=${apiKey}`}
+                        mapStyle={getMapStyleUrl(mapLayer, colorScheme, apiKey ?? '')}
                       logoEnabled={false}
                       compassEnabled={false}
                       pitchEnabled={false}

@@ -18,14 +18,21 @@ type EditRouteModalProps = {
 };
 
 const ROUTE_COLORS = [
-  '#34C759',
-  '#0A84FF',
-  '#64D2FF',
-  '#FFD60A',
-  '#FF9F0A',
-  '#FF453A',
-  '#BF5AF2',
-  '#5E5CE6',
+  '#34C759', // Green
+  '#0A84FF', // Blue
+  '#64D2FF', // Light Blue
+  '#FFD60A', // Yellow
+  '#FF9F0A', // Orange
+  '#FF453A', // Red
+  '#BF5AF2', // Purple
+  '#5E5CE6', // Indigo
+  '#FF2D55', // Pink
+  '#32ADE6', // Cyan
+  '#00C7BE', // Mint
+  '#A2845E', // Brown
+  '#8E8E93', // Gray
+  '#000000', // Black
+  '#FFFFFF', // White
 ] as const;
 
 // Curated quick-pick emojis for route icons - the most useful for navigation

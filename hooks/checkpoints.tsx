@@ -15,6 +15,7 @@ export type SavedRoute = {
   name: string;
   createdAt: number;
   checkpoints: Checkpoint[];
+  isLoop?: boolean;
 };
 
 export type SavedLocation = {
@@ -403,6 +404,7 @@ export function useCheckpoints() {
       name: trimmed,
       createdAt: Date.now(),
       checkpoints: store.checkpoints,
+      isLoop: store.activeRouteLoop,
     };
 
     const nextRoutes = [route, ...store.savedRoutes];
@@ -416,7 +418,7 @@ export function useCheckpoints() {
     const route = store.savedRoutes.find((r) => r.id === routeId);
     if (!route) throw new Error('Route not found');
     const nextSelectedId = route.checkpoints.length > 0 ? route.checkpoints[route.checkpoints.length - 1].id : null;
-    setStore({ ...store, checkpoints: route.checkpoints, selectedId: nextSelectedId });
+    setStore({ ...store, checkpoints: route.checkpoints, selectedId: nextSelectedId, activeRouteLoop: !!route.isLoop });
     return route;
   }, []);
 

@@ -16,11 +16,16 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
  */
 
 export type AngleUnit = 'mils' | 'degrees';
+export type MapLayer = 'outdoor' | 'satellite' | 'auto';
 
 const SETTINGS_STORAGE_KEY = 'cadnav2.settings.v1';
 
 function isAngleUnit(value: unknown): value is AngleUnit {
   return value === 'mils' || value === 'degrees';
+}
+
+function isMapLayer(value: unknown): value is MapLayer {
+  return value === 'outdoor' || value === 'satellite' || value === 'auto';
 }
 
 type SettingDef<T> = {
@@ -44,6 +49,10 @@ const SETTINGS_DEFS = {
   mapHeading: {
     default: 'true' as 'true' | 'magnetic',
     parse: (raw: unknown) => (raw === 'magnetic' ? 'magnetic' : 'true'),
+  },
+  mapLayer: {
+    default: 'outdoor' as MapLayer,
+    parse: (raw: unknown) => (isMapLayer(raw) ? raw : 'outdoor'),
   },
   mapGridEnabled: {
     default: false,
@@ -88,6 +97,7 @@ export type MapHeading = 'true' | 'magnetic';
 export type Settings = {
   angleUnit: AngleUnit;
   mapHeading: MapHeading;
+  mapLayer: MapLayer;
   mapGridEnabled: boolean;
   mapGridSubdivisionsEnabled: boolean;
   mapGridOrigin: { latitude: number; longitude: number } | null;
@@ -238,6 +248,16 @@ export function useSetting<K extends keyof Settings>(key: K): readonly [Settings
   const { settings, setSetting } = useContextRequired();
   const setter = useCallback((value: Settings[K]) => setSetting(key, value), [key, setSetting]);
   return [settings[key], setter] as const;
+}
+
+export function getMapStyleUrl(layer: MapLayer, scheme: 'light' | 'dark', apiKey: string): string {
+  let styleId = 'outdoor-v2';
+  if (layer === 'satellite') {
+    styleId = 'satellite';
+  } else if (layer === 'auto') {
+    styleId = scheme === 'dark' ? 'streets-v2-dark' : 'outdoor-v2';
+  }
+  return `https://api.maptiler.com/maps/${styleId}/style.json?key=${apiKey}`;
 }
 
 function useContextRequired(): SettingsContextValue {
