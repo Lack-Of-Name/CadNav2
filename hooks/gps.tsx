@@ -192,10 +192,11 @@ export function useGPS(options?: GPSOptions) {
 
         // Prime with a current position so UI updates quickly.
         try {
-          const current = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.BestForNavigation,
-          });
-          if (!cancelled) {
+          // Use getLastKnownPositionAsync instead of getCurrentPositionAsync 
+          // because getCurrentPositionAsync blocks for 5-10 seconds waiting 
+          // for a perfect navigation lock before watchPositionAsync can even start!
+          const current = await Location.getLastKnownPositionAsync();
+          if (!cancelled && current) {
             const next = toGPSLocation(current);
             setLastLocation(next);
             // If we already have a magnetic heading, convert it to true now that we have coordinates

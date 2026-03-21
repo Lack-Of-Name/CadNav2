@@ -576,7 +576,7 @@ export default function RoutesScreen() {
         )}
 
         {/* ── Actions Matrix ── */}
-        <View style={styles.actionRow}>
+        <View style={styles.actionMatrix}>
           <StyledButton variant="primary" onPress={() => handleOpenAddPoints(item)} style={styles.actionBtn}>
             Add Point
           </StyledButton>
@@ -586,41 +586,37 @@ export default function RoutesScreen() {
           <StyledButton variant="secondary" onPress={() => deactivateRoute()} style={styles.actionBtn}>
             Close
           </StyledButton>
-        </View>
-
-        {checkpoints.length > 0 && (
-          <View style={styles.actionRow}>
-            {checkpoints.length >= 2 && (
-              <>
-                <StyledButton variant="secondary" onPress={() => setActiveRouteLoop(!activeRouteLoop)} style={styles.actionBtn}>
-                  {activeRouteLoop ? 'Unloop' : 'Loop'}
-                </StyledButton>
-                <StyledButton variant="secondary" onPress={handleReverseRoute} style={styles.actionBtn}>
-                  Reverse
-                </StyledButton>
-                <StyledButton variant="secondary" onPress={handleRandomiseRoute} style={styles.actionBtn}>
-                  Random
-                </StyledButton>
-              </>
-            )}
-            <StyledButton variant="secondary" onPress={() => handleSaveRouteToLibrary(item)} style={styles.actionBtn}>
-              Save
-            </StyledButton>
-            <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
-              Share
-            </StyledButton>
-          </View>
-        )}
-
-        <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
             Edit
           </StyledButton>
+
           {checkpoints.length > 0 && (
-            <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
-              Clear
-            </StyledButton>
+            <>
+              {checkpoints.length >= 2 && (
+                <>
+                  <StyledButton variant="secondary" onPress={() => setActiveRouteLoop(!activeRouteLoop)} style={styles.actionBtn}>
+                    {activeRouteLoop ? 'Unloop' : 'Loop'}
+                  </StyledButton>
+                  <StyledButton variant="secondary" onPress={handleReverseRoute} style={styles.actionBtn}>
+                    Reverse
+                  </StyledButton>
+                  <StyledButton variant="secondary" onPress={handleRandomiseRoute} style={styles.actionBtn}>
+                    Random
+                  </StyledButton>
+                </>
+              )}
+              <StyledButton variant="secondary" onPress={() => handleSaveRouteToLibrary(item)} style={styles.actionBtn}>
+                Save
+              </StyledButton>
+              <StyledButton variant="secondary" onPress={() => handleShareRoute(item)} style={styles.actionBtn}>
+                Share
+              </StyledButton>
+              <StyledButton variant="secondary" onPress={handleClearPoints} style={styles.actionBtn}>
+                Clear
+              </StyledButton>
+            </>
           )}
+
           <StyledButton variant="secondary" onPress={() => handleRemove(item.id)} style={styles.actionBtn}>
             Delete
           </StyledButton>
@@ -639,12 +635,10 @@ export default function RoutesScreen() {
             {pointCount} saved {pointCount === 1 ? 'point' : 'points'}
           </ThemedText>
         )}
-        <View style={styles.actionRow}>
+        <View style={styles.actionMatrix}>
           <StyledButton variant="primary" onPress={() => activateRoute(item)} style={styles.actionBtn}>
             Load Route
           </StyledButton>
-        </View>
-        <View style={styles.actionRow}>
           <StyledButton variant="secondary" onPress={() => handleEdit(item)} style={styles.actionBtn}>
             Edit
           </StyledButton>
@@ -853,9 +847,16 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
   },
+  actionMatrix: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
   actionBtn: {
-    flex: 1,
-    minWidth: 0,
+    flexGrow: 1,
+    flexBasis: '30%',
+    minWidth: 80,
     paddingHorizontal: 4,
   },
 

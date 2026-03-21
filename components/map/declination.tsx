@@ -1,7 +1,4 @@
 "use strict";
-import { Asset } from "expo-asset";
-import { File } from 'expo-file-system';
-import { Platform } from "react-native";
 
 export interface DeclinationOptions {
   altitudeKm?: number;
@@ -26,70 +23,18 @@ function decimalYearFromDate(d: Date) {
   return year + dayIndex / days;
 }
 
-async function readTextAsset(moduleId: number): Promise<string> {
-  const asset = Asset.fromModule(moduleId);
-  await asset.downloadAsync();
-  const uri = asset.localUri ?? asset.uri;
-  if (Platform.OS !== "web" && uri.startsWith("file://")) return new File(uri).text();
-  const res = await fetch(uri);
-  if (!res.ok) throw new Error(`Failed to load asset ${uri}`);
-  return res.text();
-}
-
 type Model = { epoch: number; nmax: number; g: number[]; h: number[]; dg: number[]; dh: number[] };
-
-function parseCof(text: string): Model {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  if (!lines.length) throw new Error("empty cof");
-  const header = lines[0].split(/\s+/);
-  const epoch = Number(header[0]);
-  if (!Number.isFinite(epoch)) throw new Error("invalid epoch");
-
-  let nmax = 0;
-  const rows: [number, number, number, number, number, number][] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const s = lines[i];
-    if (s.startsWith("99999")) break;
-    const p = s.split(/\s+/);
-    if (p.length < 6) continue;
-    const n = Number(p[0]);
-    const m = Number(p[1]);
-    const g = Number(p[2]);
-    const h = Number(p[3]);
-    const dg = Number(p[4]);
-    const dh = Number(p[5]);
-    if (![n, m, g, h, dg, dh].every(Number.isFinite)) continue;
-    if (n <= 0 || m < 0 || m > n) continue;
-    nmax = Math.max(nmax, n);
-    rows.push([n, m, g, h, dg, dh]);
-  }
-
-  const num = ((nmax + 1) * (nmax + 2)) / 2 + 1;
-  const g = new Array(num).fill(0);
-  const h = new Array(num).fill(0);
-  const dg = new Array(num).fill(0);
-  const dh = new Array(num).fill(0);
-
-  for (const [n, m, gv, hv, dgv, dhv] of rows) {
-    g[idx(n, m)] = gv;
-    h[idx(n, m)] = hv;
-    dg[idx(n, m)] = dgv;
-    dh[idx(n, m)] = dhv;
-  }
-
-  return { epoch, nmax, g, h, dg, dh };
-}
 
 let cached: Promise<Model> | null = null;
 async function loadModel(): Promise<Model> {
   if (cached) return cached;
-  // Statically require the COF so bundlers include it on web/native.
+  
+  // Statically require the pre-parsed JSON so the JS engine native C++ JSON parser handles it instantly
+  // avoiding any large string allocations or Regex splits on the main thread.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const WMMHR_COF = require("../../assets/WMMHR.COF");
-  cached = (async () => {
-    const text = await readTextAsset(WMMHR_COF as number);
-    return parseCof(text);
-  })();
+  const WMMHR_JSON = require("../../assets/WMMHR.json");
+  cached = Promise.resolve(WMMHR_JSON as Model);
+  
   return cached;
 }
 
@@ -212,25 +157,44 @@ function computeFieldComponents(model: Model, dtYear: number, rr: number[], cml:
   return { bx, by, bz };
 }
 
+let cachedDeclinationPromise: { lat: number; lon: number; altKm: number; year: number; promise: Promise<number> } | null = null;
+
 export async function getMagneticDeclination(lat: number, lon: number, date?: Date | string, opts: DeclinationOptions = {}): Promise<number> {
   const dt = date ? new Date(date) : new Date();
   if (Number.isNaN(dt.getTime()) || !Number.isFinite(lat) || !Number.isFinite(lon)) return 0;
   const altKm = opts.altitudeKm ?? 0;
-  const model = await loadModel();
   const decimalYear = decimalYearFromDate(dt);
-  const dtYear = decimalYear - model.epoch;
-  const { lonSphDeg, phigDeg, rKm } = geodeticToSpherical(lat, lon, altKm);
-  const sinPhi = Math.sin(phigDeg * RAD);
-  const { rr, cml, sml } = computeSphVars(lonSphDeg, rKm, model.nmax);
-  const { pcup, dpcup } = associatedLegendre(sinPhi, model.nmax);
-  const { bx, by: byRaw, bz } = computeFieldComponents(model, dtYear, rr, cml, sml, pcup, dpcup);
 
-  let by = byRaw;
-  const cosPhi = Math.cos(phigDeg * RAD);
-  if (Math.abs(cosPhi) > 1e-10) by /= cosPhi;
-  const psi = (phigDeg - lat) * RAD;
-  const bx_geo = bx * Math.cos(psi) - bz * Math.sin(psi);
-  const by_geo = by;
-  const decl = Math.atan2(by_geo, bx_geo) * DEG;
-  return decl;
+  // Return cached promise if we are querying nearby location / time to avoid massive WMM HR recalculations.
+  if (
+    cachedDeclinationPromise &&
+    Math.abs(cachedDeclinationPromise.lat - lat) < 0.01 &&
+    Math.abs(cachedDeclinationPromise.lon - lon) < 0.01 &&
+    Math.abs(cachedDeclinationPromise.altKm - altKm) < 0.5 &&
+    Math.abs(cachedDeclinationPromise.year - decimalYear) < 0.1
+  ) {
+    return cachedDeclinationPromise.promise;
+  }
+
+  const promise = (async () => {
+    const model = await loadModel();
+    const dtYear = decimalYear - model.epoch;
+    const { lonSphDeg, phigDeg, rKm } = geodeticToSpherical(lat, lon, altKm);
+    const sinPhi = Math.sin(phigDeg * RAD);
+    const { rr, cml, sml } = computeSphVars(lonSphDeg, rKm, model.nmax);
+    const { pcup, dpcup } = associatedLegendre(sinPhi, model.nmax);
+    const { bx, by: byRaw, bz } = computeFieldComponents(model, dtYear, rr, cml, sml, pcup, dpcup);
+    
+    let by = byRaw;
+    const cosPhi = Math.cos(phigDeg * RAD);
+    if (Math.abs(cosPhi) > 1e-10) by /= cosPhi;
+    const psi = (phigDeg - lat) * RAD;
+    const bx_geo = bx * Math.cos(psi) - bz * Math.sin(psi);
+    const by_geo = by;
+    const decl = Math.atan2(by_geo, bx_geo) * DEG;
+    return decl;
+  })();
+
+  cachedDeclinationPromise = { lat, lon, altKm, year: decimalYear, promise };
+  return promise;
 }

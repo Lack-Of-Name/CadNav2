@@ -168,8 +168,8 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
 
   // ---------- Render ----------
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.backdrop}>
         <ThemedView style={[styles.container, { backgroundColor: String(background), borderColor: String(borderColor) }]}>
           {/* Header */}
           <View style={styles.headerRow}>
@@ -192,7 +192,13 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView bounces={false} overScrollMode="never" style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 20 }} keyboardShouldPersistTaps="handled">
+          <ScrollView 
+            bounces={false} 
+            overScrollMode="never" 
+            style={styles.scrollBody} 
+            contentContainerStyle={{ paddingBottom: 30 }} 
+            keyboardShouldPersistTaps="handled"
+          >
             {/* ========== WEB: Disabled state ========== */}
             {isWeb && (
               <View style={styles.webDisabledContainer}>
@@ -533,7 +539,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
             )}
           </ScrollView>
         </ThemedView>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -550,7 +556,7 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
     maxWidth: 500,
-    maxHeight: '85%',
+    maxHeight: '90%',
     borderRadius: 14,
     padding: 20,
     borderWidth: 1,
@@ -577,7 +583,7 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   scrollBody: {
-    flexGrow: 0,
+    flexShrink: 1,
   },
   sectionLabel: {
     fontSize: 13,

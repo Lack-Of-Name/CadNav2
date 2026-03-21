@@ -227,6 +227,35 @@ export default function MapLibreMap() {
     } as any;
   }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
 
+  const buildRouteEndpointsGeoJSON = React.useCallback(() => {
+    if (!checkpoints || checkpoints.length < 2) return emptyGeo;
+    const start = checkpoints[0];
+    const end = checkpoints[checkpoints.length - 1];
+    
+    const features = [];
+    
+    if (Number.isFinite(start.latitude) && Number.isFinite(start.longitude)) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [start.longitude, start.latitude] },
+        properties: { kind: 'start', label: 'S' },
+      });
+    }
+    
+    if (!activeRouteLoop && Number.isFinite(end.latitude) && Number.isFinite(end.longitude) && end.id !== start.id) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [end.longitude, end.latitude] },
+        properties: { kind: 'finish', label: 'F' },
+      });
+    }
+    
+    return {
+      type: 'FeatureCollection',
+      features,
+    } as any;
+  }, [checkpoints, activeRouteLoop, emptyGeo]);
+
   const buildLocationMarkerGeoJSON = React.useCallback(() => {
     if (!effectiveLastLocation) return emptyGeo;
     return {
@@ -446,7 +475,54 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
       map.current.setPaintProperty(layerId, 'line-color', activeRouteColor ?? 'transparent');
       map.current.setPaintProperty(layerId, 'line-opacity', activeRouteColor ? 0.75 : 0);
     }
-  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON, hudMode]);
+
+    const endpointsSourceId = 'route-endpoints-source';
+    const endpointsData = buildRouteEndpointsGeoJSON();
+    
+    const existingEndpointsSource = map.current.getSource(endpointsSourceId) as maplibregl.GeoJSONSource | undefined;
+    if (existingEndpointsSource) {
+      existingEndpointsSource.setData(endpointsData);
+    } else {
+      map.current.addSource(endpointsSourceId, { type: 'geojson', data: endpointsData });
+    }
+
+    const endpointsCircleLayer = 'route-endpoints-circle';
+    const markerColor = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
+    
+    if (!map.current.getLayer(endpointsCircleLayer)) {
+      map.current.addLayer({
+        id: endpointsCircleLayer,
+        type: 'circle',
+        source: endpointsSourceId,
+        paint: {
+          'circle-radius': 12,
+          'circle-color': markerColor,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+    } else {
+      map.current.setPaintProperty(endpointsCircleLayer, 'circle-color', markerColor);
+    }
+
+    const endpointsTextLayer = 'route-endpoints-text';
+    if (!map.current.getLayer(endpointsTextLayer)) {
+      map.current.addLayer({
+        id: endpointsTextLayer,
+        type: 'symbol',
+        source: endpointsSourceId,
+        layout: {
+          'text-field': ['get', 'label'],
+          'text-size': 14,
+          'text-allow-overlap': true,
+          'text-ignore-placement': true,
+        },
+        paint: {
+          'text-color': '#ffffff',
+        },
+      });
+    }
+  }, [mapReady, checkpoints, activeRouteColor, activeRouteStart, activeRouteLoop, buildRouteLineGeoJSON, buildRouteEndpointsGeoJSON, hudMode, colorScheme, tint]);
 
   const gridShape = React.useMemo(() => {
     if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
