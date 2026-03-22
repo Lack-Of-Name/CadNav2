@@ -347,14 +347,16 @@ export default function MapLibreMap() {
     initOffline();
   }, [initOffline]);
 
+  const lastLat = lastLocation?.coords.latitude;
+  const lastLon = lastLocation?.coords.longitude;
+
   useEffect(() => {
-    if (!following || !lastLocation || !cameraRef.current) return;
-    const { latitude, longitude } = lastLocation.coords;
+    if (!following || lastLat == null || lastLon == null || !cameraRef.current) return;
     cameraRef.current.setCamera({
-      centerCoordinate: [longitude, latitude],
+      centerCoordinate: [lastLon, lastLat],
       animationDuration: 800,
     });
-  }, [lastLocation, following]);
+  }, [lastLat, lastLon, following]);
 
   // Consume viewTarget from routes screen
   useEffect(() => {
@@ -428,24 +430,39 @@ export default function MapLibreMap() {
         properties: {
           kind: 'finish',
           label: 'F'
+        }
+      });
+    }
+
+    return { type: 'FeatureCollection', features };
   }, [checkpoints, emptyGeo, activeRouteLoop]);
 
   const gridShape = React.useMemo(() => {
     if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
     const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
     
-    // Pad the visible bounds by 1 screen size in all directions to prevent grid lines 
-    // from popping into existence while panning.
-    const latSpan = visibleBounds[0][1] - visibleBounds[1][1];
-    const lngSpan = visibleBounds[0][0] - visibleBounds[1][0];
+    // Pad the visible bounds to prevent grid lines from popping into existence while panning.
+    const latSpan = Math.abs(visibleBounds[0][1] - visibleBounds[1][1]);
+    const lngSpan = Math.abs(visibleBounds[0][0] - visibleBounds[1][0]);
+
+    // SANITY CHECK: If map span is huge, we are flying/zoomed out. Skip heavy grid math until bounds catch up!
+    if (latSpan > 1.5 || lngSpan > 1.5) return emptyGeo;
+
+    const latPad = Math.min(latSpan * 0.5, 0.5); // cap padding to max 0.5 deg to avoid massive shapes
+    const lngPad = Math.min(lngSpan * 0.5, 0.5);
     
+    const swLat = Math.min(visibleBounds[0][1], visibleBounds[1][1]);
+    const swLng = Math.min(visibleBounds[0][0], visibleBounds[1][0]);
+    const neLat = Math.max(visibleBounds[0][1], visibleBounds[1][1]);
+    const neLng = Math.max(visibleBounds[0][0], visibleBounds[1][0]);
+
     const sw = { 
-      latitude: visibleBounds[1][1] - latSpan, 
-      longitude: visibleBounds[1][0] - lngSpan 
+      latitude: swLat - latPad, 
+      longitude: swLng - lngPad 
     };
     const ne = { 
-      latitude: visibleBounds[0][1] + latSpan, 
-      longitude: visibleBounds[0][0] + lngSpan 
+      latitude: neLat + latPad, 
+      longitude: neLng + lngPad 
     };
 
     const gridOffsets = computeGridCornersFromMapBounds(originPt, sw, ne, 1000, gridConvergence ?? 0);
@@ -489,8 +506,9 @@ export default function MapLibreMap() {
       }
     }
 
-    // Subdivisions
-    if (mapGridSubdivisionsEnabled && es.length >= 2 && ns.length >= 2) {
+    // Subdivisions (only process if zoomed in enough! Saves huge amounts of memory)
+    // Style opacity hits 0 below zoom 13, so no need to compute geometry below 12.5.
+    if (mapGridSubdivisionsEnabled && zoomLevel >= 12.5 && es.length >= 2 && ns.length >= 2) {
       const parts = 10;
       for (let i = 0; i < es.length - 1; i++) {
         const eA = es[i];
@@ -892,7 +910,7 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
               <View style={{ marginTop: 20, position: 'relative', width: 120, height: 120, alignItems: 'center', justifyContent: 'center' }}>
                 <HudCompassArrow
                   targetBearingDeg={compassTargetBearingDeg}
-                  rawHeading={lastLocation?.coords ? (lastLocation.coords.magHeading ?? lastLocation.coords.trueHeading ?? 0) : 0}
+                  rawHeading={compassHeadingDeg ?? 0}
                   color={String(bannerAccent)}
                 />
               </View>

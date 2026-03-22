@@ -74,8 +74,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "0d8348a4-8e40-40ea-a5ba-c083b8f8e2b5"
+        "projectId": "1bd5eeec-a690-49b1-8350-988d778279bc"
       }
-    }
+    },
+    "owner": "lyren2"
   }
 }

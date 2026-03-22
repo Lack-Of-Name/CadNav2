@@ -146,8 +146,8 @@ export function useGPS(options?: GPSOptions) {
             headingSubscriptionRef.current = await Location.watchHeadingAsync((h) => {
               if (cancelled) return;
               const now = Date.now();
-              if (lowPowerMode && now - lastHeadingUpdate < 250) return;
-              if (!lowPowerMode && now - lastHeadingUpdate < 33) return;
+              if (lowPowerMode && now - lastHeadingUpdate < 500) return;
+              if (!lowPowerMode && now - lastHeadingUpdate < 100) return;
               lastHeadingUpdate = now;
 
               const mag = typeof h.magHeading === 'number' && h.magHeading >= 0 ? h.magHeading : null;
@@ -277,8 +277,8 @@ export function useGPS(options?: GPSOptions) {
 
     const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
       const now = Date.now();
-      if (lowPowerMode && now - lastUpdate < 250) return;
-      if (!lowPowerMode && now - lastUpdate < 33) return;
+      if (lowPowerMode && now - lastUpdate < 500) return;
+      if (!lowPowerMode && now - lastUpdate < 100) return;
       lastUpdate = now;
 
       const mag = (ev as any).webkitCompassHeading ?? ev.alpha;
