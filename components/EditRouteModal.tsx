@@ -18,21 +18,55 @@ type EditRouteModalProps = {
 };
 
 const ROUTE_COLORS = [
+  
   '#34C759', // Green
-  '#0A84FF', // Blue
-  '#64D2FF', // Light Blue
+  '#98FF98', // Mint
+  '#32CD32', // Lime
+  '#50C878', // Emerald
+  '#228B22', // Forest Green
+  
   '#FFD60A', // Yellow
+  '#FFF700', // Lemon
+  '#FFFF31', // Daffodil
+  '#FFD700', // Golden
+  '#FFDB58', // Mustard
+
   '#FF9F0A', // Orange
+  '#FFDAB9', // Peach
+  '#F28500', // Tangerine
+  '#FFBF00', // Amber
+  '#CC5500', // Burnt Orange
+
   '#FF453A', // Red
+  '#FA8072', // Salmon
+  '#DC143C', // Crimson
+  '#E0115F', // Ruby
+  '#800000', // Maroon
+
   '#BF5AF2', // Purple
+  '#967BB6', // Lavender
+  '#8F00FF', // Violet
+  '#8E4585', // Plum
+  '#614051', // Eggplant
+
   '#5E5CE6', // Indigo
-  '#FF2D55', // Pink
-  '#32ADE6', // Cyan
-  '#00C7BE', // Mint
-  '#A2845E', // Brown
-  '#8E8E93', // Gray
-  '#000000', // Black
-  '#FFFFFF', // White
+  '#6F00FF', // Electric Indigo
+  '#3F00FF', // Ultramarine
+  '#26619C', // Lapis Blue
+  '#191970', // Midnight Blue
+
+  '#0A84FF', // Blue
+  '#6495ED', // Cornflower Blue
+  '#4169E1', // Royal Blue
+  '#0047AB', // Cobalt Blue
+  '#000080', // Navy Blue
+
+  '#64D2FF', // Light Blue
+  '#99FFFF', // Ice Blue
+  '#87CEEB', // Sky Blue
+  '#B0E0E6', // Powder Blue
+  '#00FFFF', // Cyan
+
 ] as const;
 
 // Curated quick-pick emojis for route icons - the most useful for navigation
@@ -169,19 +203,28 @@ export function EditRouteModal({
                 />
 
                 <ThemedText style={styles.label}>Route Color</ThemedText>
-                <View style={styles.colorRow}>
-                  {ROUTE_COLORS.map((c) => (
-                    <TouchableOpacity key={c} onPress={() => setColor(c)}>
-                      <View
-                        style={[
-                          styles.colorDot,
-                          { backgroundColor: c, borderColor },
-                          color === c && styles.colorDotSelected,
-                        ]}
-                      />
-                    </TouchableOpacity>
+                <ScrollView bounces={false} overScrollMode="never" 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.colorGrid}
+                  style={styles.colorStripContainer}
+                >
+                  {Array.from({ length: 8 }).map((_, colIndex) => (
+                    <View key={`col-${colIndex}`} style={styles.colorColumn}>
+                      {ROUTE_COLORS.slice(colIndex * 5, (colIndex + 1) * 5).map((c) => (
+                        <TouchableOpacity key={c} onPress={() => setColor(c)}>
+                          <View
+                            style={[
+                              styles.colorDot,
+                              { backgroundColor: c, borderColor },
+                              color === c && styles.colorDotSelected,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   ))}
-                </View>
+                </ScrollView>
 
                 {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
 
@@ -257,10 +300,17 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
   },
-  colorRow: {
+  colorStripContainer: {
+    maxHeight: 220,
+  },
+  colorGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
+    gap: 15,
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  colorColumn: {
+    gap: 12,
   },
   colorDot: {
     width: 32,

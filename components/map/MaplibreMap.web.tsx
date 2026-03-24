@@ -175,10 +175,11 @@ export default function MapLibreMap() {
         })()
       : null;
 
-  const [hudProgressDistances, setHudProgressDistances] = useState<Record<string, number>>({});
-  
+  const [trackedTargetId, setTrackedTargetId] = useState<string | null>(null);
+  const [targetStartDistance, setTargetStartDistance] = useState<number | null>(null);
+
   useEffect(() => {
-    if (selectedId && effectiveLastLocation && !hudProgressDistances[selectedId]) {
+    if (selectedId && effectiveLastLocation && trackedTargetId !== selectedId) {
       const sp = checkpoints.find((c) => c.id === selectedId);
       if (sp) {
         const dist = haversineMeters(
@@ -188,13 +189,17 @@ export default function MapLibreMap() {
           sp.longitude
         );
         if (Number.isFinite(dist)) {
-          setHudProgressDistances((prev) => ({ ...prev, [selectedId]: dist }));
+          setTrackedTargetId(selectedId);
+          setTargetStartDistance(dist);
         }
       }
+    } else if (!selectedId && trackedTargetId !== null) {
+      setTrackedTargetId(null);
+      setTargetStartDistance(null);
     }
-  }, [selectedId, effectiveLastLocation, checkpoints, hudProgressDistances]);
+  }, [selectedId, effectiveLastLocation, checkpoints, trackedTargetId]);
 
-  const startDistance = selectedId ? hudProgressDistances[selectedId] : null;
+  const startDistance = targetStartDistance;
   const currentProgress = (startDistance && compassDistanceMeters != null && startDistance > 0)
     ? Math.max(0, Math.min(1, 1 - (compassDistanceMeters / startDistance)))
     : 0;

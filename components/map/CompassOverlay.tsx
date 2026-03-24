@@ -108,7 +108,7 @@ export function CompassOverlay({
       // shortest path
       let diff = ((target - (current % 360) + 540) % 360) - 180;
       animatedHeading.value = withTiming(current + diff, {
-        duration: 250,
+        duration: 100,
         easing: Easing.out(Easing.quad),
       });
     }

@@ -50,7 +50,7 @@ function HudCompassArrow({ targetBearingDeg, rawHeading, color }: { targetBearin
     const current = animatedRotation.value;
     let diff = ((target - (current % 360) + 540) % 360) - 180;
     animatedRotation.value = withTiming(current + diff, {
-      duration: 300,
+      duration: 100,
       easing: Easing.out(Easing.quad),
     });
   }, [targetBearingDeg, rawHeading]);
@@ -245,10 +245,11 @@ export default function MapLibreMap() {
         })()
       : null;
 
-  const [hudProgressDistances, setHudProgressDistances] = useState<Record<string, number>>({});
-  
+  const [trackedTargetId, setTrackedTargetId] = useState<string | null>(null);
+  const [targetStartDistance, setTargetStartDistance] = useState<number | null>(null);
+
   useEffect(() => {
-    if (selectedId && lastLocation && !hudProgressDistances[selectedId]) {
+    if (selectedId && lastLocation && trackedTargetId !== selectedId) {
       const sp = checkpoints.find((c) => c.id === selectedId);
       if (sp) {
         const dist = haversineMeters(
@@ -258,13 +259,17 @@ export default function MapLibreMap() {
           sp.longitude
         );
         if (Number.isFinite(dist)) {
-          setHudProgressDistances((prev) => ({ ...prev, [selectedId]: dist }));
+          setTrackedTargetId(selectedId);
+          setTargetStartDistance(dist);
         }
       }
+    } else if (!selectedId && trackedTargetId !== null) {
+      setTrackedTargetId(null);
+      setTargetStartDistance(null);
     }
-  }, [selectedId, lastLocation, checkpoints, hudProgressDistances]);
+  }, [selectedId, lastLocation, checkpoints, trackedTargetId]);
 
-  const startDistance = selectedId ? hudProgressDistances[selectedId] : null;
+  const startDistance = targetStartDistance;
   const currentProgress = (startDistance && compassDistanceMeters != null && startDistance > 0)
     ? Math.max(0, Math.min(1, 1 - (compassDistanceMeters / startDistance)))
     : 0;
