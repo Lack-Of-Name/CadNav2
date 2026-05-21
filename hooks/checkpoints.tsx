@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 
 export type Checkpoint = {
   id: string;
@@ -8,6 +9,7 @@ export type Checkpoint = {
   createdAt: number;
   label?: string;
   color?: string;
+  elevation?: number;
 };
 
 export type SavedRoute = {
@@ -175,7 +177,9 @@ function isCheckpoint(value: unknown): value is Checkpoint {
     typeof v.latitude === 'number' &&
     typeof v.longitude === 'number' &&
     typeof v.createdAt === 'number' &&
-    (v.label === undefined || typeof v.label === 'string')
+    (v.label === undefined || typeof v.label === 'string') &&
+    (v.color === undefined || typeof v.color === 'string') &&
+    (v.elevation === undefined || typeof v.elevation === 'number')
   );
 }
 
@@ -240,7 +244,36 @@ function makeId() {
 }
 
 export function useCheckpoints() {
+  const { apiKey } = useMapTilerKey();
   const [snapshot, setSnapshot] = useState<StoreState>(() => getSnapshot());
+
+  const enrichCheckpoints = useCallback(async (checkpoints: Checkpoint[]) => {
+    if (!apiKey) return checkpoints;
+    const needFetch = checkpoints.some(c => c.elevation === undefined);
+    if (!needFetch) return checkpoints;
+
+    let didEnrich = false;
+    const enriched = [...checkpoints];
+    await Promise.all(
+      enriched.map(async (cp, i) => {
+        if (cp.elevation === undefined) {
+          try {
+            const res = await fetch(`https://api.maptiler.com/elevation/at?lon=${cp.longitude}&lat=${cp.latitude}&key=${apiKey}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.length > 0 && typeof data[0] === 'number') {
+                enriched[i] = { ...cp, elevation: data[0] };
+                didEnrich = true;
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to bulk fetch elevation for checkpoint', err);
+          }
+        }
+      })
+    );
+    return didEnrich ? enriched : checkpoints;
+  }, [apiKey]);
 
   useEffect(() => {
     let mounted = true;
@@ -294,19 +327,36 @@ export function useCheckpoints() {
 
   const addCheckpoint = useCallback(
     async (latitude: number, longitude: number) => {
+      let elevation: number | undefined;
+
+      if (apiKey) {
+        try {
+          const res = await fetch(`https://api.maptiler.com/elevation/at?lon=${longitude}&lat=${latitude}&key=${apiKey}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data && data.length > 0 && typeof data[0] === 'number') {
+              elevation = data[0];
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch elevation for checkpoint', err);
+        }
+      }
+
       const cp: Checkpoint = {
         id: makeId(),
         latitude,
         longitude,
         createdAt: Date.now(),
         color: store.activeRouteColor ?? undefined,
+        elevation,
       };
       // Keep checkpoints in placement order.
       const nextCheckpoints = [...store.checkpoints, cp];
       setStore({ ...store, checkpoints: nextCheckpoints, selectedId: cp.id });
       return cp;
     },
-    []
+    [apiKey]
   );
 
   const removeCheckpoint = useCallback(async (id: string) => {
@@ -399,28 +449,47 @@ export function useCheckpoints() {
     if (trimmed.length === 0) throw new Error('Route name is required');
     if (store.checkpoints.length === 0) throw new Error('No checkpoints to save');
 
+    const checkpointsToSave = await enrichCheckpoints(store.checkpoints);
+
     const route: SavedRoute = {
       id: makeId(),
       name: trimmed,
       createdAt: Date.now(),
-      checkpoints: store.checkpoints,
+      checkpoints: checkpointsToSave,
       isLoop: store.activeRouteLoop,
     };
 
     const nextRoutes = [route, ...store.savedRoutes];
     const nextPersisted: PersistedRoutes = { routes: nextRoutes };
-    setStore({ ...store, savedRoutes: nextRoutes });
+    setStore({ ...store, savedRoutes: nextRoutes, checkpoints: checkpointsToSave });
     await persistRoutes(nextPersisted);
     return route;
-  }, []);
+  }, [enrichCheckpoints]);
 
   const loadRoute = useCallback(async (routeId: string) => {
-    const route = store.savedRoutes.find((r) => r.id === routeId);
-    if (!route) throw new Error('Route not found');
-    const nextSelectedId = route.checkpoints.length > 0 ? route.checkpoints[route.checkpoints.length - 1].id : null;
-    setStore({ ...store, checkpoints: route.checkpoints, selectedId: nextSelectedId, activeRouteLoop: !!route.isLoop });
-    return route;
-  }, []);
+    const routeIndex = store.savedRoutes.findIndex((r) => r.id === routeId);
+    if (routeIndex === -1) throw new Error('Route not found');
+    
+    const route = store.savedRoutes[routeIndex];
+    const enrichedCheckpoints = await enrichCheckpoints(route.checkpoints);
+    const didUpdate = enrichedCheckpoints !== route.checkpoints;
+
+    const nextSelectedId = enrichedCheckpoints.length > 0 ? enrichedCheckpoints[enrichedCheckpoints.length - 1].id : null;
+    
+    if (didUpdate) {
+      const updatedRoute = { ...route, checkpoints: enrichedCheckpoints };
+      const nextRoutes = [...store.savedRoutes];
+      nextRoutes[routeIndex] = updatedRoute;
+      const nextPersisted: PersistedRoutes = { routes: nextRoutes };
+      
+      setStore({ ...store, savedRoutes: nextRoutes, checkpoints: enrichedCheckpoints, selectedId: nextSelectedId, activeRouteLoop: !!route.isLoop });
+      await persistRoutes(nextPersisted);
+      return updatedRoute;
+    } else {
+      setStore({ ...store, checkpoints: route.checkpoints, selectedId: nextSelectedId, activeRouteLoop: !!route.isLoop });
+      return route;
+    }
+  }, [enrichCheckpoints]);
 
   const deleteRoute = useCallback(async (routeId: string) => {
     const nextRoutes = store.savedRoutes.filter((r) => r.id !== routeId);

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -393,9 +393,12 @@ export default function SettingsScreen() {
 
       {/* Grid Settings Modal */}
       <Modal visible={gridModalOpen} animationType="slide" transparent={true}>
-        <View style={styles.modalBackdrop}>
-          <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}> 
-            <View style={styles.modalHeaderRow}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <View style={styles.modalBackdrop}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); setGridModalOpen(false); }} />
+            <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
+              <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}> 
+                <View style={styles.modalHeaderRow}>
               <View style={{ width: 64 }} />
               <ThemedText type="subtitle">
                 {gridPanel === 'origin' ? 'Grid Origin' : 'Grid Convergence'}
@@ -505,8 +508,10 @@ export default function SettingsScreen() {
                 {originError ? <ThemedText style={styles.error}>{originError}</ThemedText> : null}
               </View>
             ) : null}
-          </ThemedView>
-        </View>
+              </ThemedView>
+            </TouchableWithoutFeedback>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Download Maps Modal */}

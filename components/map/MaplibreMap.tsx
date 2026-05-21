@@ -10,12 +10,13 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View, ScrollView, Platform, Linking } from 'react-native';
+import { ThemeSwitch } from '../ui/ThemeSwitch';
 import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, formatHeading, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
@@ -135,9 +136,9 @@ export default function MapLibreMap() {
   const { apiKey, loading } = useMapTilerKey();
   const [hudMode, setHudMode] = useState(false);
   const { lastLocation, requestLocation } = useGPS({ lowPowerMode: hudMode });
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
   const [placedCount, setPlacedCount] = React.useState(0);
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer } = useSettings();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, setSetting } = useSettings();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
   const insets = useSafeAreaInsets();
@@ -181,6 +182,33 @@ export default function MapLibreMap() {
   const [cameraReady, setCameraReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mapCenter, setMapCenter] = useState<{ latitude: number; longitude: number }>(() => {
+    if (lastLocation?.coords) {
+      return { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude };
+    }
+    return { latitude: -37.8136, longitude: 144.9631 };
+  });
+
+  const menuTranslateX = useSharedValue(-300);
+
+  useEffect(() => {
+    menuTranslateX.value = withTiming(menuOpen ? 0 : -300, { duration: 250 });
+  }, [menuOpen]);
+
+  const menuAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: menuTranslateX.value }],
+  }));
+
+  useEffect(() => {
+    if (lastLocation?.coords && following) {
+      setMapCenter({
+        latitude: lastLocation.coords.latitude,
+        longitude: lastLocation.coords.longitude
+      });
+    }
+  }, [lastLocation, following]);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
   const bannerAccent = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
   const bannerAccentText = isLightColor(bannerAccent) ? '#000' : '#fff';
@@ -714,6 +742,13 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
         onRegionDidChange={(ev: any) => {
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
+          
+          // Update map center coordinate
+          const coords = ev?.geometry?.coordinates;
+          if (coords && Array.isArray(coords) && coords.length >= 2) {
+            setMapCenter({ longitude: coords[0], latitude: coords[1] });
+          }
+
           // Keep bounds updated for the grid overlay.
           const getBounds = mapRef.current?.getVisibleBounds;
           if (typeof getBounds === 'function') {
@@ -730,6 +765,12 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
           }
         }}
         onRegionIsChanging={(ev: any) => {
+          // Update map center coordinate while panning for real-time overlay updates
+          const coords = ev?.geometry?.coordinates;
+          if (coords && Array.isArray(coords) && coords.length >= 2) {
+            setMapCenter({ longitude: coords[0], latitude: coords[1] });
+          }
+
           const isUserInteraction = Boolean(
             ev?.properties?.isUserInteraction ??
             ev?.properties?.isUserTouching ??
@@ -912,6 +953,28 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
                 </View>
               </View>
 
+              <View style={{ alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 16 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#888' }}>CURRENT: </Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#ddd', marginLeft: 4 }}>
+                    {lastLocation?.coords.altitude != null ? `${Math.round(lastLocation.coords.altitude)}m` : '—'}
+                  </Text>
+
+                  <View style={{ width: 1, height: 16, backgroundColor: '#444', marginHorizontal: 12 }} />
+
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#888' }}>TARGET: </Text>
+                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#ddd', marginLeft: 4 }}>
+                    {selectedCheckpoint?.elevation != null ? `${Math.round(selectedCheckpoint.elevation)}m` : '—'}
+                  </Text>
+
+                  {lastLocation?.coords.altitude != null && selectedCheckpoint?.elevation != null ? (
+                    <Text style={{ fontSize: 14, fontWeight: '700', marginLeft: 12, color: selectedCheckpoint.elevation - lastLocation.coords.altitude >= 0 ? '#ff8c00' : '#4cd964' }}>
+                      {selectedCheckpoint.elevation - lastLocation.coords.altitude >= 0 ? '↑' : '↓'} {Math.round(Math.abs(selectedCheckpoint.elevation - lastLocation.coords.altitude))}m
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+
               <View style={{ marginTop: 20, position: 'relative', width: 120, height: 120, alignItems: 'center', justifyContent: 'center' }}>
                 <HudCompassArrow
                   targetBearingDeg={compassTargetBearingDeg}
@@ -921,9 +984,17 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
               </View>
             </>
           ) : (
-            <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center' }}>
-              Select a checkpoint to view navigation metrics
-            </Text>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center', marginBottom: 24 }}>
+                Select a checkpoint to view navigation metrics
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 16 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#888' }}>ALTITUDE: </Text>
+                <Text style={{ fontSize: 15, fontWeight: '700', color: '#ddd', marginLeft: 4 }}>
+                  {lastLocation?.coords.altitude != null ? `${Math.round(lastLocation.coords.altitude)} m` : '—'}
+                </Text>
+              </View>
+            </View>
           )}
 
           {compassTargetLabel && startDistance != null && startDistance > 0 && (

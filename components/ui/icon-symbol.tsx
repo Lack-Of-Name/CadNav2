@@ -42,6 +42,9 @@ const MAPPING = {
   'trash.fill': 'delete',
   'square.split.2x2': 'space-dashboard',
   'textformat.123': 'format-list-numbered',
+  'menu': 'menu',
+  'plus': 'add',
+  'arrow.up.right.square': 'open-in-new',
 } as IconMapping;
 
 /**

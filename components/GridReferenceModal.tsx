@@ -91,10 +91,10 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <Pressable style={styles.overlay} onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={reset} activeOpacity={1} />
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); reset(); }} />
           
-          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
+          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
           <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Add by Grid Reference</ThemedText>
           
@@ -145,7 +145,7 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
           </View>
         </ThemedView>
           </TouchableWithoutFeedback>
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

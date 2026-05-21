@@ -94,9 +94,9 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={reset}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <Pressable style={styles.overlay} onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={reset} activeOpacity={1} />
-          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()}>
+        <View style={styles.overlay}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); reset(); }} />
+          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
             <View style={{ width: '100%', maxWidth: 400, alignItems: 'center' }}>
               <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
                 <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Project Point</ThemedText>
@@ -145,7 +145,7 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
         </ThemedView>
             </View>
           </TouchableWithoutFeedback>
-        </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );

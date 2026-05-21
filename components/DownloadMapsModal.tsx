@@ -14,12 +14,16 @@ import * as turf from '@turf/turf';
 import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Keyboard,
+    KeyboardAvoidingView,
     Modal,
     Platform,
+    Pressable,
     ScrollView,
     StyleSheet,
     TextInput,
     TouchableOpacity,
+    TouchableWithoutFeedback,
     View,
 } from 'react-native';
 
@@ -169,9 +173,12 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
   // ---------- Render ----------
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.backdrop}>
-        <ThemedView style={[styles.container, { backgroundColor: String(background), borderColor: String(borderColor) }]}>
-          {/* Header */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <View style={styles.backdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); onClose(); }} />
+          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
+            <ThemedView style={[styles.container, { backgroundColor: String(background), borderColor: String(borderColor) }]}>
+              {/* Header */}
           <View style={styles.headerRow}>
             {panel !== 'main' ? (
               <TouchableOpacity
@@ -539,7 +546,9 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
             )}
           </ScrollView>
         </ThemedView>
-      </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
