@@ -1,50 +1,113 @@
-# Welcome to your Expo app 👋
+# CadNav2
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A cross-platform navigation and mapping application built with React Native and Expo, featuring offline map support, GPS tracking, and route management.
 
-## Get started
+## Features
 
-1. Install dependencies
+- 📍 Real-time GPS tracking and navigation
+- 🗺️ Offline map support with MapLibre
+- 📌 Route saving and management
+- 🧭 Compass overlay with magnetic declination correction
+- 🎯 Grid reference system
+- 📊 Elevation tracking via sensors
+- 🎨 Theme customization
+- 📱 Cross-platform (Android, iOS, Web)
 
+## Tech Stack
+
+- **Framework**: React Native with Expo
+- **Maps**: MapLibre GL with Maptiler integration
+- **Navigation**: Expo Router (file-based routing)
+- **Storage**: AsyncStorage
+- **Location**: Expo Location API
+- **Sensors**: Expo Sensors (compass, accelerometer)
+- **Styling**: React Native Theming
+- **Build**: EAS (Expo Application Services)
+
+## Project Structure
+
+```
+cadnav2/
+├── app/                    # Expo Router app (tabs-based navigation)
+│   └── (tabs)/            # Tab screens (map, routes, settings)
+├── components/            # Reusable React components
+│   ├── map/              # Map-related components
+│   ├── ui/               # UI components
+│   └── ...               # Modals and other components
+├── hooks/                # Custom React hooks
+├── constants/            # App constants and theme
+├── assets/               # Static assets and images
+├── android/              # Android native code
+└── dist/                 # Build output
+```
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- npm or yarn
+- Expo CLI (`npm install -g expo-cli`)
+
+### Installation
+
+1. Install dependencies:
    ```bash
    npm install
    ```
 
-2. Start the app
-
+2. Set up environment:
    ```bash
-   npx expo start
+   # Create .env.local with required API keys (Maptiler token, etc.)
+   cp .env.local.example .env.local
    ```
 
-In the output, you'll find options to open the app in a
+### Running the App
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- **Development**:
+  ```bash
+  npm start
+  ```
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- **Android**:
+  ```bash
+  npm run android
+  ```
 
-## Get a fresh project
+- **iOS**:
+  ```bash
+  npm run ios
+  ```
 
-When you're ready, run:
+- **Web**:
+  ```bash
+  npm run web
+  ```
+
+### Building
+
+- **Android Debug Build**:
+  ```bash
+  npm run build:android
+  ```
+
+- **Production Build** (EAS):
+  ```bash
+  eas build --platform android
+  ```
+
+## Linting
 
 ```bash
-npm run reset-project
+npm run lint
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Contributing
 
-## Learn more
+- Use TypeScript for type safety
+- Follow the existing component structure
+- Keep hooks focused and reusable
+- Maintain theme consistency
 
-To learn more about developing your project with Expo, look at the following resources:
+## License
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+[Add your license here]
