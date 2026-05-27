@@ -160,18 +160,6 @@ TESTING:
 - Gesture navigation testing (swipes, taps)
 - Grid reference input/display validation
 
-================================================================================
-                        ESTIMATED EFFORT
-================================================================================
-
-Phase 1 (Navigation): 2-3 days
-Phase 2 (Map Optimization): 3-4 days
-Phase 3 (HUD Redesign): 1-2 days
-Phase 4 (Visual Polish): 2-3 days
-Phase 5 (Feature Pruning): 1-2 days
-Testing & Polish: 2-3 days
-
-Total Estimate: 2-3 weeks for complete redesign
 
 ================================================================================
                         SUCCESS CRITERIA
