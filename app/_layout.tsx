@@ -1,14 +1,17 @@
 import MapTilerKeyProvider from '@/components/map/MapTilerKeyProvider';
+import { DrawerMenu } from '@/components/ui/DrawerMenu';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Colors } from '@/constants/theme';
 import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Sentry from '@sentry/react-native';
 
 Sentry.init({
@@ -91,6 +94,40 @@ function RuntimeErrorBanner() {
   );
 }
 
+function GlobalNavigationChrome() {
+  const colorScheme = useColorScheme() ?? 'light';
+  const pathname = usePathname();
+  const insets = useSafeAreaInsets();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const theme = Colors[colorScheme];
+
+  return (
+    <>
+      {!drawerOpen && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open navigation menu"
+          onPress={() => setDrawerOpen(true)}
+          style={[
+            styles.menuButton,
+            {
+              top: insets.top + 12,
+              left: insets.left + 12,
+              backgroundColor: colorScheme === 'dark' ? 'rgba(18,18,26,0.94)' : 'rgba(255,255,255,0.96)',
+              borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+            },
+          ]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <IconSymbol name="menu" size={22} color={theme.text} />
+        </Pressable>
+      )}
+
+      <DrawerMenu open={drawerOpen} onClose={() => setDrawerOpen(false)} currentRoute={pathname} />
+    </>
+  );
+}
+
 function RootLayout() {
   const colorScheme = useColorScheme();
 
@@ -107,6 +144,7 @@ function RootLayout() {
                   <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                   <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
                 </Stack>
+                <GlobalNavigationChrome />
                 <RuntimeErrorBanner />
               </OfflineMapProvider>
             </MapTilerKeyProvider>
@@ -120,6 +158,16 @@ function RootLayout() {
 export default Sentry.wrap(RootLayout);
 
 const styles = StyleSheet.create({
+  menuButton: {
+    position: 'absolute',
+    zIndex: 9500,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   errorOverlay: {
     position: 'absolute',
     top: 0,

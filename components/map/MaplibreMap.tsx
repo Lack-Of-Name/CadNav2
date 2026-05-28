@@ -16,7 +16,7 @@ import { Directions, FlingGestureHandler, State } from 'react-native-gesture-han
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, formatHeading, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.general';
+import { bearingDegrees, CompassButton, formatHeading, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.utils';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
 
@@ -133,7 +133,7 @@ const locationMarkerIconStyle = {
 
 export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
-  const { apiKey, loading } = useMapTilerKey();
+  const { apiKey, loading, promptForKey } = useMapTilerKey();
   const [hudMode, setHudMode] = useState(false);
   const { lastLocation, requestLocation } = useGPS({ lowPowerMode: hudMode });
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
@@ -149,6 +149,61 @@ export default function MapLibreMap() {
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
+  const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
+  const [androidMapStyle, setAndroidMapStyle] = useState<any | null>(null);
+  const [androidStyleLoadFailed, setAndroidStyleLoadFailed] = useState(false);
+  const [androidStyleRetryToken, setAndroidStyleRetryToken] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    if (Platform.OS !== 'android') {
+      setAndroidMapStyle(null);
+      setAndroidStyleLoadFailed(false);
+      clearTimeout(timeoutId);
+      return;
+    }
+
+    if (!apiKey) {
+      setAndroidMapStyle(null);
+      setAndroidStyleLoadFailed(true);
+      clearTimeout(timeoutId);
+      return;
+    }
+
+    (async () => {
+      try {
+        setAndroidStyleLoadFailed(false);
+        const res = await fetch(mapStyle, { signal: controller.signal });
+        const style = await res.json();
+        if (cancelled) return;
+
+        const filteredStyle = {
+          ...style,
+          layers: Array.isArray(style.layers)
+            ? style.layers.filter((layer: any) => layer?.type !== 'symbol')
+            : style.layers,
+        };
+
+        delete (filteredStyle as any).glyphs;
+        setAndroidMapStyle(filteredStyle);
+        setAndroidStyleLoadFailed(false);
+      } catch {
+        if (!cancelled) {
+          setAndroidMapStyle(null);
+          setAndroidStyleLoadFailed(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [mapStyle, androidStyleRetryToken]);
   
   const mapImages = React.useMemo(() => {
     return {
@@ -177,6 +232,7 @@ export default function MapLibreMap() {
   const router = useRouter();
   const cameraRef = React.useRef<any>(null);
   const mapRef = React.useRef<any>(null);
+  const programmaticMoveRef = React.useRef(false);
   const [following, setFollowing] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
@@ -319,21 +375,26 @@ export default function MapLibreMap() {
   const centerOnLocation = async (loc: any) => {
     if (!loc || !cameraRef.current) return;
     const { latitude, longitude } = loc.coords;
-    cameraRef.current.setCamera({
-      centerCoordinate: [longitude, latitude],
-      zoomLevel: 14,
-      animationDuration: 1000,
-    });
-    await sleep(1000);
+    programmaticMoveRef.current = true;
+    try {
+      cameraRef.current.setCamera({
+        centerCoordinate: [longitude, latitude],
+        zoomLevel: 14,
+        animationDuration: 1000,
+      });
+      await sleep(1000);
+    } finally {
+      programmaticMoveRef.current = false;
+    }
   };
 
   const handleRecenterPress = async () => {
-    // Always re-center and enable following. Following stops on user map interaction.
+    // Recenter once, but do not force continuous follow mode.
     requestLocation();
     if (lastLocation) {
       await centerOnLocation(lastLocation);
     }
-    setFollowing(true);
+    setFollowing(false);
   };
 
   const onMapPress = async (event: any) => {
@@ -371,7 +432,7 @@ export default function MapLibreMap() {
     if (lastLocation && !initialZoomDone.current && cameraRef.current && cameraReady) {
       initialZoomDone.current = true;
       void centerOnLocation(lastLocation);
-      setFollowing(true);
+      setFollowing(false);
     }
   }, [lastLocation, cameraReady]);
 
@@ -710,20 +771,59 @@ export default function MapLibreMap() {
           {loading ? 'Waiting for MapTiler API key...' : 'No API key configured and no offline maps found. Please add an API key in settings or use downloaded maps.'}
         </Text>
         {!loading && (
-          <TouchableOpacity 
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+              onPress={promptForKey}
+            >
+              <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Enter API Key</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
             style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
             onPress={() => router.push('/(tabs)/settings')}
           >
-            <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Configure Key in Settings</Text>
+            <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Open Settings</Text>
           </TouchableOpacity>
+          </View>
         )}
       </ThemedView>
     );
   }
 
-const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
-
   const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
+
+  if (Platform.OS === 'android' && !androidMapStyle) {
+    return (
+      <ThemedView style={styles.page}>
+        <StatusBar animated={true} barStyle="dark-content" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={typeof tint === 'string' ? tint : String(bannerAccent)} style={{ marginBottom: 16 }} />
+          <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8, color: textColor }}>
+            {androidStyleLoadFailed ? 'Map style unavailable' : 'Loading map'}
+          </Text>
+          <Text style={{ fontSize: 14, textAlign: 'center', marginHorizontal: 32, color: textColor, opacity: 0.7 }}>
+            {androidStyleLoadFailed
+              ? 'The Android map style did not load. Retry or re-enter the API key.'
+              : 'Preparing the native map style.'}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
+            <TouchableOpacity
+              style={{ backgroundColor: bannerAccent, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
+              onPress={() => setAndroidStyleRetryToken((v) => v + 1)}
+            >
+              <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ backgroundColor: 'rgba(128,128,128,0.18)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
+              onPress={promptForKey}
+            >
+              <Text style={{ color: textColor, fontWeight: '600' }}>Enter API Key</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </ThemedView>
+    );
+  }
 
   const mapContent = (
     <ThemedView style={styles.page}>
@@ -733,7 +833,7 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
       <MapView
         ref={mapRef}
         style={styles.map}
-        mapStyle={mapStyle}
+        mapStyle={Platform.OS === 'android' ? androidMapStyle : mapStyle}
         logoEnabled={false}
         rotateEnabled={false}
         pitchEnabled={false}
@@ -765,18 +865,15 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
           }
         }}
         onRegionIsChanging={(ev: any) => {
+          if (programmaticMoveRef.current) return;
+
           // Update map center coordinate while panning for real-time overlay updates
           const coords = ev?.geometry?.coordinates;
           if (coords && Array.isArray(coords) && coords.length >= 2) {
             setMapCenter({ longitude: coords[0], latitude: coords[1] });
           }
 
-          const isUserInteraction = Boolean(
-            ev?.properties?.isUserInteraction ??
-            ev?.properties?.isUserTouching ??
-            ev?.properties?.isGestureActive
-          );
-          if (following && isUserInteraction) {
+          if (following) {
             setFollowing(false);
           }
         }}
@@ -842,16 +939,18 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
               circleStrokeWidth: 2,
             }}
           />
-          <SymbolLayer
-            id="route-endpoint-text"
-            style={{
-              textField: ['get', 'label'],
-              textColor: '#ffffff',
-              textSize: 14,
-              textAllowOverlap: true,
-              textIgnorePlacement: true,
-            }}
-          />
+          {Platform.OS !== 'android' && (
+            <SymbolLayer
+              id="route-endpoint-text"
+              style={{
+                textField: ['get', 'label'],
+                textColor: '#ffffff',
+                textSize: 14,
+                textAllowOverlap: true,
+                textIgnorePlacement: true,
+              }}
+            />
+          )}
         </ShapeSource>
 
         <ShapeSource 
@@ -876,10 +975,12 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
             id="checkpoints-dot"
             style={checkpointsDotStyle}
           />
-          <SymbolLayer
-            id="checkpoints-labels"
-            style={checkpointsLabelsStyle}
-          />
+          {Platform.OS !== 'android' && (
+            <SymbolLayer
+              id="checkpoints-labels"
+              style={checkpointsLabelsStyle}
+            />
+          )}
         </ShapeSource>
 
         <ShapeSource id="location-marker-source" shape={locationMarkerShape}>
@@ -1105,6 +1206,7 @@ const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
       {lastLocation && !hudMode ? (
         <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={[styles.locationOverlay, { top: insets.top + 12, right: insets.right + 12 }]} textStyle={styles.locationText} renderAs="native" />
       ) : null}
+
     </ThemedView>
   );
 
@@ -1249,5 +1351,28 @@ const styles = StyleSheet.create({
     opacity: 0.75,
     paddingHorizontal: 18,
     marginBottom: 6,
+  },
+  hamburgerBtn: {
+    position: 'absolute',
+    zIndex: 50,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+  },
+  hamburgerLines: {
+    gap: 4,
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2,
+    borderRadius: 1,
   },
 });

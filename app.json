@@ -45,10 +45,18 @@
       ]
     },
     "web": {
-      "favicon": "./assets/icons/icon.png"
+      "favicon": "./assets/icons/icon.png",
+      "bundler": "metro"
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "most-recent",
+          "showMenuAtLaunch": true
+        }
+      ],
       [
         "expo-location",
         {

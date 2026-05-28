@@ -1,44 +1,23 @@
-import { HapticPressable } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useCheckpoints } from '@/hooks/checkpoints';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+/**
+ * CadNav Tab Layout
+ * 
+ * Bottom tab bar is HIDDEN — navigation is handled via the hamburger menu
+ * inside the Map screen (MaplibreMap.tsx). This layout just sets up the
+ * routing structure so expo-router can resolve screens.
+ */
 import { Tabs } from 'expo-router';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const { activeRouteColor } = useCheckpoints();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: activeRouteColor ?? Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticPressable,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}/>
-
-      
-      <Tabs.Screen
-        name="routes"
-        options={{
-          title: 'Routes',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.fill" color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
-        }}
-      />
+        tabBarStyle: { display: 'none' }, // Hidden — hamburger menu drives nav
+      }}
+    >
+      <Tabs.Screen name="index"    options={{ title: 'Map' }} />
+      <Tabs.Screen name="routes"   options={{ title: 'Routes' }} />
+      <Tabs.Screen name="settings" options={{ title: 'Settings' }} />
     </Tabs>
   );
 }

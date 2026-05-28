@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -15,19 +15,18 @@ import { Colors } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import * as turf from '@turf/turf';
 
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
-  const sectionHeaderColor = useThemeColor({ light: '#666', dark: '#999' }, 'text');
-  const rowBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
-  const separatorColor = useThemeColor({ light: '#e5e5ea', dark: '#38383a' }, 'icon');
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   return (
     <View style={styles.section}>
-      <ThemedText style={[styles.sectionTitle, { color: sectionHeaderColor }]}>{title.toUpperCase()}</ThemedText>
-      <View style={[styles.sectionContent, { backgroundColor: rowBg, borderColor: separatorColor }]}>
+      <ThemedText style={[styles.sectionTitle, { color: theme.textMuted }]}>{title.toUpperCase()}</ThemedText>
+      <View style={[styles.sectionContent, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
         {children}
       </View>
     </View>
@@ -52,7 +51,7 @@ function SettingsRow({
   color?: string;
 }) {
   const colorScheme = useColorScheme() ?? 'light';
-  const separatorColor = useThemeColor({ light: '#e5e5ea', dark: '#38383a' }, 'icon');
+  const theme = Colors[colorScheme];
   const { activeRouteColor } = useCheckpoints();
 
   return (
@@ -60,9 +59,9 @@ function SettingsRow({
       onPress={onPress} 
       disabled={!onPress}
       activeOpacity={onPress ? 0.7 : 1}
-      style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: separatorColor }]}
+      style={[styles.row, !isLast && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider }]}
     >
-      <View style={[styles.iconContainer, { backgroundColor: color ?? activeRouteColor ?? Colors[colorScheme].tint }]}>
+      <View style={[styles.iconContainer, { backgroundColor: color ?? activeRouteColor ?? theme.tint }]}>
         <IconSymbol name={icon as any} size={18} color="#fff" />
       </View>
       <View style={styles.rowContent}>
@@ -71,7 +70,7 @@ function SettingsRow({
           {value && <ThemedText style={styles.rowValue}>{value}</ThemedText>}
           {rightElement}
           {onPress && !rightElement && (
-            <IconSymbol name="chevron.right" size={20} color={Colors[colorScheme].tabIconDefault} style={{ marginLeft: 8 }} />
+            <IconSymbol name="chevron.right" size={20} color={theme.textMuted} style={{ marginLeft: 8 }} />
           )}
         </View>
       </View>
@@ -80,7 +79,10 @@ function SettingsRow({
 }
 
 export default function SettingsScreen() {
-  const safeBg = useThemeColor({}, 'background');
+  const router = useRouter();
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+  const textColor = theme.text;
   const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
@@ -95,11 +97,10 @@ export default function SettingsScreen() {
   const [originNorthingSign, setOriginNorthingSign] = useState<1 | -1>(1);
   const [originError, setOriginError] = useState<string | null>(null);
   
-  const borderColor = useThemeColor({}, 'tabIconDefault');
-  const background = useThemeColor({}, 'background');
-  const textColor = useThemeColor({}, 'text');
-  const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
-  const rowBg = useThemeColor({ light: '#fff', dark: '#1c1c1e' }, 'background');
+  const borderColor = theme.divider;
+  const background = theme.background;
+  const placeholderColor = theme.textSubtle;
+  const rowBg = theme.surface;
 
   const [inputConvergence, setInputConvergence] = useState<string>('');
   useEffect(() => {
@@ -244,15 +245,27 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: safeBg }]}> 
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]}> 
+      {Platform.OS === 'web' && (
+        <View style={[styles.topBar, { backgroundColor: theme.surface, borderBottomColor: borderColor }]}> 
+          <TouchableOpacity 
+            style={[styles.backBtn, { backgroundColor: 'rgba(128,128,128,0.1)' }]}
+            onPress={() => router.back()}
+          >
+            <IconSymbol name="chevron.left" size={20} color={theme.text} />
+          </TouchableOpacity>
+          <Text style={[styles.topBarTitle, { color: theme.text }]}>Settings</Text>
+          <View style={{ width: 40 }} />
+        </View>
+      )}
       <ScrollView bounces={false} overScrollMode="never" style={styles.scroll} contentContainerStyle={styles.container}>
-        <ThemedText type="title" style={styles.pageTitle}>Settings</ThemedText>
+        {Platform.OS !== 'web' && <ThemedText type="title" style={styles.pageTitle}>Settings</ThemedText>}
 
         <SettingsSection title="Navigation">
           <SettingsRow 
             icon="ruler.fill" 
             label="Angle Units" 
-            color="#FF9500"
+            color={theme.warning}
             rightElement={
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ThemedText style={styles.rowValue}>{isMils ? 'Mils' : 'Degrees'}</ThemedText>
@@ -266,7 +279,7 @@ export default function SettingsScreen() {
           <SettingsRow 
             icon="compass.drawing" 
             label="North Reference" 
-            color="#007AFF"
+            color={theme.primary}
             rightElement={
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <ThemedText style={styles.rowValue}>{isTrue ? 'True' : 'Magnetic'}</ThemedText>
@@ -284,7 +297,7 @@ export default function SettingsScreen() {
           <SettingsRow 
             icon="square.grid.3x3" 
             label="Grid Overlay" 
-            color="#33eaad"
+            color={theme.secondary}
             rightElement={
               <ThemeSwitch 
                 value={mapGridEnabled} 
@@ -298,7 +311,7 @@ export default function SettingsScreen() {
               <SettingsRow 
                 icon="square.split.2x2" 
                 label="Subdivisions" 
-                color="#33eaad"
+                color={theme.secondary}
                 rightElement={
                   <ThemeSwitch
                     value={mapGridSubdivisionsEnabled}
@@ -309,7 +322,7 @@ export default function SettingsScreen() {
               <SettingsRow 
                 icon="textformat.123" 
                 label="Grid Labels" 
-                color="#33eaad"
+                color={theme.secondary}
                 rightElement={
                   <ThemeSwitch
                     value={mapGridNumbersEnabled}
@@ -322,7 +335,7 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="mappin.and.ellipse"
             label="Grid Origin"
-            color="#5AC8FA"
+            color={theme.primary}
             value={mapGridOrigin ? 'Configured' : 'Not set'}
             onPress={() => {
               setOriginError(null);
@@ -333,7 +346,7 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="compass.drawing"
             label="Grid Convergence"
-            color="#AF52DE"
+            color={theme.primary}
             value={gridConvergence != null ? `${gridConvergence}°` : 'Not set'}
             onPress={() => {
               setOriginError(null);
@@ -348,7 +361,7 @@ export default function SettingsScreen() {
           <SettingsRow 
             icon="square.stack.3d.up.fill" 
             label="Map Layer" 
-            color="#FF9500"
+            color={theme.warning}
             value={mapLayer === 'outdoor' ? 'Outdoor' : mapLayer === 'satellite' ? 'Satellite' : 'Auto Dark'}
             onPress={() => {
               const next = mapLayer === 'outdoor' ? 'satellite' : mapLayer === 'satellite' ? 'auto' : 'outdoor';
@@ -357,22 +370,22 @@ export default function SettingsScreen() {
           />
           <SettingsRow 
             icon="arrow.down.circle.fill" 
-            label="Download Maps" 
-            color="#5AC8FA"
+            label="Offline Maps"
+            color={theme.secondary}
             value="Offline"
             onPress={() => setDownloadMapsOpen(true)}
           />
           <SettingsRow 
-            icon="map.fill" 
+            icon="key.fill"
             label="MapTiler API Key" 
-            color="#34C759"
+            color={theme.primary}
             value={apiKey ? 'Configured' : 'Missing'}
             onPress={handleResetApiKey}
           />
-          <SettingsRow
+          <SettingsRow 
             icon="trash.fill"
             label="Clear Tile Cache"
-            color="#FF3B30"
+            color={theme.error}
             onPress={handleClearCache}
             isLast
           />
@@ -382,7 +395,7 @@ export default function SettingsScreen() {
           <SettingsRow
             icon="info.circle.fill"
             label="About CadNav"
-            color="#8E8E93"
+            color={theme.textMuted}
             onPress={() => setInfoOpen(true)}
             isLast
           />
@@ -544,11 +557,32 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 16,
+    paddingTop: 60,
     paddingBottom: 40,
   },
   pageTitle: {
     marginBottom: 20,
     marginLeft: 8,
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+  },
+  topBarTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 17,
+    fontWeight: '600',
   },
   section: {
     marginBottom: 24,

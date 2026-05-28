@@ -8,6 +8,7 @@
     "build:android": "set EXPO_USE_COMMUNITY_AUTOLINKING=1&& expo prebuild --platform android && cd android && gradlew.bat assembleDebug",
     "ios": "npx expo run:ios",
     "web": "expo start --web",
+    "dev": "expo start",
     "lint": "expo lint"
   },
   "dependencies": {

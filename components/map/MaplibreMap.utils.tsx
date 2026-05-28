@@ -79,13 +79,13 @@ export function HudButton({ onPress, style, color, active, renderAs = 'web' }: {
   if (renderAs === 'web') {
     return (
       <div onClick={onPress} role="button" aria-label="Nav Mode" style={{ ...style }}>
-        <IconSymbol size={26} name={active ? "eye.slash.fill" : "eye.fill"} color={String(color)} />
+        <IconSymbol size={26} name={active ? 'eye.slash.fill' : 'eye.fill'} color={String(color)} />
       </div>
     );
   }
   return (
     <TouchableOpacity activeOpacity={0.8} onPress={onPress} accessibilityLabel="Nav Mode" style={style}>
-      <IconSymbol size={26} name={active ? "eye.slash.fill" : "eye.fill"} color={String(color)} />
+      <IconSymbol size={26} name={active ? 'eye.slash.fill' : 'eye.fill'} color={String(color)} />
     </TouchableOpacity>
   );
 }

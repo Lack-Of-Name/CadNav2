@@ -1,4 +1,3 @@
-import { Gyroscope } from 'expo-sensors';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
@@ -28,7 +27,6 @@ export function useGPS(options?: GPSOptions) {
   const [restartToken, setRestartToken] = useState(0);
   const subscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
-  const gyroSubscriptionRef = useRef<any>(null);
   const retryTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
   const lowPowerMode = options?.lowPowerMode ?? false;
@@ -144,84 +142,6 @@ export function useGPS(options?: GPSOptions) {
                 else if (typeof old.unsubscribe === 'function') old.unsubscribe();
               }
             } catch {}
-            // Clean up gyroscope subscription
-            try {
-              const old = gyroSubscriptionRef.current as any;
-              if (old && typeof old.remove === 'function') old.remove();
-            } catch {}
-
-            let lastHeadingUpdate = 0;
-            
-            // Fused heading variables
-            let fusedMagHeading: number | null = null;
-            let lastGyroTime = Date.now();
-
-            Gyroscope.setUpdateInterval(lowPowerMode ? 200 : 32); // ~30 fps or 5 fps
-            gyroSubscriptionRef.current = Gyroscope.addListener((gyroData) => {
-              if (cancelled) return;
-              const now = Date.now();
-              const dt = (now - lastGyroTime) / 1000;
-              lastGyroTime = now;
-
-              // If we don't have a base heading yet, wait
-              if (magHeadingRef.current == null) return;
-
-              // Initialize fused if needed
-              if (fusedMagHeading == null) {
-                fusedMagHeading = magHeadingRef.current;
-              }
-
-              // gyroData.z is rotation rate around Z axis in rad/s.
-              // We need to convert it to degrees/sec. 
-              // Positive Z rotation on most devices means counter-clockwise (left turn)
-              // Heading increases clockwise, so we subtract the Z rotation multiplied by dt
-              // Wait, iOS/Android axes might differ slightly, but typically z is the same.
-              // Let's assume right-hand rule: turning right (clockwise) -> negative Z rotation rate.
-              // Meaning heading (which goes 0 to 360 clockwise) increases as Z goes negative.
-              // So delta heading = - (gyroData.z * 180 / Math.PI) * dt
-              // Or simply checking typical device: Z is positive when anti-clockwise.
-              const gyroDeltaDeg = -(gyroData.z * 180 / Math.PI) * dt;
-
-              // Apply Complementary Filter: 
-              // 95% gyroscope (fast, smooth) + 5% magnetometer (absolute, slow)
-              const mag = magHeadingRef.current;
-              
-              // Handle wrap-around for the difference
-              let diff = mag - fusedMagHeading;
-              if (diff > 180) diff -= 360;
-              if (diff < -180) diff += 360;
-
-              // Fuse
-              fusedMagHeading = fusedMagHeading + gyroDeltaDeg + 0.05 * diff;
-              fusedMagHeading = (fusedMagHeading % 360 + 360) % 360;
-
-              // Update state roughly 15 times a second (66ms) to avoid spamming React too heavily
-              if (now - lastHeadingUpdate > (lowPowerMode ? 200 : 66)) {
-                lastHeadingUpdate = now;
-                setMagHeading(fusedMagHeading);
-                
-                // If we also track true heading, update it by applying the declination offset
-                if (trueHeadingRef.current != null && magHeadingRef.current != null) {
-                   const decl = trueHeadingRef.current - magHeadingRef.current;
-                   const fTrue = (fusedMagHeading + decl % 360 + 360) % 360;
-                   setTrueHeading(fTrue);
-                }
-
-                setLastLocation((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        coords: {
-                          ...prev.coords,
-                          magHeading: fusedMagHeading,
-                          trueHeading: trueHeadingRef.current != null ? (fusedMagHeading + (trueHeadingRef.current - magHeadingRef.current) % 360 + 360) % 360 : prev.coords.trueHeading,
-                        },
-                      }
-                    : prev
-                );
-              }
-            });
-
             headingSubscriptionRef.current = await Location.watchHeadingAsync((h) => {
               if (cancelled) return;
 
@@ -300,10 +220,6 @@ export function useGPS(options?: GPSOptions) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      try {
-        const sg = gyroSubscriptionRef.current as any;
-        if (sg && typeof sg.remove === 'function') sg.remove();
-      } catch {}
       try {
         const s = subscriptionRef.current as any;
         if (s) {

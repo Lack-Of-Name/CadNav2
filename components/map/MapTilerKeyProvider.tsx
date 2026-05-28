@@ -6,7 +6,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 const STORAGE_KEY = 'MAPTILER_API_KEY';
 
@@ -26,10 +26,7 @@ export function useMapTilerKey() {
 function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [input, setInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
+  const [showModal, setShowModal] = useState(true);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
   const inputTextColor = useThemeColor({}, 'text');
@@ -125,16 +122,15 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function onSubmit() {
-    if (!input) return Alert.alert('API Key required', 'Please enter your MapTiler API key.');
-    setVerifying(true);
-    const res = await verifyKey(input.trim());
-    setVerifying(false);
+  async function submitApiKey(rawInput: string) {
+    const input = rawInput.trim();
+    if (!input) return { ok: false, message: 'Please enter your MapTiler API key.' } as const;
+
+    const res = await verifyKey(input);
     if (!res.ok) {
-      setError(res.message ?? 'The provided MapTiler API key is invalid. Please check it and try again.');
-      return;
+      return { ok: false, message: res.message ?? 'The provided MapTiler API key is invalid. Please check it and try again.' } as const;
     }
-    setError(null);
+
     try {
       await AsyncStorage.setItem(STORAGE_KEY, input.trim());
       setApiKey(input.trim());
@@ -142,9 +138,11 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       // after receiving a valid API key, request location permission (prompt user)
       const locOk = await requestLocationPermission(true);
       if (!locOk) setLocationModalVisible(true);
+      return { ok: true } as const;
     } catch (err) {
       Alert.alert('Storage error', 'Failed to save the API key for future launches.');
       void showAlert({ title: 'MapTiler storage error', message: String(err) });
+      return { ok: false, message: String(err) } as const;
     }
   }
 
@@ -256,7 +254,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   }
 
   function promptForKey() {
-    setError(null);
     setShowModal(true);
   }
 
@@ -272,46 +269,15 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   return (
     <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey }}>
       {children}
-
-      <Modal visible={showModal} animationType="slide" transparent={true}>
-        <View style={styles.backdrop}>
-          <ThemedView style={styles.container}>
-            <ThemedText style={styles.title}>MapTiler API Key</ThemedText>
-            <ThemedText style={styles.help}>Woah there! This app needs a free MapTiler API key to load maps.</ThemedText>
-            <TextInput
-              placeholder="Enter MapTiler API key"
-              placeholderTextColor={placeholderColor}
-              value={input}
-              onChangeText={(t) => {
-                setInput(t);
-                setError(null);
-              }}
-              style={[styles.input, { color: inputTextColor, borderColor: inputBorderColor }]}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
-            <View style={styles.row}>
-              <StyledButton variant="secondary" onPress={() => Linking.openURL('https://www.maptiler.com/')}>
-                Take Me There!
-              </StyledButton>
-              <View style={styles.spacer} />
-              <StyledButton variant="primary" onPress={onSubmit} disabled={verifying}>
-                {verifying ? <ActivityIndicator color="#fff" /> : 'Verify & Save'}
-              </StyledButton>
-            </View>
-            <TouchableOpacity 
-              style={{ marginTop: 24, paddingVertical: 8, alignItems: 'center' }}
-              onPress={() => {
-                setShowModal(false);
-              }}>
-              <ThemedText style={{ textDecorationLine: 'underline', color: '#999', fontSize: 13 }}>
-                Use offline mode (no key)
-              </ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
-        </View>
-      </Modal>
+      <KeyEntryModal
+        visible={showModal}
+        inputTextColor={inputTextColor}
+        inputBorderColor={inputBorderColor}
+        placeholderColor={placeholderColor}
+        onCancel={() => setShowModal(false)}
+        onOpenMapTiler={() => Linking.openURL('https://www.maptiler.com/')}
+        onSubmitKey={submitApiKey}
+      />
 
       <Modal visible={locationModalVisible} animationType="fade" transparent={true}>
         <View style={styles.backdrop}>
@@ -365,6 +331,98 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
         </View>
       </Modal>
     </MapTilerKeyContext.Provider>
+  );
+}
+
+function KeyEntryModal({
+  visible,
+  inputTextColor,
+  inputBorderColor,
+  placeholderColor,
+  onCancel,
+  onOpenMapTiler,
+  onSubmitKey,
+}: {
+  visible: boolean;
+  inputTextColor: string;
+  inputBorderColor: string;
+  placeholderColor: string;
+  onCancel: () => void;
+  onOpenMapTiler: () => void;
+  onSubmitKey: (input: string) => Promise<{ ok: true } | { ok: false; message: string }>;
+}) {
+  const [input, setInput] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      setInput('');
+      setError(null);
+      setVerifying(false);
+    }
+  }, [visible]);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="fade"
+      transparent={true}
+      presentationStyle="overFullScreen"
+      statusBarTranslucent={Platform.OS === 'android'}
+      navigationBarTranslucent={Platform.OS === 'android'}
+    >
+      <View style={{ flex: 1 }}>
+        <View style={styles.backdrop}>
+          <ThemedView style={styles.container}>
+            <ThemedText style={styles.title}>MapTiler API Key</ThemedText>
+            <ThemedText style={styles.help}>Woah there! This app needs a free MapTiler API key to load maps.</ThemedText>
+            <TextInput
+              autoFocus
+              placeholder="Enter MapTiler API key"
+              placeholderTextColor={placeholderColor}
+              value={input}
+              onChangeText={(t) => {
+                setInput(t);
+                setError(null);
+              }}
+              style={[styles.input, { color: inputTextColor, borderColor: inputBorderColor }]}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="off"
+              textContentType="none"
+              importantForAutofill="no"
+            />
+            {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+            <View style={styles.row}>
+              <StyledButton variant="secondary" onPress={onOpenMapTiler}>
+                Take Me There!
+              </StyledButton>
+              <View style={styles.spacer} />
+              <StyledButton
+                variant="primary"
+                onPress={async () => {
+                  setVerifying(true);
+                  const result = await onSubmitKey(input);
+                  setVerifying(false);
+                  if (!result.ok) setError(result.message);
+                }}
+                disabled={verifying}
+              >
+                {verifying ? <ActivityIndicator color="#fff" /> : 'Verify & Save'}
+              </StyledButton>
+            </View>
+            <TouchableOpacity 
+              style={{ marginTop: 24, paddingVertical: 8, alignItems: 'center' }}
+              onPress={onCancel}>
+              <ThemedText style={{ textDecorationLine: 'underline', color: '#999', fontSize: 13 }}>
+                Use offline mode (no key)
+              </ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 

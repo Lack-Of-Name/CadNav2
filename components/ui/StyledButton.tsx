@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
 
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 type Props = {
   onPress?: () => void;
@@ -15,9 +16,10 @@ type Props = {
 
 export default function StyledButton({ onPress, variant = 'primary', disabled = false, style, children, activeOpacity = 0.8, color }: Props) {
   const primary = variant === 'primary';
-  const defaultTint = useThemeColor({ light: '#007AFF', dark: '#0A84FF' }, 'tint');
+  const colorScheme = useColorScheme() ?? 'light';
+  const defaultTint = Colors[colorScheme].tint;
   const resolvedColor = color ?? defaultTint;
-  const secondaryBg = useThemeColor({ light: '#fff', dark: '#2c2c2e' }, 'background');
+  const secondaryBg = Colors[colorScheme].surface;
 
   // Determine if the resolved color is "light" (needs dark text) or "dark" (needs white text)
   const primaryTextColor = isLightColor(resolvedColor) ? '#000' : '#fff';

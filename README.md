@@ -2,6 +2,10 @@
 
 A cross-platform navigation and mapping application built with React Native and Expo, featuring offline map support, GPS tracking, and route management.
 
+## Quick Read
+
+If you want the fastest path into the codebase, start with [docs/quick-read-index.md](docs/quick-read-index.md). It maps the app entry points, map system, hooks, and UI building blocks in one place.
+
 ## Features
 
 - 📍 Real-time GPS tracking and navigation
@@ -26,20 +30,7 @@ A cross-platform navigation and mapping application built with React Native and 
 
 ## Project Structure
 
-```
-cadnav2/
-├── app/                    # Expo Router app (tabs-based navigation)
-│   └── (tabs)/            # Tab screens (map, routes, settings)
-├── components/            # Reusable React components
-│   ├── map/              # Map-related components
-│   ├── ui/               # UI components
-│   └── ...               # Modals and other components
-├── hooks/                # Custom React hooks
-├── constants/            # App constants and theme
-├── assets/               # Static assets and images
-├── android/              # Android native code
-└── dist/                 # Build output
-```
+The code is organized around the Expo Router app in [app/](app/), the reusable UI and map components in [components/](components/), shared state in [hooks/](hooks/), and design tokens in [constants/](constants/).
 
 ## Getting Started
 

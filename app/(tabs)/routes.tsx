@@ -3,7 +3,7 @@ import { alert as showAlert } from '@/components/alert';
 import { EditRouteModal } from '@/components/EditRouteModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { formatGridReference, latLonToGridCoords } from '@/components/map/mapGrid';
-import { haversineMeters } from '@/components/map/MaplibreMap.general';
+import { haversineMeters } from '@/components/map/MaplibreMap.utils';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { SavedRoutesModal } from '@/components/SavedRoutesModal';
 import { ThemedText } from '@/components/themed-text';
@@ -34,9 +34,6 @@ type RouteItem = {
 
 const ROUTES_KEY = 'APP_ROUTES';
 
-function formatCoords(lat: number, lon: number): string {
-  return `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
-}
 
 function computeTotalDistance(cps: Checkpoint[], isLoop: boolean = false): number {
   if (cps.length < 2) return 0;
@@ -261,7 +258,8 @@ export default function RoutesScreen() {
     
     cps.forEach((cp, idx) => {
       lines.push(`Waypoint ${idx + 1}${cp.label ? ` - ${cp.label}` : ''}`);
-      lines.push(`Lat/Lon: ${formatCoords(cp.latitude, cp.longitude)}`);
+      const gridRef = mapGridOrigin ? formatGridReference(...Object.values(latLonToGridCoords(mapGridOrigin, { latitude: cp.latitude, longitude: cp.longitude }, gridConvergence ?? 0)) as [number, number]) : 'No grid origin';
+      lines.push(`Grid Ref: ${gridRef}`);
       
       const grid = formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0);
       if (grid) {
@@ -299,7 +297,8 @@ export default function RoutesScreen() {
   }
 
   async function handleSaveLocationFromCheckpoint(cp: Checkpoint) {
-    const name = cp.label || `Location ${formatCoords(cp.latitude, cp.longitude)}`;
+    const gridStr = mapGridOrigin ? formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0).replace(' · Grid: ', '') : '';
+    const name = cp.label || gridStr || `Checkpoint ${cp.latitude.toFixed(4)},${cp.longitude.toFixed(4)}`;
     try {
       await persistLocation(name, cp.latitude, cp.longitude);
       void showAlert({ title: 'Saved!', message: `Location saved. You can load it later with the Saved option when adding points.` });
@@ -444,7 +443,7 @@ export default function RoutesScreen() {
   const safeBg = useThemeColor({}, 'background');
   const tintColor = useThemeColor({}, 'tint');
   const colorScheme = useColorScheme() ?? 'light';
-  const subtleBg = useThemeColor({ light: '#f5f5f5', dark: '#1c1c1e' }, 'background');
+  const subtleBg = Colors[colorScheme].surface;
   const iconColor = useThemeColor({}, 'icon');
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -544,8 +543,7 @@ export default function RoutesScreen() {
                         )}
                       </View>
                       <ThemedText style={styles.cpCoords}>
-                        {formatCoords(cp.latitude, cp.longitude)}
-                        {formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0)}
+                        {formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0).replace(' · Grid: ', '') || 'No grid origin set'}
                       </ThemedText>
                     </View>
                     <TouchableOpacity
@@ -560,7 +558,7 @@ export default function RoutesScreen() {
                       style={styles.cpDeleteBtn}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <IconSymbol name="xmark" size={13} color="#8E8E93" />
+                      <IconSymbol name="xmark" size={13} color={Colors[colorScheme].textMuted} />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 </View>
@@ -737,7 +735,7 @@ export default function RoutesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
+  container: { flex: 1, padding: 16, paddingTop: 60 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   stackContainer: { flex: 1, paddingTop: 5 },
 

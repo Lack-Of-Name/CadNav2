@@ -9,20 +9,20 @@ export function ThemeSwitch(props: ThemeSwitchProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const { activeRouteColor } = useCheckpoints();
   
-  // Use the active route color, fallback to theme tint (or a default bright color so dark mode doesn't blend into white-on-white)
-  const tint = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : Colors.light.tint);
+  const theme = Colors[colorScheme];
+  const tint = activeRouteColor ?? theme.tint;
 
   // iOS switches look best with a standard white thumb and tinted track
   // Android/Web switches usually color the thumb for 'on' and make the track a lighter/transparent hue
   const isIOS = Platform.OS === 'ios';
   
   const thumbColor = isIOS 
-    ? '#ffffff' 
-    : (props.value ? tint : '#f4f3f4');
+    ? theme.surface 
+    : (props.value ? tint : theme.surface);
 
   const trackColor = isIOS 
-    ? { false: '#e9e9ea', true: tint } 
-    : { false: colorScheme === 'dark' ? '#39393d' : '#e9e9ea', true: `${tint}80` }; // 50% opacity for track
+    ? { false: theme.divider, true: tint } 
+    : { false: theme.divider, true: `${tint}80` }; // 50% opacity for track
 
   return (
     <Switch
