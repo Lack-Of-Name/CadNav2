@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { Colors } from '@/constants/theme';
 
 export type Checkpoint = {
   id: string;
@@ -300,7 +301,15 @@ export function useCheckpoints() {
   );
 
   const requestPlacementMode = useCallback(async () => {
-    setStore({ ...store, placementModeRequested: true });
+    setStore({
+      ...store,
+      placementModeRequested: true,
+      checkpoints: [],
+      selectedId: null,
+      activeRouteColor: Colors.light.tempTarget,
+      activeRouteStart: null,
+      activeRouteLoop: false,
+    });
   }, []);
 
   const consumePlacementModeRequest = useCallback(async () => {

@@ -88,7 +88,7 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={reset}>
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={{ flex: 1 }}
       >
         <View style={styles.overlay}>

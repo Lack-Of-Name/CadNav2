@@ -1,7 +1,7 @@
 import MapTilerKeyProvider from '@/components/map/MapTilerKeyProvider';
 import { DrawerMenu } from '@/components/ui/DrawerMenu';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
+import { Colors, HUD } from '@/constants/theme';
 import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -75,6 +75,7 @@ function installGlobalRuntimeErrorHandler() {
 }
 
 function RuntimeErrorBanner() {
+  const colorScheme = useColorScheme();
   const [errorState, setErrorState] = useState<RuntimeErrorState | null>(runtimeErrorState);
 
   useEffect(() => subscribeRuntimeErrors(setErrorState), []);
@@ -83,11 +84,11 @@ function RuntimeErrorBanner() {
 
   return (
     <View pointerEvents="box-none" style={styles.errorOverlay}>
-      <View style={styles.errorCard}>
-        <Text style={styles.errorTitle}>{errorState.title}</Text>
-        <Text style={styles.errorMessage}>{errorState.message}</Text>
-        <Pressable onPress={() => emitRuntimeError(null)} style={styles.errorDismiss}>
-          <Text style={styles.errorDismissText}>Dismiss</Text>
+      <View style={[styles.errorCard, { backgroundColor: Colors[colorScheme].surface, borderColor: Colors[colorScheme].error }]}>
+        <Text style={[styles.errorTitle, { color: Colors[colorScheme].text }]}>{errorState.title}</Text>
+        <Text style={[styles.errorMessage, { color: Colors[colorScheme].textMuted }]}>{errorState.message}</Text>
+        <Pressable onPress={() => emitRuntimeError(null)} style={[styles.errorDismiss, { backgroundColor: HUD.bg }]}> 
+          <Text style={[styles.errorDismissText, { color: Colors[colorScheme].error }]}>Dismiss</Text>
         </Pressable>
       </View>
     </View>
@@ -113,8 +114,8 @@ function GlobalNavigationChrome() {
             {
               top: insets.top + 12,
               left: insets.left + 12,
-              backgroundColor: colorScheme === 'dark' ? 'rgba(18,18,26,0.94)' : 'rgba(255,255,255,0.96)',
-              borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+              backgroundColor: Colors[colorScheme].surface,
+              borderColor: Colors[colorScheme].divider,
             },
           ]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -128,29 +129,45 @@ function GlobalNavigationChrome() {
   );
 }
 
-function RootLayout() {
+function AppThemeShell({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme();
 
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      {children}
+    </ThemeProvider>
+  );
+}
+
+function AppChrome() {
+  return (
+    <>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+      </Stack>
+      <GlobalNavigationChrome />
+      <RuntimeErrorBanner />
+    </>
+  );
+}
+
+function RootLayout() {
   useEffect(() => installGlobalRuntimeErrorHandler(), []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <SafeAreaProvider>
-          <SettingsProvider>
+      <SafeAreaProvider>
+        <SettingsProvider>
+          <AppThemeShell>
             <MapTilerKeyProvider>
               <OfflineMapProvider>
-                <Stack>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-                </Stack>
-                <GlobalNavigationChrome />
-                <RuntimeErrorBanner />
+                <AppChrome />
               </OfflineMapProvider>
             </MapTilerKeyProvider>
-          </SettingsProvider>
-        </SafeAreaProvider>
-      </ThemeProvider>
+          </AppThemeShell>
+        </SettingsProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }
@@ -178,8 +195,6 @@ const styles = StyleSheet.create({
     paddingTop: 52,
   },
   errorCard: {
-    backgroundColor: '#5C1010',
-    borderColor: '#FF8F8F',
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
@@ -190,13 +205,11 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   errorTitle: {
-    color: '#FFF1F0',
     fontSize: 13,
     fontWeight: '700',
     marginBottom: 4,
   },
   errorMessage: {
-    color: '#FFF1F0',
     fontSize: 13,
     lineHeight: 18,
   },
@@ -206,10 +219,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: '#FFF1F0',
   },
   errorDismissText: {
-    color: '#5C1010',
     fontSize: 12,
     fontWeight: '700',
   },

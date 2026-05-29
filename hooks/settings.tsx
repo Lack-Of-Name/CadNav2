@@ -17,6 +17,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 
 export type AngleUnit = 'mils' | 'degrees';
 export type MapLayer = 'outdoor' | 'satellite' | 'auto';
+export type ThemeMode = 'system' | 'light' | 'dark';
 
 const SETTINGS_STORAGE_KEY = 'cadnav2.settings.v1';
 
@@ -26,6 +27,10 @@ function isAngleUnit(value: unknown): value is AngleUnit {
 
 function isMapLayer(value: unknown): value is MapLayer {
   return value === 'outdoor' || value === 'satellite' || value === 'auto';
+}
+
+function isThemeMode(value: unknown): value is ThemeMode {
+  return value === 'system' || value === 'light' || value === 'dark';
 }
 
 type SettingDef<T> = {
@@ -53,6 +58,10 @@ const SETTINGS_DEFS = {
   mapLayer: {
     default: 'outdoor' as MapLayer,
     parse: (raw: unknown) => (isMapLayer(raw) ? raw : 'outdoor'),
+  },
+  themeMode: {
+    default: 'system' as ThemeMode,
+    parse: (raw: unknown) => (isThemeMode(raw) ? raw : 'system'),
   },
   mapGridEnabled: {
     default: false,
@@ -98,6 +107,7 @@ export type Settings = {
   angleUnit: AngleUnit;
   mapHeading: MapHeading;
   mapLayer: MapLayer;
+  themeMode: ThemeMode;
   mapGridEnabled: boolean;
   mapGridSubdivisionsEnabled: boolean;
   mapGridOrigin: { latitude: number; longitude: number } | null;
@@ -119,6 +129,7 @@ function buildDefaultSettings(): Settings {
     angleUnit: SETTINGS_DEFS.angleUnit.default,
     mapHeading: SETTINGS_DEFS.mapHeading.default,
     mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.default,
+    themeMode: SETTINGS_DEFS.themeMode.default,
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.default,
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
@@ -131,6 +142,7 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
     angleUnit: SETTINGS_DEFS.angleUnit.parse(persisted ? persisted['angleUnit'] : undefined),
     mapHeading: SETTINGS_DEFS.mapHeading.parse(persisted ? persisted['mapHeading'] : undefined),
     mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.parse(persisted ? persisted['mapGridEnabled'] : undefined),
+    themeMode: SETTINGS_DEFS.themeMode.parse(persisted ? persisted['themeMode'] : undefined),
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),

@@ -173,7 +173,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
   // ---------- Render ----------
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.backdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); onClose(); }} />
           <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
@@ -234,7 +234,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                         <ThemedText type="defaultSemiBold">{preset.label}</ThemedText>
                         <ThemedText style={styles.presetDesc}>{preset.description}</ThemedText>
                       </View>
-                      <View style={[styles.downloadBtnCircle, { backgroundColor: '#007AFF' }]}>
+                      <View style={[styles.downloadBtnCircle, { backgroundColor: String(Colors[colorScheme].primary) }]}>
                         <IconSymbol name="arrow.down.circle.fill" size={20} color="#fff" />
                       </View>
                     </View>
@@ -260,15 +260,15 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       <ThemedText style={styles.progressPct}>{activeDownload.progress.toFixed(0)}%</ThemedText>
                     </View>
                     <View style={styles.progressBarBg}>
-                      <View style={[styles.progressBarFill, { width: `${Math.min(activeDownload.progress, 100)}%` }]} />
+                      <View style={[styles.progressBarFill, { width: `${Math.min(activeDownload.progress, 100)}%`, backgroundColor: String(Colors[colorScheme].success) }]} />
                     </View>
                     <TouchableOpacity
                       onPress={cancelDownload}
                       activeOpacity={0.7}
                       style={[styles.cancelDownloadBtn, { borderColor: separatorColor }]}
                     >
-                      <IconSymbol name="xmark.circle.fill" size={16} color="#FF3B30" />
-                      <ThemedText style={styles.cancelDownloadText}>Cancel Download</ThemedText>
+                      <IconSymbol name="xmark.circle.fill" size={16} color={String(Colors[colorScheme].error)} />
+                      <ThemedText style={[styles.cancelDownloadText, { color: String(Colors[colorScheme].error) }]}>Cancel Download</ThemedText>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -278,7 +278,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                   onPress={() => setPanel('download')}
                   disabled={!!activeDownload}
                   activeOpacity={0.7}
-                  style={[styles.newDownloadBtn, { backgroundColor: '#007AFF' }, activeDownload && { opacity: 0.5 }]}
+                  style={[styles.newDownloadBtn, { backgroundColor: String(Colors[colorScheme].primary) }, activeDownload && { opacity: 0.5 }]}
                 >
                   <IconSymbol name="arrow.down.circle.fill" size={22} color="#fff" />
                   <ThemedText style={styles.newDownloadText}>Download New Area</ThemedText>
@@ -324,7 +324,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       )}
                     </View>
                     <TouchableOpacity onPress={() => deletePack(pack.name)} style={styles.deleteBtn}>
-                      <IconSymbol name="trash.fill" size={18} color="#FF3B30" />
+                      <IconSymbol name="trash.fill" size={18} color={String(Colors[colorScheme].error)} />
                     </TouchableOpacity>
                   </View>
                 ))}
@@ -344,7 +344,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     onPress={() => setLocationMode('my-location')}
                     style={[
                       styles.segmentBtn,
-                      locationMode === 'my-location' && { backgroundColor: '#007AFF' },
+                      locationMode === 'my-location' && { backgroundColor: String(Colors[colorScheme].primary) },
                     ]}
                   >
                     <ThemedText
@@ -360,7 +360,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     onPress={() => setLocationMode('coordinates')}
                     style={[
                       styles.segmentBtn,
-                      locationMode === 'coordinates' && { backgroundColor: '#007AFF' },
+                      locationMode === 'coordinates' && { backgroundColor: String(Colors[colorScheme].primary) },
                     ]}
                   >
                     <ThemedText
@@ -376,7 +376,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     onPress={() => setLocationMode('checkpoint')}
                     style={[
                       styles.segmentBtn,
-                      locationMode === 'checkpoint' && { backgroundColor: '#007AFF' },
+                      locationMode === 'checkpoint' && { backgroundColor: String(Colors[colorScheme].primary) },
                     ]}
                   >
                     <ThemedText
@@ -392,7 +392,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
 
                 {locationMode === 'my-location' && (
                   <View style={[styles.locationInfo, { backgroundColor: rowBg, borderColor: separatorColor }]}>
-                    <IconSymbol name="location.fill.viewfinder" size={18} color={'#007AFF'} />
+                    <IconSymbol name="location.fill.viewfinder" size={18} color={String(Colors[colorScheme].primary)} />
                     <ThemedText style={styles.locationInfoText}>{locationSummary}</ThemedText>
                   </View>
                 )}
@@ -442,7 +442,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                               padding: 12,
                               borderBottomWidth: StyleSheet.hairlineWidth,
                               borderColor: String(separatorColor),
-                              backgroundColor: selectedCheckpointId === cp.id ? '#007AFF' : 'transparent',
+                              backgroundColor: selectedCheckpointId === cp.id ? String(Colors[colorScheme].primary) : 'transparent',
                             }}
                           >
                             <ThemedText style={selectedCheckpointId === cp.id ? { color: '#fff', fontWeight: 'bold' } : {}}>
@@ -467,7 +467,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       style={[
                         styles.radiusChip,
                         { borderColor: separatorColor },
-                        radiusKm === r && { backgroundColor: '#007AFF', borderColor: '#007AFF' },
+                        radiusKm === r && { backgroundColor: String(Colors[colorScheme].primary), borderColor: String(Colors[colorScheme].primary) },
                       ]}
                     >
                       <ThemedText
@@ -501,12 +501,12 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                         id="radius-source" 
                         shape={turf.circle([previewTarget.longitude, previewTarget.latitude], radiusKm, { units: 'kilometers', steps: 64 })}
                       >
-                        <MapLibre.FillLayer id="radius-fill" style={{ fillColor: '#007AFF' as string, fillOpacity: 0.15 }} />
-                        <MapLibre.LineLayer id="radius-line" style={{ lineColor: '#007AFF' as string, lineWidth: 2 }} />
+                        <MapLibre.FillLayer id="radius-fill" style={{ fillColor: String(Colors[colorScheme].primary) as string, fillOpacity: 0.15 }} />
+                        <MapLibre.LineLayer id="radius-line" style={{ lineColor: String(Colors[colorScheme].primary) as string, lineWidth: 2 }} />
                       </MapLibre.ShapeSource>
                     </MapLibre.MapView>
                     <View style={styles.mapPreviewOverlay} pointerEvents="none">
-                      <IconSymbol name="plus" size={24} color={'#007AFF'} />
+                      <IconSymbol name="plus" size={24} color={String(Colors[colorScheme].primary)} />
                     </View>
                   </View>
                 )}
@@ -535,7 +535,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       </View>
                       <View style={{ alignItems: 'flex-end', justifyContent: 'center' }}>
                         <ThemedText style={styles.estimateText}>{getSizingEstimate(preset)}</ThemedText>
-                        <View style={[styles.downloadBtnCircle, { backgroundColor: '#007AFF' }]}>
+                        <View style={[styles.downloadBtnCircle, { backgroundColor: String(Colors[colorScheme].primary) }]}>
                           <IconSymbol name="arrow.down.circle.fill" size={20} color="#fff" />
                         </View>
                       </View>
@@ -667,7 +667,7 @@ const styles = StyleSheet.create({
   progressBarFill: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#34C759',
+    backgroundColor: 'transparent',
   },
   cancelDownloadBtn: {
     flexDirection: 'row',
@@ -682,7 +682,7 @@ const styles = StyleSheet.create({
   cancelDownloadText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#FF3B30',
+    
   },
   segmentedRow: {
     flexDirection: 'row',

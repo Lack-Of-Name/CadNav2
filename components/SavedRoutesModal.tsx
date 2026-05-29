@@ -1,5 +1,7 @@
 import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useState } from 'react';
 import { FlatList, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { alert as showAlert } from './alert';
@@ -23,6 +25,7 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
   const iconColor = useThemeColor({}, 'icon');
   const cardColor = useThemeColor({ light: '#f9f9f9', dark: '#202020' }, 'background');
   const activeTabBg = useThemeColor({ light: '#e0e0e0', dark: '#333' }, 'background');
+  const colorScheme = useColorScheme() ?? 'light';
 
   async function handleSelectRoute(route: SavedRoute) {
     try {
@@ -119,7 +122,7 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         style={styles.deleteBtn}
                       >
-                        <IconSymbol name="trash" size={18} color="#FF3B30" />
+                        <IconSymbol name="trash" size={18} color={String(Colors[colorScheme].error)} />
                       </TouchableOpacity>
                       <IconSymbol name="chevron.right" size={20} color={iconColor} />
                     </TouchableOpacity>
@@ -156,7 +159,7 @@ export function SavedRoutesModal({ visible, onClose, onSelectRoute, onSelectLoca
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         style={styles.deleteBtn}
                       >
-                        <IconSymbol name="trash" size={18} color="#FF3B30" />
+                        <IconSymbol name="trash" size={18} color={String(Colors[colorScheme].error)} />
                       </TouchableOpacity>
                       <IconSymbol name="chevron.right" size={20} color={iconColor} />
                     </TouchableOpacity>

@@ -93,7 +93,7 @@ export function ProjectPointModal({ visible, onClose, onAdd }: ProjectPointModal
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={reset}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); reset(); }} />
           <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>

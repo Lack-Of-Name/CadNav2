@@ -1,7 +1,7 @@
 /**
  * DrawerMenu — slide-in hamburger navigation panel.
  */
-import { Colors, Elevation, Radius, Space } from '@/constants/theme';
+import { Colors, Elevation, HUD, Radius, Space } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -63,7 +63,7 @@ export function DrawerMenu({ open, onClose, currentRoute }: Props) {
     <>
       {open && (
         <Animated.View
-          style={[StyleSheet.absoluteFill, { backgroundColor: '#000', zIndex: 99 }, overlayStyle]}
+          style={[StyleSheet.absoluteFill, { backgroundColor: HUD.bg, zIndex: 99 }, overlayStyle]}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
@@ -72,7 +72,7 @@ export function DrawerMenu({ open, onClose, currentRoute }: Props) {
       <Animated.View style={[styles.drawer, { backgroundColor: C.surface, paddingTop: insets.top + Space.md, zIndex: 100 }, drawerStyle, Elevation.high]}>
         <View style={styles.drawerHeader}>
           <View style={[styles.logoMark, { backgroundColor: C.primary }]}>
-            <Text style={styles.logoText}>CN</Text>
+            <Text style={[styles.logoText, { color: C.surface } ]}>CN</Text>
           </View>
           <View>
             <Text style={[styles.appName, { color: C.text }]}>CadNav</Text>

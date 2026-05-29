@@ -471,9 +471,6 @@ export default function RoutesScreen() {
         <Collapsible
           header={
             <View style={styles.cardHeader}>
-              <View style={styles.cardLeft}>
-                <ThemedText style={{ fontSize: 28 }}>{item.icon ?? '📍'}</ThemedText>
-              </View>
               <View style={styles.cardBody}>
                 <View style={styles.routeTitleRow}>
                   <ThemedText type="defaultSemiBold" style={{ flexShrink: 1 }}>{item.title}</ThemedText>
@@ -485,7 +482,6 @@ export default function RoutesScreen() {
                   )}
                 </View>
                 <ThemedText style={styles.cardSubline}>
-                  {item.subtitle ? `${item.subtitle} · ` : ''}
                   {pointCount} {pointCount === 1 ? 'point' : 'points'}
                   {distLabel ? ` · ${distLabel}` : ''}
                 </ThemedText>

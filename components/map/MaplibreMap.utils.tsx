@@ -1,6 +1,6 @@
 import { degreesToMils } from '@/components/map/converter';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Text as RNText, View as RNView, TouchableOpacity } from 'react-native';
+import { TouchableOpacity } from 'react-native';
 
 export const normalizeDegrees = (d: number) => ((d % 360) + 360) % 360;
 export const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -27,10 +27,6 @@ export const haversineMeters = (fromLat: number, fromLon: number, toLat: number,
 
 export function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-export function getCompassHeadingDeg(lastLocation?: any) {
-  return lastLocation?.coords?.magHeading ?? null;
 }
 
 export function formatHeading(lastLocation: any, mapHeading: string | undefined, angleUnit: string | undefined) {
@@ -75,50 +71,3 @@ export function CompassButton({ onPress, style, color, active, renderAs = 'web' 
   );
 }
 
-export function HudButton({ onPress, style, color, active, renderAs = 'web' }: { onPress: () => void; style?: any; color?: string; active?: boolean; renderAs?: RenderAs }) {
-  if (renderAs === 'web') {
-    return (
-      <div onClick={onPress} role="button" aria-label="Nav Mode" style={{ ...style }}>
-        <IconSymbol size={26} name={active ? 'eye.slash.fill' : 'eye.fill'} color={String(color)} />
-      </div>
-    );
-  }
-  return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress} accessibilityLabel="Nav Mode" style={style}>
-      <IconSymbol size={26} name={active ? 'eye.slash.fill' : 'eye.fill'} color={String(color)} />
-    </TouchableOpacity>
-  );
-}
-
-export function InfoBox({ lastLocation, mapHeading, angleUnit, containerStyle, textStyle, renderAs = 'web' }: {
-  lastLocation?: any;
-  mapHeading?: string;
-  angleUnit?: string;
-  containerStyle?: any;
-  textStyle?: any;
-  renderAs?: RenderAs;
-}) {
-  const headingText = formatHeading(lastLocation, mapHeading, angleUnit);
-  if (!lastLocation) return null;
-  if (renderAs === 'web') {
-    return (
-      <div style={containerStyle}>
-        <RNText style={textStyle}>Lat: {lastLocation.coords.latitude.toFixed(6)}</RNText>
-        <br />
-        <RNText style={textStyle}>Lon: {lastLocation.coords.longitude.toFixed(6)}</RNText>
-        <br />
-        <RNText style={textStyle}>Alt: {lastLocation.coords.altitude == null ? '—' : `${lastLocation.coords.altitude.toFixed(0)} m`}</RNText>
-        <br />
-        <RNText style={textStyle}>Heading: {headingText}</RNText>
-      </div>
-    );
-  }
-  return (
-    <RNView style={containerStyle}>
-      <RNText style={textStyle}>Lat: {lastLocation.coords.latitude.toFixed(6)}</RNText>
-      <RNText style={textStyle}>Lon: {lastLocation.coords.longitude.toFixed(6)}</RNText>
-      <RNText style={textStyle}>Alt: {lastLocation.coords.altitude == null ? '—' : `${lastLocation.coords.altitude.toFixed(0)} m`}</RNText>
-      <RNText style={textStyle}>Heading: {headingText}</RNText>
-    </RNView>
-  );
-}

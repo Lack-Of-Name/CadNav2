@@ -1,4 +1,6 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useEffect, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
@@ -104,6 +106,7 @@ export function EditRouteModal({
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const iconColor = useThemeColor({}, 'text');
   const selectedBg = useThemeColor({ light: '#e8e8ea', dark: '#3a3a3c' }, 'background');
+  const colorScheme = useColorScheme() ?? 'light';
 
   useEffect(() => {
     if (visible) {
@@ -137,7 +140,7 @@ export function EditRouteModal({
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={{ flex: 1 }}
       >
         <View style={styles.overlay}>
@@ -158,7 +161,12 @@ export function EditRouteModal({
                 </TouchableOpacity>
             </View>
 
-            <View style={styles.form}>
+            <ScrollView
+              bounces={false}
+              overScrollMode="never"
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.form}
+            >
                 {/* Icon picker - inline scroll strip */}
                 <ThemedText style={styles.label}>Icon</ThemedText>
                 <ScrollView bounces={false} overScrollMode="never" 
@@ -226,14 +234,14 @@ export function EditRouteModal({
                   ))}
                 </ScrollView>
 
-                {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+                {error ? <ThemedText style={[styles.error, { color: Colors[colorScheme].error }]}>{error}</ThemedText> : null}
 
                 <View style={styles.footer}>
                     <StyledButton variant="secondary" onPress={onClose}>Cancel</StyledButton>
                     <View style={{ width: 12 }} />
                     <StyledButton variant="primary" onPress={handleSave} color={color}>{isEditing ? 'Save Changes' : 'Create Route'}</StyledButton>
                 </View>
-            </View>
+              </ScrollView>
         </Animated.View>
         </TouchableWithoutFeedback>
         </View>
@@ -329,7 +337,6 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.15 }],
   },
   error: {
-    color: '#FF3B30',
     fontSize: 14,
   },
   footer: {

@@ -10,6 +10,9 @@ import { Platform } from 'react-native';
 const PRIMARY       = '#1A73E8'; // Google Blue — primary actions, tint
 const PRIMARY_DARK  = '#4A9EFF'; // Lighter blue for dark-mode tint
 const SECONDARY     = '#34A853'; // Success / active route green
+const ACCENT_PURPLE = '#AF52DE'; // Optional accent (used in UI)
+const ACCENT_ORANGE = '#FF9500'; // Optional accent
+const TEMP_TARGET    = '#F6B23C'; // Temporary checkpoint / navigation target
 
 // ── Semantic status ────────────────────────────────────────────────────────
 const SUCCESS       = '#34A853';
@@ -48,6 +51,9 @@ export const Colors = {
   light: {
     primary:        PRIMARY,
     secondary:      SECONDARY,
+    tempTarget:     TEMP_TARGET,
+    accentPurple:   ACCENT_PURPLE,
+    accentOrange:   ACCENT_ORANGE,
     success:        SUCCESS,
     warning:        WARNING,
     error:          ERROR,
@@ -65,6 +71,9 @@ export const Colors = {
   dark: {
     primary:        PRIMARY_DARK,
     secondary:      SECONDARY,
+    tempTarget:     TEMP_TARGET,
+    accentPurple:   ACCENT_PURPLE,
+    accentOrange:   ACCENT_ORANGE,
     success:        SUCCESS,
     warning:        WARNING,
     error:          ERROR,

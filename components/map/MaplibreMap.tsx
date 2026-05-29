@@ -1,24 +1,26 @@
 import DownloadProgressOverlay from '@/components/DownloadProgressOverlay';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { GridReferenceModal } from '@/components/GridReferenceModal';
+import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useOfflineMaps } from '@/hooks/offline-maps';
 import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View, ScrollView, Platform, Linking } from 'react-native';
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View, ScrollView, Platform, Linking, useWindowDimensions } from 'react-native';
 import { ThemeSwitch } from '../ui/ThemeSwitch';
-import { Directions, FlingGestureHandler, State } from 'react-native-gesture-handler';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
-import { bearingDegrees, CompassButton, formatHeading, haversineMeters, HudButton, InfoBox, RecenterButton, sleep } from './MaplibreMap.utils';
+import { bearingDegrees, CompassButton, formatHeading, haversineMeters, RecenterButton, sleep } from './MaplibreMap.utils';
 import { degreesToMils } from './converter';
-import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
+import { computeGridCornersFromMapBounds, formatGridReference, generateGridPoints, latLonToGridCoords } from './mapGrid';
 
 let maplibreModule: any | undefined | null;
 
@@ -41,35 +43,6 @@ function isLightColor(hex: string): boolean {
   const g = parseInt(c.substring(2, 4), 16);
   const b = parseInt(c.substring(4, 6), 16);
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
-}
-
-function HudCompassArrow({ targetBearingDeg, rawHeading, color }: { targetBearingDeg: number, rawHeading: number, color: string }) {
-  const animatedRotation = useSharedValue(targetBearingDeg - rawHeading);
-
-  useEffect(() => {
-    const target = targetBearingDeg - rawHeading;
-    const current = animatedRotation.value;
-    let diff = ((target - (current % 360) + 540) % 360) - 180;
-    animatedRotation.value = withTiming(current + diff, {
-      duration: 100,
-      easing: Easing.out(Easing.quad),
-    });
-  }, [targetBearingDeg, rawHeading]);
-
-  const style = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: `${animatedRotation.value}deg` }]
-    };
-  });
-
-  return (
-    <Animated.View style={[{
-      width: 0, height: 0,
-      borderLeftWidth: 30, borderLeftColor: 'transparent',
-      borderRightWidth: 30, borderRightColor: 'transparent',
-      borderBottomWidth: 80, borderBottomColor: color,
-    }, style]} />
-  );
 }
 
 const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
@@ -121,7 +94,7 @@ const locationMarkerPulseStyle = {
   circleStrokeWidth: 6,
   circleStrokeColor: 'rgba(0,122,255,0.15)',
 };
-const locationMarkerBgStyle = { circleRadius: 12, circleColor: '#007AFF' };
+const locationMarkerBgStyle = { circleRadius: 12, circleColor: Colors.light.primary };
 const locationMarkerIconStyle = {
   iconImage: ['case', ['get', 'hasOrientation'], 'location-arrow', 'location-dot'],
   iconSize: 1,
@@ -134,15 +107,29 @@ const locationMarkerIconStyle = {
 export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading, promptForKey } = useMapTilerKey();
-  const [hudMode, setHudMode] = useState(false);
-  const { lastLocation, requestLocation } = useGPS({ lowPowerMode: hudMode });
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, consumePlacementModeRequest, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget } = useCheckpoints();
-  const [placedCount, setPlacedCount] = React.useState(0);
+  const { lastLocation, requestLocation } = useGPS();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteColor, setActiveRouteStart, setActiveRouteLoop, clearActiveRoute, setCheckpointLabel, setViewTarget } = useCheckpoints();
   const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, setSetting } = useSettings();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
+  function hexToRgba(hex: string, alpha: number) {
+    const c = hex.replace('#', '');
+    const r = parseInt(c.substring(0, 2), 16);
+    const g = parseInt(c.substring(2, 4), 16);
+    const b = parseInt(c.substring(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  const primaryHex = Colors[colorScheme].primary;
+  const primaryRgba15 = hexToRgba(primaryHex, 0.15);
+  const computedLocationMarkerPulseStyle = {
+    circleRadius: 12,
+    circleColor: primaryRgba15,
+    circleStrokeWidth: 6,
+    circleStrokeColor: primaryRgba15,
+  };
+  const computedLocationMarkerBgStyle = { circleRadius: 12, circleColor: primaryHex };
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tabIconSelected = useThemeColor({}, 'tabIconSelected');
   const tint = useThemeColor({}, 'tint');
@@ -216,7 +203,9 @@ export default function MapLibreMap() {
     lineColor: activeRouteColor ?? 'transparent',
     lineOpacity: activeRouteColor ? 0.75 : 0,
     lineWidth: 3,
-  }), [activeRouteColor]);
+    lineDasharray: activeRouteColor === Colors[colorScheme].tempTarget ? [0.8, 1.6] : [1],
+    lineCap: 'round',
+  }), [activeRouteColor, colorScheme]);
 
   const checkpointsLabelsStyle = React.useMemo(() => ({
     textField: ['get', 'label'],
@@ -240,6 +229,10 @@ export default function MapLibreMap() {
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [stickyHudOpen, setStickyHudOpen] = useState(false);
+  const [placementMenuOpen, setPlacementMenuOpen] = useState(false);
+  const [gridPlacementOpen, setGridPlacementOpen] = useState(false);
+  const [projectPlacementOpen, setProjectPlacementOpen] = useState(false);
   const [mapCenter, setMapCenter] = useState<{ latitude: number; longitude: number }>(() => {
     if (lastLocation?.coords) {
       return { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude };
@@ -266,7 +259,12 @@ export default function MapLibreMap() {
     }
   }, [lastLocation, following]);
   const buttonIconColor = following ? tabIconSelected : (colorScheme === 'light' ? tint : iconColor);
-  const bannerAccent = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
+  const tempTargetColor = Colors[colorScheme].tempTarget;
+  const tempTargetActive = activeRouteColor === tempTargetColor || activeRouteColor === Colors.light.tempTarget;
+  const mapGridOriginForRef = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
+  const { height: screenHeight } = useWindowDimensions();
+  const bottomHudVisible = stickyHudOpen;
+  const bannerAccent = activeRouteColor ?? tempTargetColor;
   const bannerAccentText = isLightColor(bannerAccent) ? '#000' : '#fff';
   const initialZoomDone = React.useRef(false);
 
@@ -306,6 +304,16 @@ export default function MapLibreMap() {
         : `${Math.round(compassTargetBearingDeg)}°`
       : null;
 
+  const compassBearingDegreesText =
+    typeof compassTargetBearingDeg === 'number'
+      ? `${Math.round(compassTargetBearingDeg)}°`
+      : null;
+
+  const compassBearingMilsText =
+    typeof compassTargetBearingDeg === 'number'
+      ? `${Math.round(degreesToMils(compassTargetBearingDeg, { normalize: true }))}`
+      : null;
+
   const compassDistanceMeters = lastLocation && selectedCheckpoint
     ? haversineMeters(
         lastLocation.coords.latitude,
@@ -328,6 +336,47 @@ export default function MapLibreMap() {
           return `${Math.round(meters)} m`;
         })()
       : null;
+
+  const headingText = formatHeading(lastLocation, mapHeading, angleUnit);
+  const currentPositionText = lastLocation
+    ? `${lastLocation.coords.latitude.toFixed(5)}, ${lastLocation.coords.longitude.toFixed(5)}`
+    : 'No fix yet';
+  const targetGridRefText = selectedCheckpoint
+    ? (() => {
+        const { easting, northing } = latLonToGridCoords(
+          mapGridOriginForRef,
+          { latitude: selectedCheckpoint.latitude, longitude: selectedCheckpoint.longitude },
+          gridConvergence ?? 0
+        );
+        return formatGridReference(easting, northing);
+      })()
+    : null;
+  const targetTitle = selectedCheckpoint
+    ? selectedCheckpoint.label?.trim() || `Checkpoint ${selectedIndex + 1}`
+    : bottomHudVisible
+      ? 'Checkpoint route'
+      : 'No target selected';
+  const targetBearingDescriptor = compassTargetBearingDeg != null
+    ? angleUnit === 'mils'
+      ? `Bearing ${compassBearingMilsText ?? '—'} mils`
+      : `Bearing ${compassBearingDegreesText ?? '—'}`
+    : null;
+  const targetSubtitle = selectedCheckpoint
+    ? targetBearingDescriptor && compassDistanceText != null
+      ? `${targetBearingDescriptor} · ${compassDistanceText}`
+      : 'Waiting for location fix'
+    : tempTargetActive
+      ? 'Temporary target active'
+      : 'Use the placement tools below to add a temp checkpoint.';
+  const summaryAccent = tempTargetActive ? tempTargetColor : (compassTargetColor ?? activeRouteColor ?? tempTargetColor);
+  const summaryAccentText = isLightColor(summaryAccent) ? '#111' : '#fff';
+  const altitudeDeltaText = selectedCheckpoint?.elevation != null && lastLocation?.coords.altitude != null
+    ? (() => {
+        const delta = selectedCheckpoint.elevation - lastLocation.coords.altitude;
+        const arrow = delta >= 0 ? '↑' : '↓';
+        return `${arrow} ${Math.round(Math.abs(delta))}m`;
+      })()
+    : null;
 
   const [trackedTargetId, setTrackedTargetId] = useState<string | null>(null);
   const [targetStartDistance, setTargetStartDistance] = useState<number | null>(null);
@@ -397,6 +446,40 @@ export default function MapLibreMap() {
     setFollowing(false);
   };
 
+  const openPlacementChooser = () => {
+    setStickyHudOpen(true);
+    setPlacementMenuOpen(true);
+  };
+
+  const startPlacementFlow = async (mode: 'tap' | 'grid' | 'project') => {
+    setStickyHudOpen(true);
+    await requestPlacementMode();
+    setPlacementMenuOpen(false);
+    if (mode !== 'tap') {
+      await cancelPlacementMode();
+    }
+    setGridPlacementOpen(false);
+    setProjectPlacementOpen(false);
+
+    if (mode === 'grid') {
+      setGridPlacementOpen(true);
+    } else if (mode === 'project') {
+      setProjectPlacementOpen(true);
+    }
+  };
+
+  const placeTemporaryCheckpoint = async (latitude: number, longitude: number) => {
+    await setActiveRouteColor(tempTargetColor);
+    await setActiveRouteLoop(false);
+    await clearActiveRoute();
+    await setActiveRouteStart(lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null);
+    const cp = await addCheckpoint(latitude, longitude);
+    await setCheckpointLabel(cp.id, 'Temporary target');
+    await setViewTarget({ latitude, longitude, zoom: 15 });
+    await cancelPlacementMode();
+    setFollowing(false);
+  };
+
   const onMapPress = async (event: any) => {
     if (!placementModeRequested) return;
     let coords;
@@ -409,15 +492,12 @@ export default function MapLibreMap() {
     const lat = Number(coords[1]);
     if (Number.isNaN(lon) || Number.isNaN(lat)) return;
 
-    await addCheckpoint(lat, lon);
-    setPlacedCount(c => c + 1);
-    // Don't consume - stay in placement mode for continuous placement
-    await consumePlacementModeRequest();
+    await placeTemporaryCheckpoint(lat, lon);
   };
 
   const handleDonePlacing = async () => {
     await cancelPlacementMode();
-    setPlacedCount(0);
+    setPlacementMenuOpen(false);
   };
 
   const handleMarkerPress = async (id: string) => {
@@ -829,7 +909,6 @@ export default function MapLibreMap() {
     <ThemedView style={styles.page}>
       <StatusBar animated={true} barStyle="dark-content" />
 
-      {!hudMode && (
       <MapView
         ref={mapRef}
         style={styles.map}
@@ -986,11 +1065,11 @@ export default function MapLibreMap() {
         <ShapeSource id="location-marker-source" shape={locationMarkerShape}>
           <CircleLayer
             id="location-marker-pulse"
-            style={locationMarkerPulseStyle}
+            style={computedLocationMarkerPulseStyle}
           />
           <CircleLayer
             id="location-marker-bg"
-            style={locationMarkerBgStyle}
+            style={computedLocationMarkerBgStyle}
           />
           <SymbolLayer
             id="location-marker-icon"
@@ -998,154 +1077,176 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
       </MapView>
-      )}
 
       <DownloadProgressOverlay />
 
-      {hudMode && (
-        <View style={{
-          position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, zIndex: 10,
-          backgroundColor: '#000',
-          alignItems: 'center', justifyContent: 'center',
-          padding: 20
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-            {checkpoints.length > 1 && (
-              <TouchableOpacity
-                onPress={handlePrevTarget}
-                style={{ padding: 10 }}
-              >
-                <Text style={{ fontSize: 24, color: '#888' }}>◀</Text>
-              </TouchableOpacity>
-            )}
-            <Text style={{ fontSize: 24, fontWeight: '600', color: '#888', marginHorizontal: 10 }}>
-              {compassTargetLabel || 'No Target Selected'}
-            </Text>
-            {checkpoints.length > 1 && (
-              <TouchableOpacity
-                onPress={handleNextTarget}
-                style={{ padding: 10 }}
-              >
-                <Text style={{ fontSize: 24, color: '#888' }}>▶</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {compassTargetLabel && compassTargetBearingDeg !== null ? (
-            <>
-              <Text style={{ fontSize: 18, fontWeight: '500', color: '#aaa', marginBottom: 4 }}>TARGET BEARING</Text>
-              <Text style={{ fontSize: 72, fontWeight: 'bold', color: String(bannerAccent), marginBottom: 12 }}>
-                {compassBearingText}
-              </Text>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 24, marginBottom: 10 }}>
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#888', marginBottom: 2 }}>CURRENT HEADING</Text>
-                  <Text style={{ fontSize: 24, fontWeight: '600', color: '#ccc' }}>
-                    {compassHeadingDeg != null ? (angleUnit === 'mils' ? `${Math.round(degreesToMils(compassHeadingDeg, { normalize: true }))} mils` : `${Math.round(compassHeadingDeg)}°`) : '—'}
-                  </Text>
-                </View>
-                <View style={{ width: 1, height: 40, backgroundColor: '#333', marginHorizontal: 20 }} />
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={{ fontSize: 14, fontWeight: '500', color: '#888', marginBottom: 2 }}>DISTANCE</Text>
-                  <Text style={{ fontSize: 28, fontWeight: '600', color: '#ddd' }}>
-                    {compassDistanceText || '—'}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ alignItems: 'center', marginTop: 8, marginBottom: 12 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 16 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#888' }}>CURRENT: </Text>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#ddd', marginLeft: 4 }}>
-                    {lastLocation?.coords.altitude != null ? `${Math.round(lastLocation.coords.altitude)}m` : '—'}
-                  </Text>
-
-                  <View style={{ width: 1, height: 16, backgroundColor: '#444', marginHorizontal: 12 }} />
-
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#888' }}>TARGET: </Text>
-                  <Text style={{ fontSize: 15, fontWeight: '700', color: '#ddd', marginLeft: 4 }}>
-                    {selectedCheckpoint?.elevation != null ? `${Math.round(selectedCheckpoint.elevation)}m` : '—'}
-                  </Text>
-
-                  {lastLocation?.coords.altitude != null && selectedCheckpoint?.elevation != null ? (
-                    <Text style={{ fontSize: 14, fontWeight: '700', marginLeft: 12, color: selectedCheckpoint.elevation - lastLocation.coords.altitude >= 0 ? '#ff8c00' : '#4cd964' }}>
-                      {selectedCheckpoint.elevation - lastLocation.coords.altitude >= 0 ? '↑' : '↓'} {Math.round(Math.abs(selectedCheckpoint.elevation - lastLocation.coords.altitude))}m
-                    </Text>
-                  ) : null}
-                </View>
-              </View>
-
-              <View style={{ marginTop: 20, position: 'relative', width: 120, height: 120, alignItems: 'center', justifyContent: 'center' }}>
-                <HudCompassArrow
-                  targetBearingDeg={compassTargetBearingDeg}
-                  rawHeading={compassHeadingDeg ?? 0}
-                  color={String(bannerAccent)}
-                />
-              </View>
-            </>
-          ) : (
-            <View style={{ alignItems: 'center' }}>
-              <Text style={{ fontSize: 24, color: '#aaa', textAlign: 'center', marginBottom: 24 }}>
-                Select a checkpoint to view navigation metrics
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', paddingHorizontal: 16, paddingVertical: 6, borderRadius: 16 }}>
-                <Text style={{ fontSize: 13, fontWeight: '600', color: '#888' }}>ALTITUDE: </Text>
-                <Text style={{ fontSize: 15, fontWeight: '700', color: '#ddd', marginLeft: 4 }}>
-                  {lastLocation?.coords.altitude != null ? `${Math.round(lastLocation.coords.altitude)} m` : '—'}
+      {bottomHudVisible ? (
+        <View style={[styles.summaryWrap, { left: insets.left + 12 + 58 + 14, right: insets.right + 12, bottom: insets.bottom + 12, maxHeight: Math.max(112, Math.round(screenHeight * 0.2)) }]}> 
+          <View style={[styles.summaryCard, { backgroundColor: colorScheme === 'dark' ? 'rgba(17,17,17,0.96)' : 'rgba(255,255,255,0.97)', borderColor: summaryAccent }]}> 
+            <View style={styles.summaryHeader}>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={[styles.summaryTitle, { color: String(textColor) }]} numberOfLines={1}>
+                  {placementMenuOpen
+                    ? 'Choose add method'
+                    : selectedCheckpoint
+                      ? 'Navigation'
+                      : 'Checkpoint planner'}
+                </Text>
+                <Text style={[styles.summarySubtitle, { color: String(borderColor) }]} numberOfLines={1}>
+                  {placementMenuOpen
+                    ? 'Choosing a method clears the current route and opens placement.'
+                    : selectedCheckpoint
+                      ? (tempTargetActive ? 'Temp target active' : `${checkpoints.length} checkpoint${checkpoints.length === 1 ? '' : 's'} loaded`)
+                      : 'Dense temp placement and route control'}
                 </Text>
               </View>
+              {selectedCheckpoint ? (
+                <TouchableOpacity
+                  onPress={openPlacementChooser}
+                  activeOpacity={0.85}
+                  style={[styles.summaryPlusButton, { backgroundColor: summaryAccent }]}
+                >
+                  <View style={[styles.routeColorDot, { backgroundColor: summaryAccent }]} />
+                </TouchableOpacity>
+              ) : null}
+              {placementMenuOpen ? (
+                <View style={[styles.summaryAccentPill, { backgroundColor: 'rgba(127,127,127,0.18)' }]}>
+                  <Text style={[styles.summaryAccentPillText, { color: String(textColor) }]}>RESET ON SELECT</Text>
+                </View>
+              ) : tempTargetActive && checkpoints.length > 1 ? (
+                <View style={styles.summaryNavButtons}>
+                  <TouchableOpacity onPress={handlePrevTarget} style={[styles.summaryNavButton, { borderColor: summaryAccent }]}>
+                    <IconSymbol name="chevron.left" size={16} color={summaryAccent} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleNextTarget} style={[styles.summaryNavButton, { borderColor: summaryAccent }]}>
+                    <IconSymbol name="chevron.right" size={16} color={summaryAccent} />
+                  </TouchableOpacity>
+                </View>
+              ) : selectedCheckpoint ? (
+                <View style={[styles.summaryAccentPill, { backgroundColor: 'rgba(127,127,127,0.18)' }]}>
+                  <Text style={[styles.summaryAccentPillText, { color: String(textColor) }]}>{tempTargetActive ? 'TEMP' : 'NAV'}</Text>
+                </View>
+              ) : null}
             </View>
-          )}
 
-          {compassTargetLabel && startDistance != null && startDistance > 0 && (
-            <View style={{ position: 'absolute', right: 28, top: '20%', bottom: '20%', width: 24 }}>
-              <View style={{
-                position: 'absolute', right: 0, top: 0, bottom: 0, width: 8,
-                backgroundColor: '#333', borderRadius: 4, overflow: 'hidden'
-              }}>
-                <View style={{
-                  position: 'absolute', left: 0, right: 0, bottom: 0,
-                  height: `${currentProgress * 100}%`,
-                  backgroundColor: String(bannerAccent),
-                  borderRadius: 4
-                }} />
-              </View>
-              <View style={{
-                position: 'absolute', right: 12, bottom: `${Math.min(100, Math.max(0, currentProgress * 100))}%`,
-                transform: [{ translateY: 6 }],
-                borderTopWidth: 6, borderTopColor: 'transparent',
-                borderBottomWidth: 6, borderBottomColor: 'transparent',
-                borderLeftWidth: 10, borderLeftColor: String(bannerAccent),
-              }} />
-            </View>
-          )}
+            {placementMenuOpen ? (
+              <>
+                <View style={styles.summaryMenuHeader}>
+                  <Text style={[styles.summaryTitle, { color: String(textColor) }]}>Place checkpoint</Text>
+                  <Text style={[styles.summarySubtitle, { color: String(borderColor) }]}>Choose one method, clear the current route, then place the temp checkpoint.</Text>
+                </View>
+                <View style={styles.summaryMenuActions}>
+                  <TouchableOpacity onPress={() => { void startPlacementFlow('tap'); }} style={[styles.summaryMenuAction, { borderColor: summaryAccent, backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}> 
+                    <IconSymbol name="hand.tap.fill" size={18} color={summaryAccent} />
+                    <Text style={[styles.summaryMenuActionText, { color: String(textColor) }]}>Tap map</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { void startPlacementFlow('grid'); }} style={[styles.summaryMenuAction, { borderColor: summaryAccent, backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}> 
+                    <IconSymbol name="square.grid.3x3" size={18} color={summaryAccent} />
+                    <Text style={[styles.summaryMenuActionText, { color: String(textColor) }]}>Grid ref</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => { void startPlacementFlow('project'); }} style={[styles.summaryMenuAction, { borderColor: summaryAccent, backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}> 
+                    <IconSymbol name="safari.fill" size={18} color={summaryAccent} />
+                    <Text style={[styles.summaryMenuActionText, { color: String(textColor) }]}>Project</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setPlacementMenuOpen(false)} style={[styles.summaryMenuAction, { borderColor: summaryAccent, backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}> 
+                    <IconSymbol name="chevron.down" size={18} color={summaryAccent} />
+                    <Text style={[styles.summaryMenuActionText, { color: String(textColor) }]}>Back</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : selectedCheckpoint ? (
+              <>
+                <View style={styles.navHeroCompact}>
+                  <View style={styles.navRail}>
+                    <View style={styles.navRailTop}>
+                      <View style={[styles.navArrow, { transform: [{ rotate: `${compassTargetBearingDeg ?? 0}deg` }] }]}>
+                        <IconSymbol name="arrow.up" size={28} color={summaryAccent} />
+                      </View>
+                      <Text style={[styles.navRailBearing, { color: String(textColor) }]} numberOfLines={1}>{compassBearingMilsText || '—'}</Text>
+                      <Text style={[styles.navRailLabel, { color: String(borderColor) }]}>MILS</Text>
+                    </View>
+                    <Text style={[styles.navRailLabel, { color: String(borderColor) }]} numberOfLines={1}>{tempTargetActive ? 'TEMP' : 'NAV'}</Text>
+                  </View>
+
+                  <View style={styles.navCopyColumn}>
+                    <Text style={[styles.navTitle, { color: String(textColor) }]} numberOfLines={1}>{targetTitle}</Text>
+                    <Text style={[styles.navDetail, { color: String(borderColor) }]} numberOfLines={1}>{targetBearingDescriptor || 'Bearing —'} · {compassDistanceText || '—'} · {targetGridRefText || '—'}</Text>
+                    <Text style={[styles.navDetail, { color: String(borderColor) }]} numberOfLines={1}>{currentPositionText}</Text>
+                    <View style={styles.navActionRow}>
+                      <TouchableOpacity onPress={openPlacementChooser} style={[styles.summaryPlusButton, { backgroundColor: summaryAccent }]}> 
+                        <IconSymbol name="plus" size={18} color={summaryAccentText} />
+                      </TouchableOpacity>
+                      <Text style={[styles.navActionHint, { color: String(borderColor) }]} numberOfLines={1}>Choose add method</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {selectedCheckpoint && startDistance != null && startDistance > 0 ? (
+                  <View style={[styles.summaryProgressTrack, { marginTop: 8, height: 3 }]}>
+                    <View style={[styles.summaryProgressFill, { width: `${currentProgress * 100}%`, backgroundColor: summaryAccent }]} />
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <View style={styles.summaryMetaRow}>
+                  <View style={[styles.metricChip, { borderColor: summaryAccent, backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}> 
+                    <Text style={[styles.metricLabel, { color: String(borderColor) }]}>STATUS</Text>
+                    <Text style={[styles.metricValue, { color: String(textColor) }]} numberOfLines={1}>{checkpoints.length > 0 ? `${checkpoints.length} points` : 'No active target'}</Text>
+                  </View>
+                  <View style={[styles.metricChip, { borderColor: summaryAccent, backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)' }]}> 
+                    <Text style={[styles.metricLabel, { color: String(borderColor) }]}>POSITION</Text>
+                    <Text style={[styles.metricValue, { color: String(textColor) }]} numberOfLines={1}>{currentPositionText}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.summaryFooter}>
+                  <TouchableOpacity onPress={() => setPlacementMenuOpen(true)} style={[styles.summaryAccentPill, { backgroundColor: summaryAccent, flexDirection: 'row', alignItems: 'center', gap: 6 }]}> 
+                    <IconSymbol name="hand.tap.fill" size={14} color={summaryAccentText} />
+                    <Text style={[styles.summaryAccentPillText, { color: summaryAccentText }]}>Temp checkpoint</Text>
+                  </TouchableOpacity>
+                  <View style={{ flex: 1 }} />
+                </View>
+              </>
+            )}
+          </View>
         </View>
-      )}
+      ) : null}
 
-      {!hudMode && <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255)') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />}
-      {!hudMode && <CompassButton onPress={() => setCompassOpen(true)} style={[styles.recenterButton, { bottom: insets.bottom + 12 + 58, left: insets.left + 12, backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)', borderWidth: 1.5, borderColor: compassOpen ? String(tint) : 'transparent' }]} color={compassOpen ? tabIconSelected : buttonIconColor} active={compassOpen} renderAs="native" />}
-      
-      <HudButton 
-        onPress={() => setHudMode(!hudMode)} 
+      <RecenterButton onPress={handleRecenterPress} style={[styles.recenterButton, { bottom: insets.bottom + 12, left: insets.left + 12, backgroundColor: following ? (colorScheme === 'dark' ? 'rgba(9, 63, 81)' : 'rgba(255,255,255)') : (colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)'), borderWidth: 1.5, borderColor: following ? String(tint) : 'transparent' }]} color={buttonIconColor} renderAs="native" />
+      <CompassButton onPress={() => setCompassOpen(true)} style={[styles.recenterButton, { bottom: insets.bottom + 12 + 58, left: insets.left + 12, backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0)' : 'rgba(255,255,255)', borderWidth: 1.5, borderColor: compassOpen ? String(tint) : 'transparent' }]} color={compassOpen ? tabIconSelected : buttonIconColor} active={compassOpen} renderAs="native" />
+
+      <TouchableOpacity
+        onPress={() => setStickyHudOpen((v) => !v)}
+        activeOpacity={0.85}
+        accessibilityLabel="Toggle sticky HUD"
         style={[
-          styles.recenterButton, 
-          { 
-            bottom: insets.bottom + 12 + 58 + 58, 
-            left: insets.left + 12, 
-            backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)', 
-            borderWidth: 1.5, 
-            borderColor: hudMode ? String(bannerAccent) : 'transparent',
-            zIndex: 100
-          }
-        ]} 
-        color={hudMode ? bannerAccent : (colorScheme === 'light' ? tint : iconColor)} 
-        active={hudMode} 
-        renderAs="native" 
+          styles.recenterButton,
+          {
+            bottom: insets.bottom + 12 + 58 + 58,
+            left: insets.left + 12,
+            backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,1)' : 'rgba(255,255,255,1)',
+            borderWidth: 1.5,
+            borderColor: stickyHudOpen ? summaryAccent : 'transparent',
+          },
+        ]}
+      >
+        <IconSymbol name={stickyHudOpen ? 'eye.slash.fill' : 'eye.fill'} size={22} color={stickyHudOpen ? summaryAccent : (colorScheme === 'light' ? tint : iconColor)} />
+      </TouchableOpacity>
+
+      <GridReferenceModal
+        visible={gridPlacementOpen}
+        onClose={() => setGridPlacementOpen(false)}
+        onAdd={(location) => { void placeTemporaryCheckpoint(location.latitude, location.longitude); }}
       />
 
-      {!hudMode && (
-        <CompassOverlay
+      <ProjectPointModal
+        visible={projectPlacementOpen}
+        onClose={() => setProjectPlacementOpen(false)}
+        onAdd={(location) => { void placeTemporaryCheckpoint(location.latitude, location.longitude); }}
+      />
+
+      <CompassOverlay
         open={compassOpen}
         onToggle={() => setCompassOpen((v) => !v)}
         headingDeg={compassHeadingDeg}
@@ -1171,24 +1272,21 @@ export default function MapLibreMap() {
           bottom: insets.bottom + 12 + 58,
         }}
       />
-      )}
 
-      {placementModeRequested && !hudMode ? (
+      {placementModeRequested ? (
         <View style={[styles.placementBannerWrap, { top: insets.top + 12, left: 0, right: 0 }]}> 
           <View style={[styles.placementBanner, { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.97)', borderColor: bannerAccent }]}>
             <View style={styles.placementBannerRow}>
               <View style={[styles.placementPulse, { backgroundColor: bannerAccent }]} />
-              <Text style={[styles.placementBannerTitle, { color: String(textColor) }]}>Placing waypoints</Text>
-              {placedCount > 0 && (
+              <Text style={[styles.placementBannerTitle, { color: String(textColor) }]}>Temporary checkpoint</Text>
+              {checkpoints.length > 0 && (
                 <View style={[styles.placedCountBadge, { backgroundColor: bannerAccent }]}>
-                  <Text style={[styles.placedCountText, { color: bannerAccentText }]}>{placedCount}</Text>
+                  <Text style={[styles.placedCountText, { color: bannerAccentText }]}>ACTIVE</Text>
                 </View>
               )}
             </View>
             <Text style={[styles.placementBannerText, { color: String(borderColor) }]}>
-              {placedCount === 0
-                ? 'Tap anywhere on the map to place your first waypoint.'
-                : `${placedCount} waypoint${placedCount !== 1 ? 's' : ''} placed. Tap to add more.`}
+              Tap anywhere on the map to place a single temporary checkpoint.
             </Text>
             <TouchableOpacity
               onPress={handleDonePlacing}
@@ -1203,48 +1301,13 @@ export default function MapLibreMap() {
 
       {/* Compass overlay replaced by CompassOverlay */}
 
-      {lastLocation && !hudMode ? (
-        <InfoBox lastLocation={lastLocation} mapHeading={mapHeading} angleUnit={angleUnit} containerStyle={[styles.locationOverlay, { top: insets.top + 12, right: insets.right + 12 }]} textStyle={styles.locationText} renderAs="native" />
-      ) : null}
-
     </ThemedView>
   );
 
-  const onFling = (event: any) => {
-    if (event.nativeEvent.state === State.ACTIVE) {
-      // Determine swipe direction based on velocity
-      const vx = event.nativeEvent.velocityX;
-      const vy = event.nativeEvent.velocityY;
-
-      if (Math.abs(vy) > Math.abs(vx)) {
-        // Vertical swipe
-        if (vy > 500 && hudMode) {
-          setHudMode(false); // Swipe down to exit HUD
-        } else if (vy < -500 && !hudMode) {
-          setHudMode(true);  // Swipe up to enter HUD
-        }
-      } else {
-        // Horizontal swipe
-        if (hudMode) {
-          if (vx < -500) {
-            handleNextTarget(); // Swipe left for next
-          } else if (vx > 500) {
-            handlePrevTarget(); // Swipe right for prev
-          }
-        }
-      }
-    }
-  };
-
   return (
-    <FlingGestureHandler
-      direction={Directions.UP | Directions.DOWN | Directions.LEFT | Directions.RIGHT}
-      onHandlerStateChange={onFling}
-    >
-      <View style={{ flex: 1 }}>
-        {mapContent}
-      </View>
-    </FlingGestureHandler>
+    <View style={{ flex: 1 }}>
+      {mapContent}
+    </View>
   );
 }
 
@@ -1259,6 +1322,231 @@ const styles = StyleSheet.create({
     flex: 1,
     alignSelf: 'stretch',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  summaryWrap: {
+    position: 'absolute',
+    zIndex: 58,
+  },
+  summaryCard: {
+    borderRadius: 18,
+    borderWidth: 0,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 6,
+    overflow: 'hidden',
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  summarySubtitle: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  summaryNavButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  summaryNavButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  summaryMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  summaryMenuHeader: {
+    marginTop: 2,
+  },
+  summaryMenuActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  summaryMenuAction: {
+    flexGrow: 1,
+    minWidth: 88,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  summaryMenuActionText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  metricChip: {
+    minWidth: 92,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  metricLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  metricValue: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  summaryFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  summaryFooterLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 2,
+  },
+  summaryFooterValue: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  summaryAccentPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  summaryPlusButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routeColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.65)',
+  },
+  summaryAccentPillText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  navHero: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  navReticleShell: {
+    width: 128,
+    height: 128,
+    borderRadius: 32,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  navReticleRing: {
+    position: 'absolute',
+    width: 102,
+    height: 102,
+    borderRadius: 51,
+    borderWidth: 1.5,
+    opacity: 0.85,
+  },
+  navReticleLine: {
+    position: 'absolute',
+    width: 88,
+    height: 2,
+    borderRadius: 999,
+    opacity: 0.6,
+  },
+  navReticlePointer: {
+    position: 'absolute',
+    top: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navReticleCenterDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.18)',
+  },
+  navReticleReadout: {
+    position: 'absolute',
+    bottom: 10,
+    alignItems: 'center',
+  },
+  navReticleMils: {
+    fontSize: 20,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  navReticleMilsLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginTop: -2,
+  },
+  navHeroCopy: {
+    flex: 1,
+    gap: 8,
+  },
+  navHeroStat: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  navHeroStatValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginTop: 1,
+  },
+  navHeroStatSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  summaryProgressTrack: {
+    marginTop: 8,
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(128,128,128,0.16)',
+    overflow: 'hidden',
+  },
+  summaryProgressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
   locationOverlay: {
     position: 'absolute',
     top: 12,
@@ -1270,6 +1558,65 @@ const styles = StyleSheet.create({
   locationText: {
     color: 'white',
     fontSize: 12,
+  },
+  navHeroCompact: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 10,
+    marginTop: 6,
+  },
+  navRail: {
+    width: 66,
+    alignSelf: 'stretch',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  navRailTop: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  navArrow: {
+    marginBottom: 2,
+  },
+  navRailBearing: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    lineHeight: 20,
+  },
+  navRailLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+    opacity: 0.9,
+  },
+  navCopyColumn: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  navTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 18,
+  },
+  navDetail: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 14,
+  },
+  navActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  navActionHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   placementBannerWrap: {
     position: 'absolute',

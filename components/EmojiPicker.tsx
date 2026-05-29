@@ -1,7 +1,7 @@
 import { ALL_EMOJIS } from '@/constants/emojis';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useMemo, useState } from 'react';
-import { FlatList, Modal, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Modal, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { IconSymbol } from './ui/icon-symbol';
@@ -29,9 +29,10 @@ export function EmojiPicker({ visible, onClose, onSelect }: EmojiPickerProps) {
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-        <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <View style={styles.overlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
+          <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
           <View style={styles.header}>
             <ThemedText type="subtitle">Select Icon</ThemedText>
             <TouchableOpacity onPress={onClose}>
@@ -74,8 +75,9 @@ export function EmojiPicker({ visible, onClose, onSelect }: EmojiPickerProps) {
                 </View>
             }
           />
-        </ThemedView>
-      </View>
+          </ThemedView>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

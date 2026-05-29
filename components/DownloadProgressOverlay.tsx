@@ -1,6 +1,7 @@
 import { ThemedText } from '@/components/themed-text';
 import { useOfflineMaps } from '@/hooks/offline-maps';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
@@ -38,7 +39,7 @@ export default function DownloadProgressOverlay() {
           Downloading {activeDownload.presetLabel}…
         </ThemedText>
         <View style={styles.barBg}>
-          <View style={[styles.barFill, { width: `${pct}%` }]} />
+          <View style={[styles.barFill, { width: `${pct}%`, backgroundColor: String(Colors[colorScheme].success) }]} />
         </View>
       </View>
       <ThemedText style={styles.pct}>{pct.toFixed(0)}%</ThemedText>

@@ -7,9 +7,9 @@ type UnfinishedBadgeProps = {
 };
 
 export function UnfinishedBadge({ label = 'UNFINISHED' }: UnfinishedBadgeProps) {
-  const textColor = useThemeColor({ light: '#8A2C2C', dark: '#F6B1B1' }, 'text');
-  const bgColor = useThemeColor({ light: 'rgba(255, 214, 214, 0.95)', dark: 'rgba(125, 30, 30, 0.6)' }, 'background');
-  const borderColor = useThemeColor({ light: 'rgba(210, 90, 90, 0.5)', dark: 'rgba(246, 177, 177, 0.35)' }, 'tabIconDefault');
+  const textColor = useThemeColor({}, 'error');
+  const bgColor = useThemeColor({ light: 'rgba(234,67,53,0.08)', dark: 'rgba(234,67,53,0.12)' }, 'background');
+  const borderColor = useThemeColor({}, 'tabIconDefault');
 
   return (
     <View style={[styles.badge, { backgroundColor: bgColor, borderColor }]}> 

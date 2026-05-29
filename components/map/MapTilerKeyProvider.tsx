@@ -3,6 +3,8 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -32,6 +34,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const inputTextColor = useThemeColor({}, 'text');
   const inputBorderColor = useThemeColor({}, 'tabIconDefault');
   const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
+  const colorScheme = useColorScheme() ?? 'light';
 
   useEffect(() => {
     (async () => {
@@ -372,7 +375,7 @@ function KeyEntryModal({
       statusBarTranslucent={Platform.OS === 'android'}
       navigationBarTranslucent={Platform.OS === 'android'}
     >
-      <View style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
         <View style={styles.backdrop}>
           <ThemedView style={styles.container}>
             <ThemedText style={styles.title}>MapTiler API Key</ThemedText>
@@ -393,7 +396,7 @@ function KeyEntryModal({
               textContentType="none"
               importantForAutofill="no"
             />
-            {error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
+            {error ? <ThemedText style={[styles.error, { color: Colors[colorScheme].error }]}>{error}</ThemedText> : null}
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={onOpenMapTiler}>
                 Take Me There!
@@ -415,13 +418,13 @@ function KeyEntryModal({
             <TouchableOpacity 
               style={{ marginTop: 24, paddingVertical: 8, alignItems: 'center' }}
               onPress={onCancel}>
-              <ThemedText style={{ textDecorationLine: 'underline', color: '#999', fontSize: 13 }}>
+              <ThemedText style={{ textDecorationLine: 'underline', color: useThemeColor({ light: '#999', dark: '#666' }, 'text'), fontSize: 13 }}>
                 Use offline mode (no key)
               </ThemedText>
             </TouchableOpacity>
           </ThemedView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -466,7 +469,6 @@ const styles = StyleSheet.create({
   },
   spacer: { width: 12 },
   error: {
-    color: '#FF3B30',
     marginBottom: 12,
   },
   

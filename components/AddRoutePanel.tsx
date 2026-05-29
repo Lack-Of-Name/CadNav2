@@ -1,4 +1,6 @@
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
@@ -10,34 +12,10 @@ type AddRoutePanelProps = {
 };
 
 const OPTIONS = [
-  { 
-    id: 'place', 
-    label: 'Place on Map', 
-    desc: 'Tap to drop a pin', 
-    color: '#34C759', // Green
-    icon: 'mappin.and.ellipse' 
-  },
-  { 
-    id: 'reference', 
-    label: 'Grid Reference', 
-    desc: 'Enter grid coordinates', 
-    color: '#007AFF', // Blue
-    icon: 'square.grid.3x3' 
-  },
-  { 
-    id: 'project', 
-    label: 'Project Point', 
-    desc: 'From bearing & distance', 
-    color: '#AF52DE', // Purple
-    icon: 'safari.fill' 
-  },
-  { 
-    id: 'saved', 
-    label: 'Saved Items', 
-    desc: 'Load from library', 
-    color: '#FF9500', // Orange
-    icon: 'folder.fill' 
-  },
+  { id: 'place', label: 'Place on Map', desc: 'Tap to drop a pin', icon: 'mappin.and.ellipse' },
+  { id: 'reference', label: 'Grid Reference', desc: 'Enter grid coordinates', icon: 'square.grid.3x3' },
+  { id: 'project', label: 'Project Point', desc: 'From bearing & distance', icon: 'safari.fill' },
+  { id: 'saved', label: 'Saved Items', desc: 'Load from library', icon: 'folder.fill' },
 ] as const;
 
 export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps) {
@@ -47,6 +25,17 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
   const backgroundColor = useThemeColor({}, 'background');
   // Use a slightly different background for the cards to make them pop
   const cardColor = useThemeColor({ light: '#f5f5f5', dark: '#252525' }, 'background');
+  const colorScheme = useColorScheme() ?? 'light';
+
+  function getOptionColor(id: string) {
+    switch (id) {
+      case 'place': return Colors[colorScheme].success;
+      case 'reference': return Colors[colorScheme].primary;
+      case 'project': return Colors[colorScheme].accentPurple;
+      case 'saved': return Colors[colorScheme].accentOrange;
+      default: return Colors[colorScheme].primary;
+    }
+  }
 
   if (!visible) return null;
 
@@ -78,8 +67,8 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
                         onPress={() => onSelect(opt.id)}
                         activeOpacity={0.7}
                     >
-                        <View style={[styles.iconCircle, { backgroundColor: opt.color }]}>
-                             <IconSymbol name={opt.icon as any} size={24} color="#fff" />
+                            <View style={[styles.iconCircle, { backgroundColor: getOptionColor(opt.id) }]}>
+                              <IconSymbol name={opt.icon as any} size={24} color="#fff" />
                         </View>
                         <View style={styles.textContainer}>
                             <ThemedText style={styles.optionLabel}>{opt.label}</ThemedText>

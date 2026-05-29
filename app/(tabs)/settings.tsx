@@ -14,20 +14,77 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
-import { useSettings } from '@/hooks/settings';
+import { useSettings, type ThemeMode } from '@/hooks/settings';
 import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as turf from '@turf/turf';
 
-function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) {
+function SettingsSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
   return (
     <View style={styles.section}>
       <ThemedText style={[styles.sectionTitle, { color: theme.textMuted }]}>{title.toUpperCase()}</ThemedText>
+      {description ? <ThemedText style={[styles.sectionDescription, { color: theme.textMuted }]}>{description}</ThemedText> : null}
       <View style={[styles.sectionContent, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
         {children}
+      </View>
+    </View>
+  );
+}
+
+const THEME_CHOICES: Array<{ value: ThemeMode; label: string; icon: string }> = [
+  { value: 'system', label: 'System', icon: 'iphone' },
+  { value: 'light', label: 'Light', icon: 'sun.max.fill' },
+  { value: 'dark', label: 'Dark', icon: 'moon.stars.fill' },
+];
+
+function ThemeModeSelector({ value, onChange }: { value: ThemeMode; onChange: (next: ThemeMode) => void }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+
+  return (
+    <View style={styles.themeModeGrid}>
+      {THEME_CHOICES.map((choice) => {
+        const active = value === choice.value;
+        return (
+          <Pressable
+            key={choice.value}
+            onPress={() => onChange(choice.value)}
+            style={[
+              styles.themeModeCard,
+              {
+                backgroundColor: active ? theme.primary : theme.background,
+                borderColor: active ? theme.primary : theme.divider,
+              },
+            ]}
+          >
+            <View style={[styles.themeModeIcon, { backgroundColor: active ? 'rgba(255,255,255,0.16)' : theme.surface }]}>
+              <IconSymbol name={choice.icon as any} size={18} color={active ? '#fff' : theme.primary} />
+            </View>
+            <ThemedText style={[styles.themeModeLabel, { color: active ? '#fff' : theme.text }]}>{choice.label}</ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function SettingsHero() {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+
+  return (
+    <View style={[styles.heroCard, { backgroundColor: theme.surface, borderColor: theme.divider }]}>
+      <View style={[styles.heroIcon, { backgroundColor: theme.primary }]}>
+        <IconSymbol name="gearshape.fill" size={20} color="#fff" />
+      </View>
+      <View style={styles.heroText}>
+        <ThemedText type="title" style={styles.heroTitle}>Settings</ThemedText>
+        <ThemedText style={[styles.heroSubtitle, { color: theme.textMuted }]}>
+          Appearance, navigation, grid, and map controls in one clean place.
+        </ThemedText>
       </View>
     </View>
   );
@@ -83,7 +140,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const textColor = theme.text;
-  const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, setSetting } = useSettings();
+  const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
   const { selectedCheckpoint } = useCheckpoints();
@@ -249,7 +306,7 @@ export default function SettingsScreen() {
       {Platform.OS === 'web' && (
         <View style={[styles.topBar, { backgroundColor: theme.surface, borderBottomColor: borderColor }]}> 
           <TouchableOpacity 
-            style={[styles.backBtn, { backgroundColor: 'rgba(128,128,128,0.1)' }]}
+            style={[styles.backBtn, { backgroundColor: theme.surface }]}
             onPress={() => router.back()}
           >
             <IconSymbol name="chevron.left" size={20} color={theme.text} />
@@ -259,9 +316,19 @@ export default function SettingsScreen() {
         </View>
       )}
       <ScrollView bounces={false} overScrollMode="never" style={styles.scroll} contentContainerStyle={styles.container}>
-        {Platform.OS !== 'web' && <ThemedText type="title" style={styles.pageTitle}>Settings</ThemedText>}
+        {Platform.OS !== 'web' && <SettingsHero />}
 
-        <SettingsSection title="Navigation">
+        <SettingsSection title="Appearance" description="Choose how the app looks on this device.">
+          <View style={styles.appearanceBlock}>
+            <ThemedText style={[styles.appearanceLabel, { color: theme.textMuted }]}>Theme</ThemedText>
+            <ThemeModeSelector
+              value={themeMode}
+              onChange={(next) => void setSetting('themeMode', next)}
+            />
+          </View>
+        </SettingsSection>
+
+        <SettingsSection title="Navigation" description="How bearings and north are interpreted.">
           <SettingsRow 
             icon="ruler.fill" 
             label="Angle Units" 
@@ -293,7 +360,7 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Grid">
+        <SettingsSection title="Grid" description="Fine-tune the grid overlay and origin settings.">
           <SettingsRow 
             icon="square.grid.3x3" 
             label="Grid Overlay" 
@@ -357,7 +424,7 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Map">
+        <SettingsSection title="Map" description="Map layer, offline packs, and map key management.">
           <SettingsRow 
             icon="square.stack.3d.up.fill" 
             label="Map Layer" 
@@ -391,7 +458,7 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="App">
+        <SettingsSection title="App" description="About this app and maintenance actions.">
           <SettingsRow
             icon="info.circle.fill"
             label="About CadNav"
@@ -406,121 +473,128 @@ export default function SettingsScreen() {
 
       {/* Grid Settings Modal */}
       <Modal visible={gridModalOpen} animationType="slide" transparent={true}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); setGridModalOpen(false); }} />
             <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
               <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}> 
-                <View style={styles.modalHeaderRow}>
-              <View style={{ width: 64 }} />
-              <ThemedText type="subtitle">
-                {gridPanel === 'origin' ? 'Grid Origin' : 'Grid Convergence'}
-              </ThemedText>
-              <TouchableOpacity
-                onPress={() => setGridModalOpen(false)}
-                style={[styles.headerButton, { borderColor: String(borderColor), backgroundColor: String(rowBg) }]}
-              >
-                <ThemedText style={styles.headerButtonText}>Close</ThemedText>
-              </TouchableOpacity>
-            </View>
+                <ScrollView
+                  bounces={false}
+                  overScrollMode="never"
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={styles.modalScroll}
+                >
+                  <View style={styles.modalHeaderRow}>
+                    <View style={{ width: 64 }} />
+                    <ThemedText type="subtitle">
+                      {gridPanel === 'origin' ? 'Grid Origin' : 'Grid Convergence'}
+                    </ThemedText>
+                    <TouchableOpacity
+                      onPress={() => setGridModalOpen(false)}
+                      style={[styles.headerButton, { borderColor: String(borderColor), backgroundColor: String(rowBg) }]}
+                    >
+                      <ThemedText style={styles.headerButtonText}>Close</ThemedText>
+                    </TouchableOpacity>
+                  </View>
 
-            {gridPanel === 'convergence' ? (
-              <View style={{ marginTop: 12 }}>
-                <ThemedText style={{ marginBottom: 12 }}>
-                  Enter the angle between true north and grid north (positive if grid north is east of true north).
-                </ThemedText>
-                <TextInput
-                  style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
-                  placeholder="e.g. -1.23"
-                  placeholderTextColor={String(placeholderColor)}
-                  value={inputConvergence}
-                  onChangeText={setInputConvergence}
-                  autoFocus
-                />
-                <View style={styles.modalButtons}>
-                  <StyledButton variant="secondary" onPress={() => setGridModalOpen(false)}>Cancel</StyledButton>
-                  <View style={{ width: 12 }} />
-                  <StyledButton variant="primary" onPress={saveConvergence}>Save</StyledButton>
-                </View>
-              </View>
-            ) : null}
-
-            {gridPanel === 'origin' ? (
-              <View style={{ marginTop: 12 }}>
-                <ThemedText style={{ marginBottom: 6 }}>Current origin</ThemedText>
-                <ThemedText style={{ marginBottom: 16, opacity: 0.7 }}>{gridOriginLabel}</ThemedText>
-
-                <StyledButton variant="primary" onPress={setOriginToMyLocation}>
-                  Use my location
-                </StyledButton>
-
-                <View style={{ marginTop: 10 }}>
-                  <StyledButton
-                    variant="secondary"
-                    onPress={() => selectedCheckpoint && setOriginFromCheckpoint(selectedCheckpoint.latitude, selectedCheckpoint.longitude)}
-                    disabled={!selectedCheckpoint}
-                  >
-                    Use selected checkpoint
-                  </StyledButton>
-                  {!selectedCheckpoint ? (
-                    <ThemedText style={{ marginTop: 6, opacity: 0.7 }}>No checkpoint selected.</ThemedText>
+                  {gridPanel === 'convergence' ? (
+                    <View style={{ marginTop: 12 }}>
+                      <ThemedText style={{ marginBottom: 12 }}>
+                        Enter the angle between true north and grid north (positive if grid north is east of true north).
+                      </ThemedText>
+                      <TextInput
+                        style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
+                        placeholder="e.g. -1.23"
+                        placeholderTextColor={String(placeholderColor)}
+                        value={inputConvergence}
+                        onChangeText={setInputConvergence}
+                        autoFocus
+                      />
+                      <View style={styles.modalButtons}>
+                        <StyledButton variant="secondary" onPress={() => setGridModalOpen(false)}>Cancel</StyledButton>
+                        <View style={{ width: 12 }} />
+                        <StyledButton variant="primary" onPress={saveConvergence}>Save</StyledButton>
+                      </View>
+                    </View>
                   ) : null}
-                </View>
 
-                <View style={{ marginTop: 16 }}>
-                  <ThemedText type="defaultSemiBold">I am at this grid reference</ThemedText>
-                  <ThemedText style={{ marginTop: 4, opacity: 0.7 }}>
-                    Digits set precision (1–5).
-                  </ThemedText>
+                  {gridPanel === 'origin' ? (
+                    <View style={{ marginTop: 12 }}>
+                      <ThemedText style={{ marginBottom: 6 }}>Current origin</ThemedText>
+                      <ThemedText style={{ marginBottom: 16, opacity: 0.7 }}>{gridOriginLabel}</ThemedText>
 
-                  <ThemedText style={{ marginTop: 8 }}>Easting</ThemedText>
-                  <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
-                    <TouchableOpacity 
-                      style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
-                      onPress={() => setOriginEastingSign(s => s === 1 ? -1 : 1)}
-                    >
-                      <ThemedText style={styles.signText}>{originEastingSign === 1 ? '+' : '-'}</ThemedText>
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.inputWithSign, { color: String(textColor) }]}
-                      placeholder="e.g. 12"
-                      placeholderTextColor={String(placeholderColor)}
-                      value={originEasting}
-                      onChangeText={(t) => { setOriginEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                      keyboardType="numeric"
-                      maxLength={5}
-                    />
-                  </View>
+                      <StyledButton variant="primary" onPress={setOriginToMyLocation}>
+                        Use my location
+                      </StyledButton>
 
-                  <ThemedText style={{ marginTop: 8 }}>Northing</ThemedText>
-                  <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
-                    <TouchableOpacity 
-                      style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
-                      onPress={() => setOriginNorthingSign(s => s === 1 ? -1 : 1)}
-                    >
-                      <ThemedText style={styles.signText}>{originNorthingSign === 1 ? '+' : '-'}</ThemedText>
-                    </TouchableOpacity>
-                    <TextInput
-                      style={[styles.inputWithSign, { color: String(textColor) }]}
-                      placeholder="e.g. 34"
-                      placeholderTextColor={String(placeholderColor)}
-                      value={originNorthing}
-                      onChangeText={(t) => { setOriginNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                      keyboardType="numeric"
-                      maxLength={5}
-                    />
-                  </View>
+                      <View style={{ marginTop: 10 }}>
+                        <StyledButton
+                          variant="secondary"
+                          onPress={() => selectedCheckpoint && setOriginFromCheckpoint(selectedCheckpoint.latitude, selectedCheckpoint.longitude)}
+                          disabled={!selectedCheckpoint}
+                        >
+                          Use selected checkpoint
+                        </StyledButton>
+                        {!selectedCheckpoint ? (
+                          <ThemedText style={{ marginTop: 6, opacity: 0.7 }}>No checkpoint selected.</ThemedText>
+                        ) : null}
+                      </View>
 
-                  <View style={{ marginTop: 10 }}>
-                    <StyledButton variant="secondary" onPress={setOriginFromGridRef}>
-                      Use this grid reference
-                    </StyledButton>
-                  </View>
-                </View>
+                      <View style={{ marginTop: 16 }}>
+                        <ThemedText type="defaultSemiBold">I am at this grid reference</ThemedText>
+                        <ThemedText style={{ marginTop: 4, opacity: 0.7 }}>
+                          Digits set precision (1–5).
+                        </ThemedText>
 
-                {originError ? <ThemedText style={styles.error}>{originError}</ThemedText> : null}
-              </View>
-            ) : null}
+                        <ThemedText style={{ marginTop: 8 }}>Easting</ThemedText>
+                        <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
+                          <TouchableOpacity 
+                            style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
+                            onPress={() => setOriginEastingSign(s => s === 1 ? -1 : 1)}
+                          >
+                            <ThemedText style={styles.signText}>{originEastingSign === 1 ? '+' : '-'}</ThemedText>
+                          </TouchableOpacity>
+                          <TextInput
+                            style={[styles.inputWithSign, { color: String(textColor) }]}
+                            placeholder="e.g. 12"
+                            placeholderTextColor={String(placeholderColor)}
+                            value={originEasting}
+                            onChangeText={(t) => { setOriginEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
+                            keyboardType="numeric"
+                            maxLength={5}
+                          />
+                        </View>
+
+                        <ThemedText style={{ marginTop: 8 }}>Northing</ThemedText>
+                        <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
+                          <TouchableOpacity 
+                            style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
+                            onPress={() => setOriginNorthingSign(s => s === 1 ? -1 : 1)}
+                          >
+                            <ThemedText style={styles.signText}>{originNorthingSign === 1 ? '+' : '-'}</ThemedText>
+                          </TouchableOpacity>
+                          <TextInput
+                            style={[styles.inputWithSign, { color: String(textColor) }]}
+                            placeholder="e.g. 34"
+                            placeholderTextColor={String(placeholderColor)}
+                            value={originNorthing}
+                            onChangeText={(t) => { setOriginNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
+                            keyboardType="numeric"
+                            maxLength={5}
+                          />
+                        </View>
+
+                        <View style={{ marginTop: 10 }}>
+                          <StyledButton variant="secondary" onPress={setOriginFromGridRef}>
+                            Use this grid reference
+                          </StyledButton>
+                        </View>
+                      </View>
+
+                      {originError ? <ThemedText style={styles.error}>{originError}</ThemedText> : null}
+                    </View>
+                  ) : null}
+                </ScrollView>
               </ThemedView>
             </TouchableWithoutFeedback>
           </View>
@@ -594,10 +668,77 @@ const styles = StyleSheet.create({
     marginLeft: 16,
     opacity: 0.8,
   },
+  sectionDescription: {
+    fontSize: 13,
+    marginLeft: 16,
+    marginBottom: 10,
+    marginTop: -2,
+    opacity: 0.75,
+  },
   sectionContent: {
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  heroCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    marginBottom: 20,
+  },
+  heroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroText: {
+    flex: 1,
+  },
+  heroTitle: {
+    marginBottom: 2,
+  },
+  heroSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  appearanceBlock: {
+    padding: 16,
+    gap: 10,
+  },
+  appearanceLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  themeModeGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  themeModeCard: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  themeModeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeModeLabel: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   row: {
     flexDirection: 'row',
