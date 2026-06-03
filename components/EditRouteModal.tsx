@@ -1,12 +1,25 @@
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { DenseButton } from '@/components/routes/DenseButton';
 import { Colors } from '@/constants/theme';
+import { DEFAULT_ROUTE_COLOR, ROUTE_COLORS } from '@/constants/routeColors';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { useEffect, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View, useWindowDimensions } from 'react-native';
-import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
-import StyledButton from './ui/StyledButton';
 
 type EditRouteModalProps = {
   visible: boolean;
@@ -19,119 +32,48 @@ type EditRouteModalProps = {
   isEditing?: boolean;
 };
 
-const ROUTE_COLORS = [
-  
-  '#34C759', // Green
-  '#98FF98', // Mint
-  '#32CD32', // Lime
-  '#50C878', // Emerald
-  '#228B22', // Forest Green
-  
-  '#FFD60A', // Yellow
-  '#FFF700', // Lemon
-  '#FFFF31', // Daffodil
-  '#FFD700', // Golden
-  '#FFDB58', // Mustard
-
-  '#FF9F0A', // Orange
-  '#FFDAB9', // Peach
-  '#F28500', // Tangerine
-  '#FFBF00', // Amber
-  '#CC5500', // Burnt Orange
-
-  '#FF453A', // Red
-  '#FA8072', // Salmon
-  '#DC143C', // Crimson
-  '#E0115F', // Ruby
-  '#800000', // Maroon
-
-  '#BF5AF2', // Purple
-  '#967BB6', // Lavender
-  '#8F00FF', // Violet
-  '#8E4585', // Plum
-  '#614051', // Eggplant
-
-  '#5E5CE6', // Indigo
-  '#6F00FF', // Electric Indigo
-  '#3F00FF', // Ultramarine
-  '#26619C', // Lapis Blue
-  '#191970', // Midnight Blue
-
-  '#0A84FF', // Blue
-  '#6495ED', // Cornflower Blue
-  '#4169E1', // Royal Blue
-  '#0047AB', // Cobalt Blue
-  '#000080', // Navy Blue
-
-  '#64D2FF', // Light Blue
-  '#99FFFF', // Ice Blue
-  '#87CEEB', // Sky Blue
-  '#B0E0E6', // Powder Blue
-  '#00FFFF', // Cyan
-
-] as const;
-
-// Curated quick-pick emojis for route icons - the most useful for navigation
-const QUICK_EMOJIS = [
-  '📍','🚩','🏁','🧭','🗺️','🏔️','⛰️','🏕️','⛺',
-  '🏠','🏢','🏥','🏰','⛪','🌲','🌳','🌊','🏖️',
-  '🅿️','⛽','🚗','🚶','🏃','🚴','🚵','🚣','🏊',
-  '⭐','🔥','💧','❄️','⚡','🔴','🟢','🔵',
-  '🟡','🟠','🟣','⚪','🦅','🐻','🐟',
-  '☀️','🌙','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟',
-] as const;
-
-export function EditRouteModal({ 
-  visible, 
-  onClose, 
-  onSave, 
-  initialTitle = '', 
-  initialSubtitle = '', 
-  initialIcon = '📍',
-  initialColor = ROUTE_COLORS[0],
-  isEditing = false 
+export function EditRouteModal({
+  visible,
+  onClose,
+  onSave,
+  initialTitle = '',
+  initialSubtitle = '',
+  initialColor = DEFAULT_ROUTE_COLOR,
+  isEditing = false,
 }: EditRouteModalProps) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 768;
-  
+
   const [title, setTitle] = useState(initialTitle);
   const [subtitle, setSubtitle] = useState(initialSubtitle);
-  const [icon, setIcon] = useState(initialIcon);
   const [color, setColor] = useState(initialColor);
   const [error, setError] = useState<string | null>(null);
 
-  const backgroundColor = useThemeColor({}, 'background');
+  const backgroundColor = useThemeColor({}, 'surface');
+  const pageBg = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
-  const placeholderColor = useThemeColor({}, 'icon');
-  const borderColor = useThemeColor({}, 'tabIconDefault');
+  const placeholderColor = useThemeColor({}, 'textSubtle');
+  const borderColor = useThemeColor({}, 'divider');
   const iconColor = useThemeColor({}, 'text');
-  const selectedBg = useThemeColor({ light: '#e8e8ea', dark: '#3a3a3c' }, 'background');
   const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
 
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle);
       setSubtitle(initialSubtitle);
-      setIcon(initialIcon);
-      setColor(initialColor);
+      setColor(initialColor || DEFAULT_ROUTE_COLOR);
       setError(null);
     }
-  }, [visible, initialTitle, initialSubtitle, initialIcon, initialColor]);
+  }, [visible, initialTitle, initialSubtitle, initialColor]);
 
   function handleSave() {
     const t = title.trim();
-    const ic = icon.trim();
-    
     if (!t) {
-      setError('Title is required');
+      setError('Name is required');
       return;
     }
-    if (!ic) {
-      setError('Icon is required');
-      return;
-    }
-
-    onSave(t, subtitle.trim(), ic, color);
+    onSave(t, subtitle.trim(), '', color);
     onClose();
   }
 
@@ -139,111 +81,82 @@ export function EditRouteModal({
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView 
-        behavior="padding"
-        style={{ flex: 1 }}
-      >
-        <View style={styles.overlay}>
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); onClose(); }} />
           <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
-            <Animated.View
-                entering={SlideInDown.duration(250)}
-                exiting={SlideOutDown}
-                style={[
-                    styles.panel,
-                    { backgroundColor, width: isLargeScreen ? 400 : '90%' }
-                ]}
+            <View
+              style={[
+                styles.panel,
+                { backgroundColor, borderColor, width: isLargeScreen ? 400 : '92%', maxWidth: 440 },
+              ]}
             >
-            <View style={styles.header}>
-                <ThemedText type="subtitle">{isEditing ? 'Edit Route' : 'New Route'}</ThemedText>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                    <IconSymbol name="xmark" size={24} color={iconColor} />
+              <View style={[styles.header, { borderBottomColor: borderColor }]}>
+                <ThemedText style={styles.headerTitle}>{isEditing ? 'EDIT ROUTE' : 'NEW ROUTE'}</ThemedText>
+                <TouchableOpacity onPress={onClose} hitSlop={12}>
+                  <IconSymbol name="xmark" size={20} color={iconColor} />
                 </TouchableOpacity>
-            </View>
+              </View>
 
-            <ScrollView
-              bounces={false}
-              overScrollMode="never"
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.form}
-            >
-                {/* Icon picker - inline scroll strip */}
-                <ThemedText style={styles.label}>Icon</ThemedText>
-                <ScrollView bounces={false} overScrollMode="never" 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.emojiStrip}
-                  style={styles.emojiStripContainer}
-                >
-                  {QUICK_EMOJIS.map((e) => (
-                    <TouchableOpacity
-                      key={e}
-                      onPress={() => { setIcon(e); setError(null); }}
-                      style={[
-                        styles.emojiOption,
-                        icon === e && { backgroundColor: selectedBg, borderColor: color, borderWidth: 2 },
-                      ]}
-                      activeOpacity={0.7}
-                    >
-                      <ThemedText style={{ fontSize: 26 }}>{e}</ThemedText>
+              <ScrollView
+                bounces={false}
+                overScrollMode="never"
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.form}
+              >
+                <ThemedText style={[styles.label, { color: theme.textMuted }]}>NAME</ThemedText>
+                <TextInput
+                  placeholder="e.g. North ridge patrol"
+                  value={title}
+                  onChangeText={(t) => { setTitle(t); setError(null); }}
+                  style={[styles.input, { color: textColor, borderColor, backgroundColor: pageBg }]}
+                  placeholderTextColor={placeholderColor}
+                  maxLength={80}
+                />
+
+                <ThemedText style={[styles.label, { color: theme.textMuted }]}>NOTES</ThemedText>
+                <TextInput
+                  placeholder="Optional"
+                  value={subtitle}
+                  onChangeText={setSubtitle}
+                  style={[styles.input, { color: textColor, borderColor, backgroundColor: pageBg }]}
+                  placeholderTextColor={placeholderColor}
+                  maxLength={120}
+                />
+
+                <ThemedText style={[styles.label, { color: theme.textMuted }]}>ACCENT</ThemedText>
+                <View style={styles.colorRow}>
+                  {ROUTE_COLORS.map((c) => (
+                    <TouchableOpacity key={c} onPress={() => setColor(c)} activeOpacity={0.8}>
+                      <View
+                        style={[
+                          styles.colorSwatch,
+                          { backgroundColor: c, borderColor: theme.divider },
+                          color === c && { borderColor: theme.text, borderWidth: 2 },
+                        ]}
+                      />
                     </TouchableOpacity>
                   ))}
-                </ScrollView>
+                </View>
 
-                <ThemedText style={styles.label}>Title</ThemedText>
-                <TextInput 
-                    placeholder="Route Name" 
-                    value={title} 
-                    onChangeText={(t) => { setTitle(t); setError(null); }} 
-                    style={[styles.input, { color: textColor, borderColor }]} 
-                    placeholderTextColor={placeholderColor} 
-                    maxLength={80} 
-                />
-
-                <ThemedText style={styles.label}>Subtitle (Optional)</ThemedText>
-                <TextInput 
-                    placeholder="Description or notes" 
-                    value={subtitle} 
-                    onChangeText={(t) => { setSubtitle(t); setError(null); }} 
-                    style={[styles.input, { color: textColor, borderColor }]} 
-                    placeholderTextColor={placeholderColor} 
-                    maxLength={120} 
-                />
-
-                <ThemedText style={styles.label}>Route Color</ThemedText>
-                <ScrollView bounces={false} overScrollMode="never" 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.colorGrid}
-                  style={styles.colorStripContainer}
-                >
-                  {Array.from({ length: 8 }).map((_, colIndex) => (
-                    <View key={`col-${colIndex}`} style={styles.colorColumn}>
-                      {ROUTE_COLORS.slice(colIndex * 5, (colIndex + 1) * 5).map((c) => (
-                        <TouchableOpacity key={c} onPress={() => setColor(c)}>
-                          <View
-                            style={[
-                              styles.colorDot,
-                              { backgroundColor: c, borderColor },
-                              color === c && styles.colorDotSelected,
-                            ]}
-                          />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  ))}
-                </ScrollView>
-
-                {error ? <ThemedText style={[styles.error, { color: Colors[colorScheme].error }]}>{error}</ThemedText> : null}
+                {error ? (
+                  <ThemedText style={{ color: theme.error, fontSize: 12 }}>{error}</ThemedText>
+                ) : null}
 
                 <View style={styles.footer}>
-                    <StyledButton variant="secondary" onPress={onClose}>Cancel</StyledButton>
-                    <View style={{ width: 12 }} />
-                    <StyledButton variant="primary" onPress={handleSave} color={color}>{isEditing ? 'Save Changes' : 'Create Route'}</StyledButton>
+                  <DenseButton label="Cancel" colorScheme={colorScheme} onPress={onClose} style={styles.footerBtn} />
+                  <DenseButton
+                    label={isEditing ? 'Save' : 'Create'}
+                    variant="primary"
+                    accentColor={color}
+                    colorScheme={colorScheme}
+                    onPress={handleSave}
+                    style={styles.footerBtn}
+                  />
                 </View>
               </ScrollView>
-        </Animated.View>
-        </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -253,97 +166,63 @@ export function EditRouteModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   panel: {
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
+    maxHeight: '88%',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  closeButton: {
-    padding: 4,
-    opacity: 0.7,
+  headerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   form: {
-    gap: 12,
-  },
-  emojiStripContainer: {
-    maxHeight: 54,
-  },
-  emojiStrip: {
+    padding: 14,
     gap: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 2,
-  },
-  emojiOption: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'transparent',
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 6,
-    opacity: 0.8,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    marginTop: 8,
+    marginBottom: 4,
   },
   input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 15,
   },
-  colorStripContainer: {
-    maxHeight: 220,
-  },
-  colorGrid: {
+  colorRow: {
     flexDirection: 'row',
-    gap: 15,
+    flexWrap: 'wrap',
+    gap: 8,
     paddingVertical: 4,
-    paddingHorizontal: 4,
   },
-  colorColumn: {
-    gap: 12,
-  },
-  colorDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 999,
-    borderWidth: 2,
-  },
-  colorDotSelected: {
-    borderWidth: 3,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-    transform: [{ scale: 1.15 }],
-  },
-  error: {
-    fontSize: 14,
+  colorSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 2,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 8,
+    gap: 8,
+    marginTop: 16,
+  },
+  footerBtn: {
+    flex: 1,
   },
 });
-
-

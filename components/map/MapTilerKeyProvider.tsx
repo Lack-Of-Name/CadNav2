@@ -2,15 +2,14 @@ import { alert as showAlert } from '@/components/alert';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { MAPTILER_API_KEY as STORAGE_KEY } from '@/constants/storageKeys';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-
-const STORAGE_KEY = 'MAPTILER_API_KEY';
 
 type ContextValue = {
   apiKey: string | null;

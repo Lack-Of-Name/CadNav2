@@ -1,7 +1,7 @@
-import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { Colors } from '@/constants/theme';
+import { SavedLocation, SavedRoute, useCheckpoints } from '@/hooks/checkpoints';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { useState } from 'react';
 import { FlatList, Modal, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { alert as showAlert } from './alert';

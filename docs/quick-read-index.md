@@ -41,10 +41,23 @@ This file is the fastest way to understand where the app lives and which files t
 - [hooks/settings.tsx](../hooks/settings.tsx) stores persistent app settings.
 - [hooks/use-color-scheme.ts](../hooks/use-color-scheme.ts) and [hooks/use-color-scheme.web.ts](../hooks/use-color-scheme.web.ts) provide platform-specific color scheme detection.
 
-## Constants And Assets
+## Constants, Types, And Lib
 
 - [constants/theme.ts](../constants/theme.ts) defines the app color system and theme values.
+- [constants/storageKeys.ts](../constants/storageKeys.ts) lists every AsyncStorage key (workspace vs saved routes).
 - [constants/emojis.ts](../constants/emojis.ts) feeds the emoji picker.
+- [types/index.ts](../types/index.ts) shared domain types (`Checkpoint`, `WorkspaceRoute`, `SavedRoute`, …).
+- [lib/geo.ts](../lib/geo.ts), [lib/colorUtils.ts](../lib/colorUtils.ts), [lib/maplibreModule.ts](../lib/maplibreModule.ts) small shared helpers.
+
+## Routes Data Model
+
+- **Workspace routes** (Routes tab cards): [hooks/use-workspace-routes.ts](../hooks/use-workspace-routes.ts) → key `APP_ROUTES`.
+- **Saved route library** (load via Saved when adding points): [hooks/checkpoints.tsx](../hooks/checkpoints.tsx) → key `cadnav2.routes.v1`.
+
+See [AGENTS.md](../AGENTS.md) for the full contributor / agent guide.
+
+## Assets
+
 - [assets/](../assets/) contains map sources, icons, and bundled static assets.
 
 ## Clean-Up Notes

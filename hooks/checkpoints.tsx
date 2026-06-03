@@ -1,34 +1,15 @@
+import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import {
+  LEGACY_CHECKPOINTS,
+  SAVED_LOCATIONS,
+  SAVED_ROUTES,
+} from '@/constants/storageKeys';
+import { Colors } from '@/constants/theme';
+import type { Checkpoint, SavedLocation, SavedRoute } from '@/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
-import { Colors } from '@/constants/theme';
 
-export type Checkpoint = {
-  id: string;
-  latitude: number;
-  longitude: number;
-  createdAt: number;
-  label?: string;
-  color?: string;
-  elevation?: number;
-};
-
-export type SavedRoute = {
-  id: string;
-  name: string;
-  createdAt: number;
-  checkpoints: Checkpoint[];
-  isLoop?: boolean;
-};
-
-export type SavedLocation = {
-  id: string;
-  name: string;
-  description?: string;
-  latitude: number;
-  longitude: number;
-  createdAt: number;
-};
+export type { Checkpoint, SavedLocation, SavedRoute } from '@/types';
 
 type PersistedRoutes = {
   routes: SavedRoute[];
@@ -38,9 +19,9 @@ type PersistedLocations = {
   locations: SavedLocation[];
 };
 
-const ROUTES_KEY = 'cadnav2.routes.v1';
-const LOCATIONS_KEY = 'cadnav2.locations.v1';
-const LEGACY_CHECKPOINTS_KEY = 'cadnav2.checkpoints.v1';
+const ROUTES_KEY = SAVED_ROUTES;
+const LOCATIONS_KEY = SAVED_LOCATIONS;
+const LEGACY_CHECKPOINTS_KEY = LEGACY_CHECKPOINTS;
 
 type StoreState = {
   checkpoints: Checkpoint[];

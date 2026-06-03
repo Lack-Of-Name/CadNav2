@@ -1,8 +1,8 @@
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { FadeInDown, FadeOutDown } from 'react-native-reanimated';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   visible: boolean;
@@ -12,162 +12,136 @@ type Props = {
   onProject: () => void;
 };
 
-function OptionButton({
-  icon,
-  title,
-  subtitle,
-  accent,
-  onPress,
-}: {
-  icon: any;
-  title: string;
-  subtitle: string;
-  accent: string;
-  onPress: () => void;
-}) {
-  const colorScheme = useColorScheme() ?? 'light';
-  const theme = Colors[colorScheme];
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.option,
-        {
-          backgroundColor: theme.surface,
-          borderColor: pressed ? accent : theme.divider,
-        },
-      ]}
-    >
-      <View style={[styles.optionIcon, { backgroundColor: accent }]}> 
-        <IconSymbol name={icon} size={20} color="#fff" />
-      </View>
-      <View style={styles.optionBody}>
-        <Text style={[styles.optionTitle, { color: theme.text }]}>{title}</Text>
-        <Text style={[styles.optionSubtitle, { color: theme.textMuted }]}>{subtitle}</Text>
-      </View>
-      <IconSymbol name="chevron.right" size={18} color={theme.textMuted} />
-    </Pressable>
-  );
-}
+const OPTIONS = [
+  { id: 'tap', label: 'Tap map', desc: 'Place at touch point', icon: 'hand.tap.fill' },
+  { id: 'grid', label: 'Grid reference', desc: 'Easting / northing', icon: 'square.grid.3x3' },
+  { id: 'project', label: 'Project point', desc: 'Bearing and distance', icon: 'safari.fill' },
+] as const;
 
 export function CheckpointModeDrawer({ visible, onClose, onTap, onGrid, onProject }: Props) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const insets = useSafeAreaInsets();
 
   if (!visible) return null;
 
-  return (
-    <Animated.View
-      entering={FadeInDown.duration(180)}
-      exiting={FadeOutDown.duration(120)}
-      style={[styles.shell, { backgroundColor: theme.background, borderColor: theme.divider }]}
-    >
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: theme.text }]}>Place checkpoint</Text>
-          <Text style={[styles.subtitle, { color: theme.textMuted }]}>One target at a time. Tap, grid, or project.</Text>
-        </View>
-        <Pressable onPress={onClose} hitSlop={8} style={styles.closeButton}>
-          <IconSymbol name="xmark" size={18} color={theme.textMuted} />
-        </Pressable>
-      </View>
+  const handlers = { tap: onTap, grid: onGrid, project: onProject } as const;
 
-      <View style={styles.options}>
-        <OptionButton
-          icon="hand.tap.fill"
-          title="Tap map"
-          subtitle="Drop a temp target where you press"
-          accent={theme.tempTarget}
-          onPress={onTap}
-        />
-        <OptionButton
-          icon="square.grid.3x3"
-          title="Grid ref"
-          subtitle="Enter easting and northing"
-          accent={theme.primary}
-          onPress={onGrid}
-        />
-        <OptionButton
-          icon="safari.fill"
-          title="Project"
-          subtitle="Bearing and distance from GPS"
-          accent={theme.accentOrange}
-          onPress={onProject}
-        />
+  return (
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View
+          style={[
+            styles.sheet,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.divider,
+              paddingBottom: Math.max(insets.bottom, 12),
+            },
+          ]}
+        >
+          <View style={[styles.header, { borderBottomColor: theme.divider }]}>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>SET TEMP TARGET</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <IconSymbol name="xmark" size={20} color={theme.textMuted} />
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.hint, { color: theme.textMuted }]}>
+            Clears the current map route and places one temporary checkpoint.
+          </Text>
+          {OPTIONS.map((opt, index) => (
+            <TouchableOpacity
+              key={opt.id}
+              style={[
+                styles.row,
+                { borderBottomColor: theme.divider },
+                index === OPTIONS.length - 1 && styles.rowLast,
+              ]}
+              onPress={() => {
+                handlers[opt.id]();
+                onClose();
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.rowIcon, { borderColor: theme.divider }]}>
+                <IconSymbol name={opt.icon as any} size={18} color={theme.text} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={[styles.rowLabel, { color: theme.text }]}>{opt.label}</Text>
+                <Text style={[styles.rowDesc, { color: theme.textMuted }]}>{opt.desc}</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={14} color={theme.textSubtle} />
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
-    </Animated.View>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  shell: {
-    position: 'absolute',
-    left: 12,
-    bottom: 12 + 58 + 58,
-    width: '92%',
-    maxWidth: 300,
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 22,
-    elevation: 14,
-    zIndex: 120,
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 2,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  subtitle: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  closeButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  options: {
-    gap: 8,
+  headerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
-  option: {
+  hint: {
+    fontSize: 12,
+    lineHeight: 17,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  optionIcon: {
+  rowLast: {
+    borderBottomWidth: 0,
+  },
+  rowIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionBody: {
+  rowText: {
     flex: 1,
+    minWidth: 0,
   },
-  optionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 1,
+  rowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
-  optionSubtitle: {
+  rowDesc: {
     fontSize: 12,
-    lineHeight: 16,
+    marginTop: 1,
   },
 });

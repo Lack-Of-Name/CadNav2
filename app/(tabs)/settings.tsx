@@ -15,9 +15,9 @@ import { Colors } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings, type ThemeMode } from '@/hooks/settings';
-import { useRouter } from 'expo-router';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as turf from '@turf/turf';
+import { useRouter } from 'expo-router';
 
 function SettingsSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   const colorScheme = useColorScheme() ?? 'light';

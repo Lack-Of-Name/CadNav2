@@ -3,6 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, ViewStyle } from 'react-native';
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { isLightColor } from '@/lib/colorUtils';
 
 type Props = {
   onPress?: () => void;
@@ -50,18 +51,6 @@ export default function StyledButton({ onPress, variant = 'primary', disabled = 
       )}
     </TouchableOpacity>
   );
-}
-
-/** Returns true if a hex color is perceptually light (needs dark text on top). */
-function isLightColor(hex: string): boolean {
-  const c = hex.replace('#', '');
-  if (c.length < 6) return false;
-  const r = parseInt(c.substring(0, 2), 16);
-  const g = parseInt(c.substring(2, 4), 16);
-  const b = parseInt(c.substring(4, 6), 16);
-  // W3C relative luminance threshold
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6;
 }
 
 const styles = StyleSheet.create({

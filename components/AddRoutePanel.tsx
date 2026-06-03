@@ -1,7 +1,7 @@
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Modal, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { Modal, Pressable, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
 
@@ -12,71 +12,61 @@ type AddRoutePanelProps = {
 };
 
 const OPTIONS = [
-  { id: 'place', label: 'Place on Map', desc: 'Tap to drop a pin', icon: 'mappin.and.ellipse' },
-  { id: 'reference', label: 'Grid Reference', desc: 'Enter grid coordinates', icon: 'square.grid.3x3' },
-  { id: 'project', label: 'Project Point', desc: 'From bearing & distance', icon: 'safari.fill' },
-  { id: 'saved', label: 'Saved Items', desc: 'Load from library', icon: 'folder.fill' },
+  { id: 'place', label: 'Place on map', desc: 'Tap to set a waypoint', icon: 'mappin.and.ellipse' },
+  { id: 'reference', label: 'Grid reference', desc: 'Enter easting / northing', icon: 'square.grid.3x3' },
+  { id: 'project', label: 'Project point', desc: 'Bearing and distance', icon: 'safari.fill' },
+  { id: 'saved', label: 'Saved library', desc: 'Route or location', icon: 'folder.fill' },
 ] as const;
 
 export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps) {
   const { width } = useWindowDimensions();
   const isLargeScreen = width > 768;
   const iconColor = useThemeColor({}, 'text');
-  const backgroundColor = useThemeColor({}, 'background');
-  // Use a slightly different background for the cards to make them pop
-  const cardColor = useThemeColor({ light: '#f5f5f5', dark: '#252525' }, 'background');
+  const backgroundColor = useThemeColor({}, 'surface');
+  const borderColor = useThemeColor({}, 'divider');
   const colorScheme = useColorScheme() ?? 'light';
-
-  function getOptionColor(id: string) {
-    switch (id) {
-      case 'place': return Colors[colorScheme].success;
-      case 'reference': return Colors[colorScheme].primary;
-      case 'project': return Colors[colorScheme].accentPurple;
-      case 'saved': return Colors[colorScheme].accentOrange;
-      default: return Colors[colorScheme].primary;
-    }
-  }
+  const theme = Colors[colorScheme];
 
   if (!visible) return null;
 
   return (
-    <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <View 
-            style={[
-                styles.panel, 
-                { backgroundColor, width: isLargeScreen ? 400 : '90%' }
-            ]}
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <View
+          style={[
+            styles.panel,
+            { backgroundColor, borderColor, width: isLargeScreen ? 380 : '92%', maxWidth: 400 },
+          ]}
         >
-            <View style={styles.header}>
-                <ThemedText type="subtitle">Add Waypoint</ThemedText>
-                <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                    <IconSymbol name="xmark" size={24} color={iconColor} />
-                </TouchableOpacity>
-            </View>
-            
-            <View style={styles.grid}>
-                {OPTIONS.map((opt) => (
-                    <TouchableOpacity 
-                        key={opt.id} 
-                        style={[
-                          styles.option,
-                          { backgroundColor: cardColor },
-                        ]}
-                        onPress={() => onSelect(opt.id)}
-                        activeOpacity={0.7}
-                    >
-                            <View style={[styles.iconCircle, { backgroundColor: getOptionColor(opt.id) }]}>
-                              <IconSymbol name={opt.icon as any} size={24} color="#fff" />
-                        </View>
-                        <View style={styles.textContainer}>
-                            <ThemedText style={styles.optionLabel}>{opt.label}</ThemedText>
-                            <ThemedText style={styles.optionDesc}>{opt.desc}</ThemedText>
-                        </View>
-                    </TouchableOpacity>
-                ))}
-            </View>
+          <View style={[styles.header, { borderBottomColor: borderColor }]}>
+            <ThemedText style={styles.headerTitle}>ADD WAYPOINT</ThemedText>
+            <TouchableOpacity onPress={onClose} hitSlop={12}>
+              <IconSymbol name="xmark" size={20} color={iconColor} />
+            </TouchableOpacity>
+          </View>
+
+          {OPTIONS.map((opt, index) => (
+            <TouchableOpacity
+              key={opt.id}
+              style={[
+                styles.row,
+                { borderBottomColor: borderColor },
+                index === OPTIONS.length - 1 && styles.rowLast,
+              ]}
+              onPress={() => onSelect(opt.id)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.rowIcon, { borderColor: theme.divider }]}>
+                <IconSymbol name={opt.icon as any} size={18} color={theme.text} />
+              </View>
+              <View style={styles.rowText}>
+                <ThemedText style={styles.rowLabel}>{opt.label}</ThemedText>
+                <ThemedText style={[styles.rowDesc, { color: theme.textMuted }]}>{opt.desc}</ThemedText>
+              </View>
+              <IconSymbol name="chevron.right" size={14} color={theme.textSubtle} />
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
     </Modal>
@@ -86,62 +76,56 @@ export function AddRoutePanel({ visible, onClose, onSelect }: AddRoutePanelProps
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   panel: {
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  closeButton: {
-    padding: 4,
-    opacity: 0.7,
+  headerTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
-  grid: {
+  row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 12,
   },
-  option: {
-    width: '48%',
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    minHeight: 110,
+  rowLast: {
+    borderBottomWidth: 0,
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
+  rowIcon: {
+    width: 36,
+    height: 36,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
   },
-  textContainer: {
-    width: '100%',
+  rowText: {
+    flex: 1,
+    minWidth: 0,
   },
-  optionLabel: {
-    fontWeight: '700',
-    fontSize: 16,
-    marginBottom: 2,
+  rowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
-  optionDesc: {
+  rowDesc: {
     fontSize: 12,
-    opacity: 0.6,
-    lineHeight: 16,
+    marginTop: 1,
   },
 });

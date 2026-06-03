@@ -6,13 +6,13 @@ import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import * as Sentry from '@sentry/react-native';
 import { Stack, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Sentry from '@sentry/react-native';
 
 Sentry.init({
   dsn: 'https://5302fc03e1b9e181c2a567764b74c597@o4511058552750080.ingest.us.sentry.io/4511058557468672',

@@ -1,3 +1,4 @@
+import { SETTINGS as SETTINGS_STORAGE_KEY } from '@/constants/storageKeys';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -18,8 +19,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 export type AngleUnit = 'mils' | 'degrees';
 export type MapLayer = 'outdoor' | 'satellite' | 'auto';
 export type ThemeMode = 'system' | 'light' | 'dark';
-
-const SETTINGS_STORAGE_KEY = 'cadnav2.settings.v1';
 
 function isAngleUnit(value: unknown): value is AngleUnit {
   return value === 'mils' || value === 'degrees';

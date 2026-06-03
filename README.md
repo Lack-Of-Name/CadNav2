@@ -4,7 +4,7 @@ A cross-platform navigation and mapping application built with React Native and 
 
 ## Quick Read
 
-If you want the fastest path into the codebase, start with [docs/quick-read-index.md](docs/quick-read-index.md). It maps the app entry points, map system, hooks, and UI building blocks in one place.
+If you want the fastest path into the codebase, start with [docs/quick-read-index.md](docs/quick-read-index.md). For conventions, storage keys, and the two route stores, see [AGENTS.md](AGENTS.md).
 
 ## Features
 
@@ -30,7 +30,7 @@ If you want the fastest path into the codebase, start with [docs/quick-read-inde
 
 ## Project Structure
 
-The code is organized around the Expo Router app in [app/](app/), the reusable UI and map components in [components/](components/), shared state in [hooks/](hooks/), and design tokens in [constants/](constants/).
+The code is organized around the Expo Router app in [app/](app/), UI and map code in [components/](components/), state in [hooks/](hooks/), design tokens in [constants/](constants/), shared types in [types/](types/), and small helpers in [lib/](lib/).
 
 ## Getting Started
 

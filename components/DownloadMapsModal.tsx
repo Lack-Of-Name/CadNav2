@@ -10,6 +10,7 @@ import { formatBytes, useOfflineMaps, ZOOM_PRESETS, type DownloadTarget, type Zo
 import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { getMaplibreModule } from '@/lib/maplibreModule';
 import * as turf from '@turf/turf';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -28,20 +29,6 @@ import {
 } from 'react-native';
 
 const isWeb = Platform.OS === 'web';
-
-let maplibreModule: any | undefined | null;
-function getMaplibreModule() {
-  if (maplibreModule !== undefined) return maplibreModule;
-  if (isWeb) return null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const req = require('@maplibre/maplibre-react-native');
-    maplibreModule = req.default || req;
-  } catch {
-    maplibreModule = null;
-  }
-  return maplibreModule;
-}
 
 const RADIUS_OPTIONS = [5, 10, 15, 25, 50];
 const DEFAULT_RADIUS_KM = 15;
