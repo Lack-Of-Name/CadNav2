@@ -14,7 +14,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -81,10 +80,9 @@ export function EditRouteModal({
 
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.55)' }]}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); onClose(); }} />
-          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
             <View
               style={[
                 styles.panel,
@@ -156,7 +154,6 @@ export function EditRouteModal({
                 </View>
               </ScrollView>
             </View>
-          </TouchableWithoutFeedback>
         </View>
       </KeyboardAvoidingView>
     </Modal>

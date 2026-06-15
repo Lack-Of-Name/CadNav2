@@ -1,6 +1,6 @@
 import { DenseButton } from '@/components/routes/DenseButton';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors, type ColorScheme } from '@/constants/theme';
+import { Colors, HUD, type ColorScheme } from '@/constants/theme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,7 +32,56 @@ type Props = {
   showTargetStepper?: boolean;
   /** 0–1 approach progress toward target. */
   approachProgress?: number | null;
+  /** Active workspace route name (when not in temp-only nav). */
+  routeLabel?: string | null;
+  canResumeRoute?: boolean;
+  onResumeRoute?: () => void;
+  onOpenRoutes?: () => void;
 };
+
+const PROGRESS_TICKS = [0, 0.25, 0.5, 0.75, 1];
+
+function ApproachProgressBar({
+  progress,
+  accentColor,
+  colorScheme,
+  mutedColor,
+}: {
+  progress: number;
+  accentColor: string;
+  colorScheme: ColorScheme;
+  mutedColor: string;
+}) {
+  const clamped = Math.max(0, Math.min(1, progress));
+  const pctLabel = `${Math.round(clamped * 100)}%`;
+  const trackBg = colorScheme === 'dark' ? HUD.border : 'rgba(74,93,35,0.12)';
+  const tickColor = colorScheme === 'dark' ? HUD.tick : 'rgba(74,93,35,0.28)';
+
+  return (
+    <View style={styles.progressBlock}>
+      <View style={styles.progressHeader}>
+        <Text style={[styles.progressLabel, { color: mutedColor }]}>APPROACH</Text>
+        <Text style={[styles.progressPct, { color: mutedColor }]}>{pctLabel}</Text>
+      </View>
+      <View style={[styles.progressOuter, { borderColor: tickColor, backgroundColor: trackBg }]}>
+        <View style={styles.progressTickRow} pointerEvents="none">
+          {PROGRESS_TICKS.map((tick) => (
+            <View
+              key={tick}
+              style={[
+                styles.progressTick,
+                { backgroundColor: tickColor, left: `${tick * 100}%` },
+              ]}
+            />
+          ))}
+        </View>
+        <View style={[styles.progressFill, { width: `${clamped * 100}%`, backgroundColor: accentColor }]}>
+          <View style={[styles.progressFillCap, { backgroundColor: accentColor }]} />
+        </View>
+      </View>
+    </View>
+  );
+}
 
 export function MapPlacementHud({
   colorScheme,
@@ -56,6 +105,10 @@ export function MapPlacementHud({
   onNextTarget,
   showTargetStepper,
   approachProgress,
+  routeLabel,
+  canResumeRoute,
+  onResumeRoute,
+  onOpenRoutes,
 }: Props) {
   const insets = useSafeAreaInsets();
   const theme = Colors[colorScheme];
@@ -135,27 +188,56 @@ export function MapPlacementHud({
               </View>
             ) : null}
           </View>
-          {approachProgress != null && approachProgress > 0 ? (
-            <View style={[styles.progressTrack, { backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-              <View style={[styles.progressFill, { width: `${Math.min(1, approachProgress) * 100}%`, backgroundColor: accentColor }]} />
-            </View>
+          {approachProgress != null ? (
+            <ApproachProgressBar
+              progress={approachProgress}
+              accentColor={accentColor}
+              colorScheme={colorScheme}
+              mutedColor={mutedColor}
+            />
           ) : null}
           <View style={styles.actionRow}>
             <DenseButton label="New target" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onSetTarget} style={{ flex: 1 }} />
           </View>
         </>
       ) : (
-        <View style={styles.idleRow}>
-          <View style={styles.idleCopy}>
-            <Text style={[styles.idleLabel, { color: mutedColor }]}>TEMP TARGET</Text>
-            <Text style={[styles.idleTitle, { color: textColor }]} numberOfLines={1}>
-              {title}
-            </Text>
-            <Text style={[styles.idleSub, { color: mutedColor }]} numberOfLines={2}>
-              {detail}
-            </Text>
+        <View style={styles.idleCol}>
+          <View style={styles.idleRow}>
+            <View style={styles.idleCopy}>
+              <Text style={[styles.idleLabel, { color: mutedColor }]}>
+                {routeLabel ? 'ACTIVE ROUTE' : 'TEMP TARGET'}
+              </Text>
+              <Text style={[styles.idleTitle, { color: textColor }]} numberOfLines={1}>
+                {title}
+              </Text>
+              <Text style={[styles.idleSub, { color: mutedColor }]} numberOfLines={2}>
+                {detail}
+              </Text>
+            </View>
+            <DenseButton label="Set" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onSetTarget} />
           </View>
-          <DenseButton label="Set" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onSetTarget} />
+          {(canResumeRoute && onResumeRoute) || onOpenRoutes ? (
+            <View style={styles.idleActions}>
+              {canResumeRoute && onResumeRoute ? (
+                <DenseButton
+                  label="Resume route"
+                  variant="primary"
+                  accentColor={accentColor}
+                  colorScheme={colorScheme}
+                  onPress={onResumeRoute}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
+              {onOpenRoutes ? (
+                <DenseButton
+                  label="Routes"
+                  colorScheme={colorScheme}
+                  onPress={onOpenRoutes}
+                  style={{ flex: canResumeRoute ? undefined : 1 }}
+                />
+              ) : null}
+            </View>
+          ) : null}
         </View>
       )}
     </View>
@@ -194,10 +276,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  idleCol: {
+    gap: 8,
+  },
   idleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  idleActions: {
+    flexDirection: 'row',
+    gap: 6,
   },
   idleCopy: {
     flex: 1,
@@ -278,14 +367,57 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 6,
   },
-  progressTrack: {
+  progressBlock: {
     marginTop: 8,
-    height: 3,
-    borderRadius: 1,
+    gap: 4,
+  },
+  progressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  progressLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  progressPct: {
+    fontSize: 10,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.4,
+  },
+  progressOuter: {
+    height: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  progressTickRow: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  progressTick: {
+    position: 'absolute',
+    top: 1,
+    bottom: 1,
+    width: StyleSheet.hairlineWidth,
+    marginLeft: -StyleSheet.hairlineWidth / 2,
   },
   progressFill: {
-    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    minWidth: 0,
     borderRadius: 1,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+  },
+  progressFillCap: {
+    width: 2,
+    opacity: 0.85,
   },
 });

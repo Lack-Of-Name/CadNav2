@@ -1,49 +1,49 @@
 /**
- * CadNav Material Design colour system.
- * Strict palette: ~10 semantic colours, 4 neutral grays.
+ * CadNav hiking-gear colour system.
+ * Woodland / olive field palette inspired by cadet kit and US woodland camo.
  * Never import raw hex elsewhere — use these tokens.
  */
 
 import { Platform } from 'react-native';
 
-// ── Brand ──────────────────────────────────────────────────────────────────
-const PRIMARY       = '#1A73E8'; // Google Blue — primary actions, tint
-const PRIMARY_DARK  = '#4A9EFF'; // Lighter blue for dark-mode tint
-const SECONDARY     = '#34A853'; // Success / active route green
-const ACCENT_PURPLE = '#AF52DE'; // Optional accent (used in UI)
-const ACCENT_ORANGE = '#FF9500'; // Optional accent
-const TEMP_TARGET    = '#F6B23C'; // Temporary checkpoint / navigation target
+// ── Brand (olive drab & trail accents) ─────────────────────────────────────
+const PRIMARY       = '#4A5D23'; // Olive drab — primary actions, tint
+const PRIMARY_DARK  = '#8FA84E'; // Lighter olive for dark-mode tint
+const SECONDARY     = '#5C6B3C'; // Moss green — active route / success
+const ACCENT_PURPLE = '#7A6B5A'; // Coyote tan accent (replaces purple)
+const ACCENT_ORANGE = '#C47A2C'; // Trail marker / warning accent
+const TEMP_TARGET    = '#E8A43C'; // Temporary checkpoint / navigation target
 
 // ── Semantic status ────────────────────────────────────────────────────────
-const SUCCESS       = '#34A853';
-const WARNING       = '#FBBC04';
-const ERROR         = '#EA4335';
+const SUCCESS       = '#5C7A3A';
+const WARNING       = '#D4A017';
+const ERROR         = '#B54A3C';
 
-// ── Neutrals (light) ──────────────────────────────────────────────────────
-const SURFACE_L     = '#FFFFFF'; // Card / modal background
-const BG_L          = '#F8F9FA'; // Page background
-const DIVIDER_L     = '#DADCE0'; // Borders, separators
-const TEXT_L        = '#202124'; // Primary text
-const TEXT_MUTED_L  = '#5F6368'; // Secondary / muted text
-const TEXT_SUBTLE_L = '#9AA0A6'; // Placeholder / hint
+// ── Neutrals (light — khaki parchment) ─────────────────────────────────────
+const SURFACE_L     = '#FAF8F2'; // Card / modal background
+const BG_L          = '#F2EFE6'; // Page background
+const DIVIDER_L     = '#C4BAA8'; // Borders, separators
+const TEXT_L        = '#1F2418'; // Primary text
+const TEXT_MUTED_L  = '#5C5748'; // Secondary / muted text
+const TEXT_SUBTLE_L = '#8A8474'; // Placeholder / hint
 
-// ── Neutrals (dark) ───────────────────────────────────────────────────────
-const SURFACE_D     = '#1E1E2E'; // Card / modal background
-const BG_D          = '#12121A'; // Page background
-const DIVIDER_D     = '#2D2D3D'; // Borders, separators
-const TEXT_D        = '#E8EAED'; // Primary text
-const TEXT_MUTED_D  = '#9AA0A6'; // Secondary / muted text
-const TEXT_SUBTLE_D = '#5F6368'; // Placeholder / hint
+// ── Neutrals (dark — night field) ──────────────────────────────────────────
+const SURFACE_D     = '#1E231A'; // Card / modal background
+const BG_D          = '#141810'; // Page background
+const DIVIDER_D     = '#3A4230'; // Borders, separators
+const TEXT_D        = '#E8E6DF'; // Primary text
+const TEXT_MUTED_D  = '#A8A494'; // Secondary / muted text
+const TEXT_SUBTLE_D = '#6B675C'; // Placeholder / hint
 
-// ── HUD overlay (always dark) ─────────────────────────────────────────────
+// ── HUD overlay (always dark field kit) ─────────────────────────────────────
 export const HUD = {
-  bg:          '#0D0D1A',
-  border:      '#1E1E3A',
-  text:        '#E8EAED',
-  textMuted:   '#9AA0A6',
-  textSubtle:  '#4A4A6A',
-  tick:        '#3A3A5A',
-  tickStrong:  '#6A6A9A',
+  bg:          '#0F120C',
+  border:      '#2A3220',
+  text:        '#E8E6DF',
+  textMuted:   '#A8A494',
+  textSubtle:  '#5C5748',
+  tick:        '#3A4230',
+  tickStrong:  '#6B7C4E',
   accent:      PRIMARY_DARK,
 };
 
@@ -132,11 +132,11 @@ export const Space = {
   xxl: 48,
 } as const;
 
-/** Border radii */
+/** Border radii — tactical, mostly square */
 export const Radius = {
-  sm:   4,
-  md:   8,
-  lg:   12,
-  xl:   16,
+  sm:   2,
+  md:   4,
+  lg:   6,
+  xl:   8,
   full: 999,
 } as const;

@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     zIndex: 9500,
     width: 42,
     height: 42,
-    borderRadius: 21,
+    borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',

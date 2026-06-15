@@ -1,0 +1,20 @@
+Make routes more integrated. Keep temp checkpoints as the main focus but routes shouldn't be alienated. Well implemented
+[x] Workspace route shown on map HUD; temp nav stashes route checkpoints instead of wiping storage
+[x] Routes tab "add waypoint" preserves checkpoints; sync paused during temp-target mode
+[x] Resume route / Routes shortcuts on map HUD; active route persisted across restarts
+
+Finish styling with the new hiking-gear insired theme
+[x] Olive drab / khaki palette in constants/theme.ts; tactical square radii; HUD field-kit tones
+
+On Android:
+    -zoom to location broken. always zooms to the location/always on
+[x] Removed auto-zoom on GPS fix; location button toggles follow mode; follow only stops on user pan
+
+    -Keyboard exits wheneever it is opened.
+[x] Removed TouchableWithoutFeedback keyboard dismiss on modal content; resize keyboard mode in app.json
+
+THEN:
+    Prepare to ship to app stores/polish
+[x] Version 1.0.0, splash khaki, deduped iOS background modes, Android softwareKeyboardLayoutMode
+[ ] Store listing copy, screenshots, privacy policy URL (manual step before submit)
+[ ] eas build --profile production && eas submit

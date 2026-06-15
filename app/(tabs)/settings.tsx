@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -468,15 +468,14 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <ThemedText style={styles.footerText}>CadNav v1.0.0</ThemedText>
+        <ThemedText style={styles.footerText}>CadNav v1.0.0 · Grid navigation for field use</ThemedText>
       </ScrollView>
 
       {/* Grid Settings Modal */}
       <Modal visible={gridModalOpen} animationType="slide" transparent={true}>
-        <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <View style={styles.modalBackdrop}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); setGridModalOpen(false); }} />
-            <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
               <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}> 
                 <ScrollView
                   bounces={false}
@@ -596,7 +595,6 @@ export default function SettingsScreen() {
                   ) : null}
                 </ScrollView>
               </ThemedView>
-            </TouchableWithoutFeedback>
           </View>
         </KeyboardAvoidingView>
       </Modal>

@@ -12,7 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { DEFAULT_ROUTE_COLOR } from '@/constants/routeColors';
 import { Colors } from '@/constants/theme';
-import { useCheckpoints } from '@/hooks/checkpoints';
+import { isTempTargetColor, useCheckpoints } from '@/hooks/checkpoints';
 import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useWorkspaceRoutes } from '@/hooks/use-workspace-routes';
@@ -52,9 +52,19 @@ export default function RoutesScreen() {
     saveLocation: persistLocation,
     activeRouteLoop,
     setActiveRouteLoop,
+    activeRouteColor,
+    activeWorkspaceRouteId,
+    setActiveWorkspaceRoute,
   } = useCheckpoints();
 
-  const { routes, setRoutes, getBackupJson } = useWorkspaceRoutes();
+  const {
+    routes,
+    setRoutes,
+    activeRouteId: persistedActiveRouteId,
+    setActiveRouteId: persistActiveRouteId,
+    isLoaded: routesLoaded,
+    getBackupJson,
+  } = useWorkspaceRoutes();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<RouteItem | null>(null);
@@ -62,16 +72,18 @@ export default function RoutesScreen() {
   const [referenceModalVisible, setReferenceModalVisible] = useState(false);
   const [projectModalVisible, setProjectModalVisible] = useState(false);
   const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
-  const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
+  const activeRouteId = activeWorkspaceRouteId;
 
   const isSyncingRef = useRef(false);
+  const hydratedActiveRouteRef = useRef(false);
 
   function activateRoute(routeItem: RouteItem) {
     syncCheckpointsToRoute();
     isSyncingRef.current = true;
     const cps = routeItem.checkpoints ?? [];
-    setActiveRouteId(routeItem.id);
+    void setActiveWorkspaceRoute(routeItem.id, routeItem.title);
+    persistActiveRouteId(routeItem.id);
     setExpandedRouteId(routeItem.id);
     setActiveRouteColor(routeItem.color ?? null);
     setActiveRouteLoop(!!routeItem.isLoop);
@@ -83,12 +95,21 @@ export default function RoutesScreen() {
   function deactivateRoute() {
     syncCheckpointsToRoute();
     isSyncingRef.current = true;
-    setActiveRouteId(null);
+    void setActiveWorkspaceRoute(null, null);
+    persistActiveRouteId(null);
     setActiveRouteColor(null);
     setActiveRouteLoop(false);
     clearActiveRoute();
     setTimeout(() => { isSyncingRef.current = false; }, 150);
   }
+
+  useEffect(() => {
+    if (!routesLoaded || hydratedActiveRouteRef.current || activeWorkspaceRouteId || !persistedActiveRouteId) return;
+    const route = routes.find((r) => r.id === persistedActiveRouteId);
+    if (!route) return;
+    hydratedActiveRouteRef.current = true;
+    activateRoute(route);
+  }, [routesLoaded, persistedActiveRouteId, activeWorkspaceRouteId, routes]);
 
   function syncCheckpointsToRoute() {
     if (!activeRouteId) return;
@@ -102,7 +123,7 @@ export default function RoutesScreen() {
   }
 
   useEffect(() => {
-    if (!activeRouteId || isSyncingRef.current) return;
+    if (!activeRouteId || isSyncingRef.current || isTempTargetColor(activeRouteColor)) return;
     setRoutes((r) =>
       r.map((it) =>
         it.id === activeRouteId
@@ -110,7 +131,7 @@ export default function RoutesScreen() {
           : it,
       ),
     );
-  }, [checkpoints, activeRouteId, activeRouteLoop]);
+  }, [checkpoints, activeRouteId, activeRouteLoop, activeRouteColor]);
 
   function toggleExpanded(id: string) {
     setExpandedRouteId((prev) => (prev === id ? null : id));
@@ -120,7 +141,7 @@ export default function RoutesScreen() {
     setAddPanelVisible(false);
     setTimeout(() => {
       if (option === 'place') {
-        void requestPlacementMode();
+        void requestPlacementMode('route');
         router.push('/');
       } else if (option === 'reference') {
         setReferenceModalVisible(true);
@@ -333,7 +354,8 @@ export default function RoutesScreen() {
       syncCheckpointsToRoute();
       setRoutes((r) => [item, ...r]);
       isSyncingRef.current = true;
-      setActiveRouteId(item.id);
+      void setActiveWorkspaceRoute(item.id, title);
+      persistActiveRouteId(item.id);
       setExpandedRouteId(item.id);
       setActiveRouteColor(color);
       clearActiveRoute();
@@ -365,7 +387,8 @@ export default function RoutesScreen() {
             if (expandedRouteId === id) setExpandedRouteId(null);
             if (activeRouteId === id) {
               isSyncingRef.current = true;
-              setActiveRouteId(null);
+              void setActiveWorkspaceRoute(null, null);
+              persistActiveRouteId(null);
               setActiveRouteColor(null);
               clearActiveRoute();
               setTimeout(() => { isSyncingRef.current = false; }, 150);

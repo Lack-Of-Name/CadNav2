@@ -23,6 +23,16 @@ const ROUTES_KEY = SAVED_ROUTES;
 const LOCATIONS_KEY = SAVED_LOCATIONS;
 const LEGACY_CHECKPOINTS_KEY = LEGACY_CHECKPOINTS;
 
+type StashedRouteState = {
+  checkpoints: Checkpoint[];
+  selectedId: string | null;
+  activeRouteColor: string | null;
+  activeRouteStart: { latitude: number; longitude: number } | null;
+  activeRouteLoop: boolean;
+};
+
+export type PlacementModeIntent = 'temp' | 'route';
+
 type StoreState = {
   checkpoints: Checkpoint[];
   selectedId: string | null;
@@ -34,6 +44,10 @@ type StoreState = {
   activeRouteStart: { latitude: number; longitude: number } | null;
   activeRouteLoop: boolean;
   viewTarget: { latitude: number; longitude: number; zoom?: number } | null;
+  activeWorkspaceRouteId: string | null;
+  activeWorkspaceRouteTitle: string | null;
+  tempNavigationActive: boolean;
+  stashedRouteState: StashedRouteState | null;
 };
 
 let store: StoreState = {
@@ -47,7 +61,16 @@ let store: StoreState = {
   activeRouteStart: null,
   activeRouteLoop: false,
   viewTarget: null,
+  activeWorkspaceRouteId: null,
+  activeWorkspaceRouteTitle: null,
+  tempNavigationActive: false,
+  stashedRouteState: null,
 };
+
+export function isTempTargetColor(color: string | null | undefined): boolean {
+  if (!color) return false;
+  return color === Colors.light.tempTarget || color === Colors.dark.tempTarget;
+}
 
 const listeners = new Set<() => void>();
 
@@ -139,6 +162,10 @@ async function initStore() {
       activeRouteStart: null,
       activeRouteLoop: false,
       viewTarget: null,
+      activeWorkspaceRouteId: null,
+      activeWorkspaceRouteTitle: null,
+      tempNavigationActive: false,
+      stashedRouteState: null,
     });
 
     // Ensure storage is initialized with normalized shape.
@@ -281,15 +308,78 @@ export function useCheckpoints() {
     []
   );
 
-  const requestPlacementMode = useCallback(async () => {
+  const stashActiveRouteForTemp = useCallback(() => {
+    if (!store.activeWorkspaceRouteId || store.checkpoints.length === 0) return null;
+    return {
+      checkpoints: [...store.checkpoints],
+      selectedId: store.selectedId,
+      activeRouteColor: store.activeRouteColor,
+      activeRouteStart: store.activeRouteStart,
+      activeRouteLoop: store.activeRouteLoop,
+    } satisfies StashedRouteState;
+  }, []);
+
+  const requestPlacementMode = useCallback(async (intent: PlacementModeIntent = 'route') => {
+    if (intent === 'temp') {
+      const stash = stashActiveRouteForTemp();
+      setStore({
+        ...store,
+        placementModeRequested: true,
+        tempNavigationActive: true,
+        stashedRouteState: stash,
+        checkpoints: [],
+        selectedId: null,
+        activeRouteColor: Colors.light.tempTarget,
+        activeRouteStart: null,
+        activeRouteLoop: false,
+      });
+      return;
+    }
+
     setStore({
       ...store,
       placementModeRequested: true,
+    });
+  }, [stashActiveRouteForTemp]);
+
+  const beginTempNavigation = useCallback(async () => {
+    const stash = stashActiveRouteForTemp();
+    setStore({
+      ...store,
+      tempNavigationActive: true,
+      stashedRouteState: stash ?? store.stashedRouteState,
       checkpoints: [],
       selectedId: null,
       activeRouteColor: Colors.light.tempTarget,
       activeRouteStart: null,
       activeRouteLoop: false,
+    });
+  }, [stashActiveRouteForTemp]);
+
+  const resumeStashedRoute = useCallback(async () => {
+    const stash = store.stashedRouteState;
+    if (!stash) return false;
+    setStore({
+      ...store,
+      checkpoints: stash.checkpoints,
+      selectedId: stash.selectedId,
+      activeRouteColor: stash.activeRouteColor,
+      activeRouteStart: stash.activeRouteStart,
+      activeRouteLoop: stash.activeRouteLoop,
+      tempNavigationActive: false,
+      stashedRouteState: null,
+      placementModeRequested: false,
+    });
+    return true;
+  }, []);
+
+  const setActiveWorkspaceRoute = useCallback(async (id: string | null, title: string | null) => {
+    setStore({
+      ...store,
+      activeWorkspaceRouteId: id,
+      activeWorkspaceRouteTitle: title,
+      tempNavigationActive: false,
+      stashedRouteState: null,
     });
   }, []);
 
@@ -505,6 +595,10 @@ export function useCheckpoints() {
     activeRouteStart: snapshot.activeRouteStart,
     activeRouteLoop: snapshot.activeRouteLoop,
     viewTarget: snapshot.viewTarget,
+    activeWorkspaceRouteId: snapshot.activeWorkspaceRouteId,
+    activeWorkspaceRouteTitle: snapshot.activeWorkspaceRouteTitle,
+    tempNavigationActive: snapshot.tempNavigationActive,
+    stashedRouteState: snapshot.stashedRouteState,
     addCheckpoint,
     removeCheckpoint,
     selectCheckpoint,
@@ -521,6 +615,9 @@ export function useCheckpoints() {
     saveLocation,
     deleteLocation,
     requestPlacementMode,
+    beginTempNavigation,
+    resumeStashedRoute,
+    setActiveWorkspaceRoute,
     consumePlacementModeRequest,
     cancelPlacementMode,
     setViewTarget,

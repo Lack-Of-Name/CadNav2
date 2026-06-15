@@ -3,7 +3,7 @@
     "name": "CadNav 2",
     "slug": "cadnav2",
     "scheme": "cadnav",
-    "version": "0.0.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/icons/CadNav.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F2EFE6"
     },
     "ios": {
       "supportsTablet": true,
@@ -19,8 +19,6 @@
       "icon": "./assets/icons/CadNavIcon.icon",
       "infoPlist": {
         "UIBackgroundModes": [
-          "location",
-          "fetch",
           "location",
           "fetch"
         ],
@@ -35,6 +33,7 @@
         "monochromeImage": "./assets/icons/monochromatic.png"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.cadnav.CadNav",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",

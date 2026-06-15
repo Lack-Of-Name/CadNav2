@@ -374,7 +374,7 @@ function KeyEntryModal({
       statusBarTranslucent={Platform.OS === 'android'}
       navigationBarTranslucent={Platform.OS === 'android'}
     >
-      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={styles.backdrop}>
           <ThemedView style={styles.container}>
             <ThemedText style={styles.title}>MapTiler API Key</ThemedText>

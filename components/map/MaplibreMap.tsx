@@ -15,14 +15,14 @@ import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 import { contrastingTextColor } from '@/lib/colorUtils';
 import { getMaplibreModule } from '@/lib/maplibreModule';
-import { bearingDegrees, haversineMeters, sleep } from './MaplibreMap.utils';
+import { bearingDegrees, haversineMeters } from './MaplibreMap.utils';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, formatGridReference, generateGridPoints, latLonToGridCoords } from './mapGrid';
 
@@ -89,7 +89,7 @@ export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading, promptForKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteColor, setActiveRouteStart, setActiveRouteLoop, clearActiveRoute, setCheckpointLabel, setViewTarget } = useCheckpoints();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteColor, setActiveRouteStart, setActiveRouteLoop, clearActiveRoute, setCheckpointLabel, setViewTarget, activeWorkspaceRouteTitle, tempNavigationActive, stashedRouteState, beginTempNavigation, resumeStashedRoute } = useCheckpoints();
   const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, setSetting } = useSettings();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
@@ -202,8 +202,15 @@ export default function MapLibreMap() {
   const router = useRouter();
   const cameraRef = React.useRef<any>(null);
   const mapRef = React.useRef<any>(null);
-  const programmaticMoveRef = React.useRef(false);
-  const [following, setFollowing] = useState(false);
+  const programmaticMoveRef = useRef(false);
+  const programmaticMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const followingMoveRef = useRef(false);
+  const pendingViewTargetRef = useRef<{ latitude: number; longitude: number; zoom?: number } | null>(null);
+  const pendingLocationRecenterRef = useRef(false);
+  const pendingLocationRecenterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialCameraAppliedRef = useRef(false);
+  const [, setFollowing] = useState(false);
+  const [locationRecenterPending, setLocationRecenterPending] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -219,6 +226,7 @@ export default function MapLibreMap() {
     }
     return { latitude: -37.8136, longitude: 144.9631 };
   });
+  const initialCameraCenterRef = useRef(mapCenter);
 
   const menuTranslateX = useSharedValue(-300);
 
@@ -230,14 +238,6 @@ export default function MapLibreMap() {
     transform: [{ translateX: menuTranslateX.value }],
   }));
 
-  useEffect(() => {
-    if (lastLocation?.coords && following) {
-      setMapCenter({
-        latitude: lastLocation.coords.latitude,
-        longitude: lastLocation.coords.longitude
-      });
-    }
-  }, [lastLocation, following]);
   const tempTargetColor = Colors[colorScheme].tempTarget;
   const tempTargetActive = activeRouteColor === tempTargetColor || activeRouteColor === Colors.light.tempTarget;
   const mapGridOriginForRef = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
@@ -247,8 +247,6 @@ export default function MapLibreMap() {
   const hudBottomInset = 118;
   const bannerAccent = activeRouteColor ?? tempTargetColor;
   const bannerAccentText = contrastingTextColor(bannerAccent);
-  const initialZoomDone = React.useRef(false);
-
   const compassHeadingDeg = (() => {
     if (!lastLocation) return null;
     const useMag = mapHeading === 'magnetic';
@@ -345,9 +343,12 @@ export default function MapLibreMap() {
     : selectedCheckpoint
       ? 'nav'
       : 'idle';
+  const activeRouteLabel = activeWorkspaceRouteTitle && !tempTargetActive ? activeWorkspaceRouteTitle : null;
   const idleHudDetail = tempTargetActive
     ? 'Target on map — open compass for full bearing disk'
-    : 'Quick single-point navigation from the map';
+    : activeRouteLabel
+      ? `${checkpoints.length} waypoint${checkpoints.length === 1 ? '' : 's'} · open Routes to edit`
+      : 'Quick single-point navigation from the map';
 
   const [trackedTargetId, setTrackedTargetId] = useState<string | null>(null);
   const [targetStartDistance, setTargetStartDistance] = useState<number | null>(null);
@@ -392,37 +393,112 @@ export default function MapLibreMap() {
     void selectCheckpoint(checkpoints[prev].id);
   };
 
-  const centerOnLocation = async (loc: any) => {
-    if (!loc || !cameraRef.current) return;
-    const { latitude, longitude } = loc.coords;
+  const markProgrammaticCameraMove = useCallback((durationMs: number, isFollowing = false) => {
     programmaticMoveRef.current = true;
-    try {
-      cameraRef.current.setCamera({
-        centerCoordinate: [longitude, latitude],
-        zoomLevel: 14,
-        animationDuration: 1000,
-      });
-      await sleep(1000);
-    } finally {
+    if (isFollowing) followingMoveRef.current = true;
+    if (programmaticMoveTimerRef.current) {
+      clearTimeout(programmaticMoveTimerRef.current);
+    }
+    programmaticMoveTimerRef.current = setTimeout(() => {
       programmaticMoveRef.current = false;
-    }
-  };
+      programmaticMoveTimerRef.current = null;
+    }, durationMs + 100);
+  }, []);
 
-  const handleRecenterPress = async () => {
-    // Recenter once, but do not force continuous follow mode.
-    requestLocation();
-    if (lastLocation) {
-      await centerOnLocation(lastLocation);
+  const clearProgrammaticCameraMove = useCallback(() => {
+    programmaticMoveRef.current = false;
+    followingMoveRef.current = false;
+    if (programmaticMoveTimerRef.current) {
+      clearTimeout(programmaticMoveTimerRef.current);
+      programmaticMoveTimerRef.current = null;
     }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (programmaticMoveTimerRef.current) {
+        clearTimeout(programmaticMoveTimerRef.current);
+      }
+      if (pendingLocationRecenterTimerRef.current) {
+        clearTimeout(pendingLocationRecenterTimerRef.current);
+      }
+    };
+  }, []);
+
+  const stopFollowingFromUserGesture = useCallback((force = false) => {
+    if (!force && (followingMoveRef.current || programmaticMoveRef.current)) return;
+    followingMoveRef.current = false;
+    setFollowing((prev) => (prev ? false : prev));
+  }, []);
+
+  const flyCameraTo = useCallback((
+    center: [number, number],
+    opts?: { zoomLevel?: number; durationMs?: number; isFollowing?: boolean },
+  ) => {
+    if (!cameraRef.current) return false;
+    const durationMs = opts?.durationMs ?? 1000;
+    markProgrammaticCameraMove(durationMs, opts?.isFollowing ?? false);
+    cameraRef.current.setCamera({
+      centerCoordinate: center,
+      ...(opts?.zoomLevel != null ? { zoomLevel: opts.zoomLevel } : {}),
+      animationDuration: durationMs,
+      animationMode: durationMs > 0 ? 'easeTo' : 'moveTo',
+    });
+    return true;
+  }, [markProgrammaticCameraMove]);
+
+  const applyViewTarget = useCallback((target: { latitude: number; longitude: number; zoom?: number }) => {
+    if (!flyCameraTo([target.longitude, target.latitude], { zoomLevel: target.zoom ?? 14, durationMs: 1000 })) {
+      pendingViewTargetRef.current = target;
+      return;
+    }
+    pendingViewTargetRef.current = null;
     setFollowing(false);
-  };
+  }, [flyCameraTo]);
+
+  const clearPendingLocationRecenter = useCallback(() => {
+    pendingLocationRecenterRef.current = false;
+    setLocationRecenterPending(false);
+    if (pendingLocationRecenterTimerRef.current) {
+      clearTimeout(pendingLocationRecenterTimerRef.current);
+      pendingLocationRecenterTimerRef.current = null;
+    }
+  }, []);
+
+  const queuePendingLocationRecenter = useCallback(() => {
+    pendingLocationRecenterRef.current = true;
+    setLocationRecenterPending(true);
+    if (pendingLocationRecenterTimerRef.current) {
+      clearTimeout(pendingLocationRecenterTimerRef.current);
+    }
+    pendingLocationRecenterTimerRef.current = setTimeout(() => {
+      clearPendingLocationRecenter();
+    }, 10000);
+  }, [clearPendingLocationRecenter]);
+
+  const centerOnLocation = useCallback((loc: any) => {
+    if (!loc?.coords || !cameraRef.current) return false;
+    const { latitude, longitude } = loc.coords;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+    return flyCameraTo([longitude, latitude], { zoomLevel: 14, durationMs: 1000 });
+  }, [flyCameraTo]);
+
+  const handleRecenterPress = useCallback(() => {
+    requestLocation();
+    setFollowing(false);
+    if (centerOnLocation(lastLocation)) {
+      clearPendingLocationRecenter();
+      return;
+    }
+    queuePendingLocationRecenter();
+  }, [centerOnLocation, clearPendingLocationRecenter, lastLocation, queuePendingLocationRecenter, requestLocation]);
 
   const openPlacementChooser = () => {
     setChooserOpen(true);
   };
 
   const startPlacementFlow = async (mode: 'tap' | 'grid' | 'project') => {
-    await requestPlacementMode();
+    await requestPlacementMode('temp');
     if (mode !== 'tap') {
       await cancelPlacementMode();
     }
@@ -437,9 +513,7 @@ export default function MapLibreMap() {
   };
 
   const placeTemporaryCheckpoint = async (latitude: number, longitude: number) => {
-    await setActiveRouteColor(tempTargetColor);
-    await setActiveRouteLoop(false);
-    await clearActiveRoute();
+    await beginTempNavigation();
     await setActiveRouteStart(lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null);
     const cp = await addCheckpoint(latitude, longitude);
     await setCheckpointLabel(cp.id, 'Temporary target');
@@ -479,45 +553,72 @@ export default function MapLibreMap() {
     await selectCheckpoint(id);
   };
 
-  useEffect(() => {
-    if (lastLocation && !initialZoomDone.current && cameraRef.current && cameraReady) {
-      initialZoomDone.current = true;
-      void centerOnLocation(lastLocation);
-      setFollowing(false);
-    }
-  }, [lastLocation, cameraReady]);
-
   // Initialize offline ambient cache on first mount
   useEffect(() => {
     initOffline();
   }, [initOffline]);
 
-  const lastLat = lastLocation?.coords.latitude;
-  const lastLon = lastLocation?.coords.longitude;
-
+  // Consume viewTarget from routes screen (one-shot fly, never re-applied after user pans)
   useEffect(() => {
-    if (!following || lastLat == null || lastLon == null || !cameraRef.current) return;
-    cameraRef.current.setCamera({
-      centerCoordinate: [lastLon, lastLat],
-      animationDuration: 800,
-    });
-  }, [lastLat, lastLon, following]);
-
-  // Consume viewTarget from routes screen
-  useEffect(() => {
-    if (!viewTarget || !cameraRef.current || !cameraReady) return;
+    if (!viewTarget || !cameraReady) return;
+    let cancelled = false;
     const fly = async () => {
       const target = await consumeViewTarget();
-      if (!target) return;
-      cameraRef.current.setCamera({
-        centerCoordinate: [target.longitude, target.latitude],
-        zoomLevel: target.zoom ?? 14,
-        animationDuration: 1000,
-      });
-      setFollowing(false);
+      if (!target || cancelled) return;
+      applyViewTarget(target);
     };
     void fly();
-  }, [viewTarget, cameraReady, consumeViewTarget]);
+    return () => { cancelled = true; };
+  }, [viewTarget, cameraReady, consumeViewTarget, applyViewTarget]);
+
+  // Apply a deferred view target once the native camera ref is attached.
+  useEffect(() => {
+    if (!cameraReady || !pendingViewTargetRef.current) return;
+    const target = pendingViewTargetRef.current;
+    pendingViewTargetRef.current = null;
+    applyViewTarget(target);
+  }, [cameraReady, applyViewTarget]);
+
+  useEffect(() => {
+    if (!pendingLocationRecenterRef.current || !cameraReady || !lastLocation) return;
+    if (centerOnLocation(lastLocation)) {
+      clearPendingLocationRecenter();
+    }
+  }, [cameraReady, centerOnLocation, clearPendingLocationRecenter, lastLocation]);
+
+  const applyInitialCamera = useCallback(() => {
+    if (initialCameraAppliedRef.current || !cameraRef.current) return;
+    initialCameraAppliedRef.current = true;
+    const center = initialCameraCenterRef.current;
+    flyCameraTo([center.longitude, center.latitude], {
+      zoomLevel: 12,
+      durationMs: 0,
+    });
+  }, [flyCameraTo]);
+
+  const setMapCameraRef = useCallback((ref: any) => {
+    cameraRef.current = ref;
+    if (ref) {
+      setCameraReady(true);
+      applyInitialCamera();
+    }
+  }, [applyInitialCamera]);
+
+  const handleMapTouch = useCallback(() => {
+    clearPendingLocationRecenter();
+    stopFollowingFromUserGesture(true);
+  }, [clearPendingLocationRecenter, stopFollowingFromUserGesture]);
+
+  const handleRegionWillChange = useCallback((ev: any) => {
+    const isUserGesture = ev?.properties?.isUserInteraction ?? ev?.isUserInteraction;
+    if (isUserGesture === true) {
+      stopFollowingFromUserGesture(true);
+      return;
+    }
+    if (programmaticMoveRef.current || followingMoveRef.current) return;
+    if (isUserGesture === false) return;
+    stopFollowingFromUserGesture();
+  }, [stopFollowingFromUserGesture]);
 
   const emptyGeo = React.useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
 
@@ -889,7 +990,14 @@ export default function MapLibreMap() {
         pitchEnabled={false}
         compassEnabled={false}
         onPress={onMapPress}
+        onTouchStart={handleMapTouch}
+        onTouchMove={handleMapTouch}
+        onRegionWillChange={handleRegionWillChange}
+        onDidFinishLoadingMap={applyInitialCamera}
+        onDidFinishLoadingStyle={applyInitialCamera}
         onRegionDidChange={(ev: any) => {
+          clearProgrammaticCameraMove();
+
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
           if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
           
@@ -915,29 +1023,22 @@ export default function MapLibreMap() {
           }
         }}
         onRegionIsChanging={(ev: any) => {
-          if (programmaticMoveRef.current) return;
-
-          // Update map center coordinate while panning for real-time overlay updates
           const coords = ev?.geometry?.coordinates;
           if (coords && Array.isArray(coords) && coords.length >= 2) {
             setMapCenter({ longitude: coords[0], latitude: coords[1] });
           }
 
-          if (following) {
-            setFollowing(false);
+          const isUserGesture = ev?.properties?.isUserInteraction ?? ev?.isUserInteraction;
+          if (isUserGesture === true) {
+            stopFollowingFromUserGesture(true);
+            return;
           }
+          if (programmaticMoveRef.current || followingMoveRef.current) return;
+          if (isUserGesture === false) return;
+          stopFollowingFromUserGesture();
         }}
       >
-        <Camera
-          ref={(ref: any) => {
-            cameraRef.current = ref;
-            if (ref) setCameraReady(true);
-          }}
-          defaultSettings={{
-            centerCoordinate: [0, 0],
-            zoomLevel: 1,
-          }}
-        />
+        <Camera ref={setMapCameraRef} followUserLocation={false} />
 
         <Images
           images={mapImages}
@@ -1058,8 +1159,12 @@ export default function MapLibreMap() {
         textColor={String(textColor)}
         mutedColor={String(borderColor)}
         rightInset={MAP_TOOL_BUTTON_SIZE + toolGap}
-        title={targetTitle}
+        title={activeRouteLabel && placementHudMode === 'idle' ? activeRouteLabel : targetTitle}
+        routeLabel={activeRouteLabel}
         detail={placementHudMode === 'nav' ? targetBearingDescriptor : idleHudDetail}
+        canResumeRoute={!!stashedRouteState}
+        onResumeRoute={() => { void resumeStashedRoute(); }}
+        onOpenRoutes={() => router.push('/routes')}
         bearingMils={compassBearingMilsText}
         bearingDegreesText={compassBearingDegreesText}
         bearingRotationDeg={compassTargetBearingDeg}
@@ -1079,10 +1184,10 @@ export default function MapLibreMap() {
 
       <MapToolButton
         icon="location.fill.viewfinder"
-        label="Recenter map"
-        onPress={() => { void handleRecenterPress(); }}
+        label={locationRecenterPending ? 'Waiting for location' : 'Recenter map'}
+        onPress={handleRecenterPress}
         colorScheme={colorScheme}
-        active={following}
+        active={locationRecenterPending}
         accentColor={String(tint)}
         style={{ position: 'absolute', right: toolsRight, bottom: toolsBottom, zIndex: 50 }}
       />
@@ -1177,7 +1282,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F5FCFF',
+    backgroundColor: 'transparent',
   },
   map: {
     flex: 1,

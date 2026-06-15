@@ -1,7 +1,7 @@
 import { useSettings } from '@/hooks/settings';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { gridCoordsToLatLon } from './map/mapGrid';
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
@@ -87,14 +87,12 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={reset}>
-      <KeyboardAvoidingView 
-        behavior="padding"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <View style={styles.overlay}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); reset(); }} />
-          
-          <TouchableWithoutFeedback onPress={() => Platform.OS !== 'web' && Keyboard.dismiss()} accessible={false}>
           <ThemedView style={[styles.container, { borderColor, borderWidth: 1 }]}>
             <ThemedText type="subtitle" style={{ marginBottom: 16 }}>Add by Grid Reference</ThemedText>
           
@@ -144,7 +142,6 @@ export function GridReferenceModal({ visible, onClose, onAdd }: GridReferenceMod
             <StyledButton variant="primary" onPress={handleAdd}>Add Point</StyledButton>
           </View>
         </ThemedView>
-          </TouchableWithoutFeedback>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -163,7 +160,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     padding: 20,
-    borderRadius: 14,
+    borderRadius: 4,
     elevation: 5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
