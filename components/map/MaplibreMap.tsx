@@ -205,14 +205,17 @@ export default function MapLibreMap() {
   const programmaticMoveRef = useRef(false);
   const programmaticMoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const followingMoveRef = useRef(false);
+  const lastRegionStampRef = useRef(0);
+  const lastSettledCameraRef = useRef<{ lng: number; lat: number; zoom: number } | null>(null);
+  const lastBoundsUpdateRef = useRef(0);
   const pendingViewTargetRef = useRef<{ latitude: number; longitude: number; zoom?: number } | null>(null);
   const pendingLocationRecenterRef = useRef(false);
   const pendingLocationRecenterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialCameraAppliedRef = useRef(false);
   const [, setFollowing] = useState(false);
   const [locationRecenterPending, setLocationRecenterPending] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [cameraKey, setCameraKey] = useState(0);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
 
@@ -226,7 +229,7 @@ export default function MapLibreMap() {
     }
     return { latitude: -37.8136, longitude: 144.9631 };
   });
-  const initialCameraCenterRef = useRef(mapCenter);
+
 
   const menuTranslateX = useSharedValue(-300);
 
@@ -394,18 +397,23 @@ export default function MapLibreMap() {
   };
 
   const markProgrammaticCameraMove = useCallback((durationMs: number, isFollowing = false) => {
+    const holdMs = Math.max(durationMs + 100, 2500);
+    console.log(`[DEBUG] markProgrammaticCameraMove — setting flags durationMs=${durationMs} holdMs=${holdMs} isFollowing=${isFollowing} programmaticMoveRef was=${programmaticMoveRef.current}`);
     programmaticMoveRef.current = true;
     if (isFollowing) followingMoveRef.current = true;
     if (programmaticMoveTimerRef.current) {
       clearTimeout(programmaticMoveTimerRef.current);
     }
     programmaticMoveTimerRef.current = setTimeout(() => {
+      console.log(`[DEBUG] markProgrammaticCameraMove timer — clearing programmaticMoveRef (was=${programmaticMoveRef.current}) after ${holdMs}ms — remounting Camera to clear native state`);
       programmaticMoveRef.current = false;
       programmaticMoveTimerRef.current = null;
-    }, durationMs + 100);
+      setCameraKey((k) => k + 1); // Force Camera remount to clear native commanded position
+    }, holdMs);
   }, []);
 
   const clearProgrammaticCameraMove = useCallback(() => {
+    console.log(`[DEBUG] clearProgrammaticCameraMove — clearing flags programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
     programmaticMoveRef.current = false;
     followingMoveRef.current = false;
     if (programmaticMoveTimerRef.current) {
@@ -426,29 +434,47 @@ export default function MapLibreMap() {
   }, []);
 
   const stopFollowingFromUserGesture = useCallback((force = false) => {
-    if (!force && (followingMoveRef.current || programmaticMoveRef.current)) return;
+    console.log(`[DEBUG] stopFollowingFromUserGesture called force=${force} followingMoveRef=${followingMoveRef.current} programmaticMoveRef=${programmaticMoveRef.current}`);
+    if (!force && (followingMoveRef.current || programmaticMoveRef.current)) {
+      console.log(`[DEBUG] stopFollowingFromUserGesture — bailing (not forced and flags set)`);
+      return;
+    }
     followingMoveRef.current = false;
-    setFollowing((prev) => (prev ? false : prev));
+    setFollowing((prev) => {
+      if (prev) console.log(`[DEBUG] stopFollowingFromUserGesture — setting following=false`);
+      return prev ? false : prev;
+    });
   }, []);
 
   const flyCameraTo = useCallback((
     center: [number, number],
-    opts?: { zoomLevel?: number; durationMs?: number; isFollowing?: boolean },
+    opts?: { zoomLevel?: number; durationMs?: number; isFollowing?: boolean; caller?: string },
   ) => {
-    if (!cameraRef.current) return false;
+    if (!cameraRef.current) {
+      console.log(`[DEBUG] flyCameraTo by="${opts?.caller}" — FAILED no cameraRef`);
+      return false;
+    }
     const durationMs = opts?.durationMs ?? 1000;
+    console.log(
+      `[ZOOM TO LOCATION] flyCameraTo called by="${opts?.caller ?? 'unknown'}" ` +
+      `center=[${center[0].toFixed(6)}, ${center[1].toFixed(6)}] ` +
+      `zoom=${opts?.zoomLevel ?? 'unchanged'} duration=${durationMs}ms ` +
+      `isFollowing=${!!opts?.isFollowing}\n` +
+      (new Error().stack ?? '')
+    );
     markProgrammaticCameraMove(durationMs, opts?.isFollowing ?? false);
+    console.log(`[DEBUG] flyCameraTo — calling setCamera programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
     cameraRef.current.setCamera({
       centerCoordinate: center,
       ...(opts?.zoomLevel != null ? { zoomLevel: opts.zoomLevel } : {}),
       animationDuration: durationMs,
-      animationMode: durationMs > 0 ? 'easeTo' : 'moveTo',
+      animationMode: durationMs === 0 ? 'moveTo' : 'flyTo',
     });
     return true;
   }, [markProgrammaticCameraMove]);
 
-  const applyViewTarget = useCallback((target: { latitude: number; longitude: number; zoom?: number }) => {
-    if (!flyCameraTo([target.longitude, target.latitude], { zoomLevel: target.zoom ?? 14, durationMs: 1000 })) {
+  const applyViewTarget = useCallback((target: { latitude: number; longitude: number; zoom?: number }, caller?: string) => {
+    if (!flyCameraTo([target.longitude, target.latitude], { zoomLevel: target.zoom ?? 14, durationMs: 1000, caller: caller ?? 'applyViewTarget' })) {
       pendingViewTargetRef.current = target;
       return;
     }
@@ -476,22 +502,35 @@ export default function MapLibreMap() {
     }, 10000);
   }, [clearPendingLocationRecenter]);
 
-  const centerOnLocation = useCallback((loc: any) => {
-    if (!loc?.coords || !cameraRef.current) return false;
+  const centerOnLocation = useCallback((loc: any, caller?: string) => {
+    if (!loc?.coords || !cameraRef.current) {
+      console.log(`[DEBUG] centerOnLocation by="${caller}" — FAILED noCoords=${!loc?.coords} noCamera=${!cameraRef.current}`);
+      return false;
+    }
     const { latitude, longitude } = loc.coords;
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
-    return flyCameraTo([longitude, latitude], { zoomLevel: 14, durationMs: 1000 });
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      console.log(`[DEBUG] centerOnLocation by="${caller}" — FAILED invalid coords lat=${latitude} lon=${longitude}`);
+      return false;
+    }
+    console.log(`[ZOOM TO LOCATION] centerOnLocation called by="${caller ?? 'unknown'}" lat=${latitude.toFixed(6)} lon=${longitude.toFixed(6)}`);
+    // Use flyTo (minimum 1ms) on all platforms — moveTo (0ms) triggers native MapLibre oscillation on Android.
+    return flyCameraTo([longitude, latitude], { zoomLevel: 14, durationMs: Platform.OS === 'android' ? 1 : 1000, caller: caller ?? 'centerOnLocation' });
   }, [flyCameraTo]);
 
   const handleRecenterPress = useCallback(() => {
-    requestLocation();
+    console.log(`[ZOOM TO LOCATION] handleRecenterPress — user tapped Recenter button hasLocation=${!!lastLocation?.coords} cameraReady=${cameraReady} programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
+    if (Platform.OS !== 'android') {
+      requestLocation();
+    }
     setFollowing(false);
-    if (centerOnLocation(lastLocation)) {
+    if (centerOnLocation(lastLocation, 'handleRecenterPress')) {
+      console.log('[DEBUG] handleRecenterPress — centerOnLocation succeeded, clearing pending');
       clearPendingLocationRecenter();
       return;
     }
+    console.log('[DEBUG] handleRecenterPress — centerOnLocation failed, queuing pending');
     queuePendingLocationRecenter();
-  }, [centerOnLocation, clearPendingLocationRecenter, lastLocation, queuePendingLocationRecenter, requestLocation]);
+  }, [centerOnLocation, clearPendingLocationRecenter, lastLocation, queuePendingLocationRecenter, requestLocation, cameraReady]);
 
   const openPlacementChooser = () => {
     setChooserOpen(true);
@@ -565,7 +604,8 @@ export default function MapLibreMap() {
     const fly = async () => {
       const target = await consumeViewTarget();
       if (!target || cancelled) return;
-      applyViewTarget(target);
+      console.log(`[ZOOM TO LOCATION] viewTarget effect — consumed viewTarget lat=${target.latitude.toFixed(6)} lon=${target.longitude.toFixed(6)} zoom=${target.zoom}`);
+      applyViewTarget(target, 'viewTarget-effect');
     };
     void fly();
     return () => { cancelled = true; };
@@ -576,49 +616,50 @@ export default function MapLibreMap() {
     if (!cameraReady || !pendingViewTargetRef.current) return;
     const target = pendingViewTargetRef.current;
     pendingViewTargetRef.current = null;
-    applyViewTarget(target);
+    console.log(`[ZOOM TO LOCATION] deferred pendingViewTarget — applying deferred target lat=${target.latitude.toFixed(6)} lon=${target.longitude.toFixed(6)} zoom=${target.zoom}`);
+    applyViewTarget(target, 'pendingViewTarget-deferred');
   }, [cameraReady, applyViewTarget]);
 
   useEffect(() => {
     if (!pendingLocationRecenterRef.current || !cameraReady || !lastLocation) return;
-    if (centerOnLocation(lastLocation)) {
+    console.log('[ZOOM TO LOCATION] pendingLocationRecenter effect — attempting recenter on latest location');
+    if (centerOnLocation(lastLocation, 'pendingLocationRecenter-effect')) {
       clearPendingLocationRecenter();
     }
   }, [cameraReady, centerOnLocation, clearPendingLocationRecenter, lastLocation]);
 
-  const applyInitialCamera = useCallback(() => {
-    if (initialCameraAppliedRef.current || !cameraRef.current) return;
-    initialCameraAppliedRef.current = true;
-    const center = initialCameraCenterRef.current;
-    flyCameraTo([center.longitude, center.latitude], {
-      zoomLevel: 12,
-      durationMs: 0,
-    });
-  }, [flyCameraTo]);
-
   const setMapCameraRef = useCallback((ref: any) => {
+    console.log(`[DEBUG] setMapCameraRef called hasRef=${!!ref}`);
     cameraRef.current = ref;
     if (ref) {
       setCameraReady(true);
-      applyInitialCamera();
     }
-  }, [applyInitialCamera]);
+  }, []);
 
   const handleMapTouch = useCallback(() => {
+    console.log(`[DEBUG] handleMapTouch — user touched map programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
     clearPendingLocationRecenter();
     stopFollowingFromUserGesture(true);
   }, [clearPendingLocationRecenter, stopFollowingFromUserGesture]);
 
   const handleRegionWillChange = useCallback((ev: any) => {
     const isUserGesture = ev?.properties?.isUserInteraction ?? ev?.isUserInteraction;
+    const coords = ev?.geometry?.coordinates;
+    const coordStr = coords && Array.isArray(coords) && coords.length >= 2
+      ? `[${Number(coords[0]).toFixed(4)}, ${Number(coords[1]).toFixed(4)}]`
+      : '?';
+    const zoom = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? '?';
+    console.log(`[DEBUG] handleRegionWillChange isUserGesture=${isUserGesture} zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current} fol=${followingMoveRef.current}`);
     if (isUserGesture === true) {
+      clearPendingLocationRecenter();
       stopFollowingFromUserGesture(true);
       return;
     }
     if (programmaticMoveRef.current || followingMoveRef.current) return;
     if (isUserGesture === false) return;
+    clearPendingLocationRecenter();
     stopFollowingFromUserGesture();
-  }, [stopFollowingFromUserGesture]);
+  }, [clearPendingLocationRecenter, stopFollowingFromUserGesture]);
 
   const emptyGeo = React.useMemo(() => ({ type: 'FeatureCollection', features: [] } as any), []);
 
@@ -993,33 +1034,84 @@ export default function MapLibreMap() {
         onTouchStart={handleMapTouch}
         onTouchMove={handleMapTouch}
         onRegionWillChange={handleRegionWillChange}
-        onDidFinishLoadingMap={applyInitialCamera}
-        onDidFinishLoadingStyle={applyInitialCamera}
+
+
         onRegionDidChange={(ev: any) => {
-          clearProgrammaticCameraMove();
+          const zoom = ev?.properties?.zoomLevel ?? ev?.properties?.zoom;
+          const coords = ev?.geometry?.coordinates;
+          const coordStr = coords && Array.isArray(coords) && coords.length >= 2
+            ? `[${Number(coords[0]).toFixed(4)}, ${Number(coords[1]).toFixed(4)}]`
+            : '?';
+          const lng = coords?.[0] as number | undefined;
+          const lat = coords?.[1] as number | undefined;
+          console.log(`[DEBUG] onRegionDidChange — zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current} fol=${followingMoveRef.current}`);
+
+          // Skip if position hasn't meaningfully changed since last settled event.
+          if (
+            !programmaticMoveRef.current &&
+            typeof zoom === 'number' && typeof lng === 'number' && typeof lat === 'number' &&
+            lastSettledCameraRef.current
+          ) {
+            const prev = lastSettledCameraRef.current;
+            if (
+              Math.abs(zoom - prev.zoom) < 0.001 &&
+              Math.abs(lng - prev.lng) < 1e-6 &&
+              Math.abs(lat - prev.lat) < 1e-6
+            ) {
+              console.log(`[DEBUG] onRegionDidChange — skipped (same position)`);
+              return;
+            }
+          }
+          lastSettledCameraRef.current = lng != null && lat != null && typeof zoom === 'number'
+            ? { lng, lat, zoom }
+            : lastSettledCameraRef.current;
+
+          // Debounce rapid repeated onRegionDidChange (native oscillation guard).
+          const now = Date.now();
+          if (now - lastRegionStampRef.current < 300 && !programmaticMoveRef.current) {
+            console.log(`[DEBUG] onRegionDidChange — skipped (debounce, ${now - lastRegionStampRef.current}ms since last)`);
+            return;
+          }
+          lastRegionStampRef.current = now;
+
+          clearPendingLocationRecenter();
+          // Don't call clearProgrammaticCameraMove here — let the timer in
+          // markProgrammaticCameraMove handle it (2500ms hold) so that any
+          // delayed native region-change events see programmaticMoveRef=true.
 
           const z = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? ev?.zoomLevel;
-          if (typeof z === 'number' && Number.isFinite(z)) setZoomLevel(z);
+          if (typeof z === 'number' && Number.isFinite(z) && z !== zoomLevel) {
+            setZoomLevel(z);
+          }
           
-          // Update map center coordinate
-          const coords = ev?.geometry?.coordinates;
+          // Update map center coordinate (skip if unchanged to avoid pointless re-renders)
           if (coords && Array.isArray(coords) && coords.length >= 2) {
-            setMapCenter({ longitude: coords[0], latitude: coords[1] });
+            const newLng = coords[0];
+            const newLat = coords[1];
+            setMapCenter((prev: any) => {
+              if (prev && Math.abs(prev.longitude - newLng) < 1e-7 && Math.abs(prev.latitude - newLat) < 1e-7) {
+                return prev; // same reference = no re-render
+              }
+              return { longitude: newLng, latitude: newLat };
+            });
           }
 
-          // Keep bounds updated for the grid overlay.
-          const getBounds = mapRef.current?.getVisibleBounds;
-          if (typeof getBounds === 'function') {
-            Promise.resolve()
-              .then(() => getBounds.call ? getBounds.call(mapRef.current) : getBounds())
-              .then((b: any) => {
-                if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
-                  setVisibleBounds(b as [[number, number], [number, number]]);
-                }
-              })
-              .catch(() => {
-                // ignore - grid will just not render
-              });
+          // Keep bounds updated for the grid overlay (throttled to avoid oscillation).
+          if (now - lastBoundsUpdateRef.current > 500) {
+            lastBoundsUpdateRef.current = now;
+            const getBounds = mapRef.current?.getVisibleBounds;
+            if (typeof getBounds === 'function') {
+              Promise.resolve()
+                .then(() => getBounds.call ? getBounds.call(mapRef.current) : getBounds())
+                .then((b: any) => {
+                  if (Array.isArray(b) && b.length === 2 && Array.isArray(b[0]) && Array.isArray(b[1])) {
+                    setVisibleBounds(b as [[number, number], [number, number]]);
+                  }
+                })
+                .catch(() => {
+                  // ignore - grid will just not render
+                });
+            }
           }
         }}
         onRegionIsChanging={(ev: any) => {
@@ -1029,16 +1121,23 @@ export default function MapLibreMap() {
           }
 
           const isUserGesture = ev?.properties?.isUserInteraction ?? ev?.isUserInteraction;
+          const coordStr = coords && Array.isArray(coords) && coords.length >= 2
+            ? `[${Number(coords[0]).toFixed(4)}, ${Number(coords[1]).toFixed(4)}]`
+            : '?';
+          const zoom = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? '?';
+          console.log(`[DEBUG] onRegionIsChanging isUserGesture=${isUserGesture} zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current}`);
           if (isUserGesture === true) {
+            clearPendingLocationRecenter();
             stopFollowingFromUserGesture(true);
             return;
           }
           if (programmaticMoveRef.current || followingMoveRef.current) return;
           if (isUserGesture === false) return;
+          clearPendingLocationRecenter();
           stopFollowingFromUserGesture();
         }}
       >
-        <Camera ref={setMapCameraRef} followUserLocation={false} />
+        <Camera key={cameraKey} ref={setMapCameraRef} {...(Platform.OS === 'android' ? {} : { followUserLocation: false })} />
 
         <Images
           images={mapImages}
