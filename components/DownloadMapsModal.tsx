@@ -465,8 +465,9 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                 </View>
 
                 {/* Map Preview */}
-                {MapLibre && MapLibre.MapView && previewTarget && apiKey && (
+                {MapLibre && previewTarget && apiKey && (
                   <View style={[styles.mapPreviewContainer, { borderColor: String(separatorColor) }]}>
+                    {/* @ts-expect-error - MapLibre native module types not available at design time */}
                     <MapLibre.MapView 
                       style={StyleSheet.absoluteFillObject} 
                         mapStyle={getMapStyleUrl(mapLayer, colorScheme, apiKey ?? '')}
@@ -477,16 +478,20 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                       rotateEnabled={false}
                       zoomEnabled={false}
                     >
+                      {/* @ts-expect-error - MapLibre native module types not available */}
                       <MapLibre.Camera 
                         centerCoordinate={[previewTarget.longitude, previewTarget.latitude]} 
                         zoomLevel={Math.max(1, 9.5 - Math.log2(radiusKm / 5))} 
                         animationDuration={500}
                       />
+                      {/* @ts-expect-error - MapLibre native module types not available */}
                       <MapLibre.ShapeSource 
                         id="radius-source" 
                         shape={turf.circle([previewTarget.longitude, previewTarget.latitude], radiusKm, { units: 'kilometers', steps: 64 })}
                       >
+                        {/* @ts-expect-error - MapLibre native module types not available */}
                         <MapLibre.FillLayer id="radius-fill" style={{ fillColor: String(Colors[colorScheme].primary) as string, fillOpacity: 0.15 }} />
+                        {/* @ts-expect-error - MapLibre native module types not available */}
                         <MapLibre.LineLayer id="radius-line" style={{ lineColor: String(Colors[colorScheme].primary) as string, lineWidth: 2 }} />
                       </MapLibre.ShapeSource>
                     </MapLibre.MapView>

@@ -24,17 +24,24 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# debug
+# temp / debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.tmp
 
 # macOS
 .DS_Store
 *.pem
 
-# local env files
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# local env / config overrides
 .env*.local
+*.local
 
 # typescript
 *.tsbuildinfo
@@ -65,9 +72,14 @@ credentials.json
 # IDEs and Editors
 .idea/
 .vscode/*
+.history/
 !.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/launch.json
 *.iml
 *.swp
 current_tool.txt
+next-steps.txt
+AGENTS.md
+improvements.txt
+docs/*

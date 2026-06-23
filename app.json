@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.cadnav.CadNav",
+      "bundleIdentifier": "com.lyren.CadNav",
       "icon": "./assets/icons/CadNavIcon.icon",
       "infoPlist": {
         "UIBackgroundModes": [
@@ -34,7 +34,7 @@
       },
       "edgeToEdgeEnabled": true,
       "softwareKeyboardLayoutMode": "resize",
-      "package": "com.cadnav.CadNav",
+      "package": "com.lyren.CadNav",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -59,21 +59,13 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow CadNav 2 to use your location for offline navigation and map positioning.",
+          "locationWhenInUsePermission": "Allow CadNav 2 to use your location for navigation and map positioning.",
           "locationAlwaysAndWhenInUsePermission": "Allow CadNav 2 to use your location to record routes and navigate while the app is in the background.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }
       ],
-      "@maplibre/maplibre-react-native",
-      [
-        "@sentry/react-native/expo",
-        {
-          "url": "https://sentry.io/",
-          "project": "react-native",
-          "organization": "independent-4e"
-        }
-      ]
+      "@maplibre/maplibre-react-native"
     ],
     "assetBundlePatterns": [
       "assets/*"

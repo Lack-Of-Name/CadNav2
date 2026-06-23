@@ -112,7 +112,7 @@ export function CompassOverlay({
         easing: Easing.out(Easing.quad),
       });
     }
-  }, [heading]);
+  }, [heading, animatedHeading]);
 
   const ringStyle = useAnimatedStyle(() => {
     return {

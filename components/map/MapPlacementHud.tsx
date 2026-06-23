@@ -3,6 +3,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, HUD, type ColorScheme } from '@/constants/theme';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useState } from 'react';
 
 export type PlacementHudMode = 'idle' | 'placing' | 'nav';
 
@@ -37,6 +38,9 @@ type Props = {
   canResumeRoute?: boolean;
   onResumeRoute?: () => void;
   onOpenRoutes?: () => void;
+  /** Append the current temp target to a workspace route. */
+  canAddToRoute?: boolean;
+  onAddToRoute?: () => void;
 };
 
 const PROGRESS_TICKS = [0, 0.25, 0.5, 0.75, 1];
@@ -109,10 +113,20 @@ export function MapPlacementHud({
   canResumeRoute,
   onResumeRoute,
   onOpenRoutes,
+  canAddToRoute,
+  onAddToRoute,
 }: Props) {
   const insets = useSafeAreaInsets();
   const theme = Colors[colorScheme];
   const panelBg = colorScheme === 'dark' ? 'rgba(18,18,20,0.97)' : 'rgba(255,255,255,0.98)';
+  const [expanded, setExpanded] = useState(false);
+
+  const canExpand = !!onAddToRoute && (canAddToRoute ?? false);
+
+  const handleAddToRoute = () => {
+    setExpanded(false);
+    onAddToRoute?.();
+  };
 
   const bearingPrimary =
     angleUnit === 'mils'
@@ -198,7 +212,31 @@ export function MapPlacementHud({
           ) : null}
           <View style={styles.actionRow}>
             <DenseButton label="New target" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onSetTarget} style={{ flex: 1 }} />
+            {canExpand ? (
+              <Pressable
+                onPress={() => setExpanded((v) => !v)}
+                hitSlop={6}
+                accessibilityRole="button"
+                accessibilityLabel={expanded ? 'Hide route options' : 'Show route options'}
+                style={[
+                  styles.expandBtn,
+                  { borderColor: expanded ? accentColor : theme.divider, backgroundColor: expanded ? accentColor : theme.surface },
+                ]}
+              >
+                <IconSymbol name="chevron.right" size={16} color={expanded ? '#fff' : textColor} style={expanded ? styles.expandChevOpen : undefined} />
+              </Pressable>
+            ) : null}
           </View>
+          {canExpand && expanded ? (
+            <View style={styles.actionRow}>
+              <DenseButton
+                label="Add to route"
+                colorScheme={colorScheme}
+                onPress={handleAddToRoute}
+                style={{ flex: 1 }}
+              />
+            </View>
+          ) : null}
         </>
       ) : (
         <View style={styles.idleCol}>
@@ -214,8 +252,34 @@ export function MapPlacementHud({
                 {detail}
               </Text>
             </View>
-            <DenseButton label="Set" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onSetTarget} />
+            <View style={styles.idleBtnGroup}>
+              {canExpand ? (
+                <Pressable
+                  onPress={() => setExpanded((v) => !v)}
+                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={expanded ? 'Hide route options' : 'Show route options'}
+                  style={[
+                    styles.expandBtn,
+                    { borderColor: expanded ? accentColor : theme.divider, backgroundColor: expanded ? accentColor : theme.surface },
+                  ]}
+                >
+                  <IconSymbol name="chevron.right" size={16} color={expanded ? '#fff' : textColor} style={expanded ? styles.expandChevOpen : undefined} />
+                </Pressable>
+              ) : null}
+              <DenseButton label="Set" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onSetTarget} />
+            </View>
           </View>
+          {canExpand && expanded ? (
+            <View style={styles.idleActions}>
+              <DenseButton
+                label="Add to route"
+                colorScheme={colorScheme}
+                onPress={handleAddToRoute}
+                style={{ flex: 1 }}
+              />
+            </View>
+          ) : null}
           {(canResumeRoute && onResumeRoute) || onOpenRoutes ? (
             <View style={styles.idleActions}>
               {canResumeRoute && onResumeRoute ? (
@@ -287,6 +351,22 @@ const styles = StyleSheet.create({
   idleActions: {
     flexDirection: 'row',
     gap: 6,
+  },
+  idleBtnGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  expandBtn: {
+    width: 32,
+    minHeight: 32,
+    borderRadius: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  expandChevOpen: {
+    transform: [{ rotate: '90deg' }],
   },
   idleCopy: {
     flex: 1,

@@ -1,7 +1,8 @@
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { getMagneticDeclination } from '../components/map/converter';
+import { SettingsContext, type GpsMode } from './settings';
 
 export type GPSLocation = {
   coords: {
@@ -16,7 +17,66 @@ export type GPSLocation = {
 };
 
 export type GPSOptions = {
-  lowPowerMode?: boolean;
+  gpsMode?: GpsMode;
+};
+
+/**
+ * Resolve the authoritative heading to display, honouring the user's
+ * true/magnetic preference but falling back to whichever the device actually
+ * provides. Android returns no native trueHeading, so a "true" preference must
+ * still yield *something* (magnetic) until a true heading can be computed —
+ * otherwise the compass appears frozen on every power setting.
+ *
+ * Returns { value, reference } where reference reflects what we actually used.
+ */
+export function resolveDisplayHeading(
+  preference: 'true' | 'magnetic',
+  mag: number | null,
+  trueH: number | null,
+): { value: number; reference: 'true' | 'magnetic' } | null {
+  if (preference === 'magnetic') {
+    if (typeof mag === 'number') return { value: mag, reference: 'magnetic' };
+    if (typeof trueH === 'number') return { value: trueH, reference: 'true' };
+    return null;
+  }
+  // preference === 'true'
+  if (typeof trueH === 'number') return { value: trueH, reference: 'true' };
+  if (typeof mag === 'number') return { value: mag, reference: 'magnetic' };
+  return null;
+}
+
+const GPS_MODE_CONFIG: Record<GpsMode, {
+  accuracy: Location.Accuracy;
+  distanceInterval: number;
+  timeInterval: number;
+  useFreshFix: boolean;
+  maxAccuracy?: number;
+}> = {
+  highAccuracy: {
+    accuracy: Location.Accuracy.BestForNavigation,
+    distanceInterval: 1,
+    timeInterval: 1000,
+    useFreshFix: false,
+  },
+  gpsOnly: {
+    accuracy: Location.Accuracy.BestForNavigation,
+    distanceInterval: 0,
+    timeInterval: 500,
+    useFreshFix: true,
+    maxAccuracy: 50,
+  },
+  powerSave: {
+    accuracy: Location.Accuracy.Balanced,
+    distanceInterval: 10,
+    timeInterval: 10000,
+    useFreshFix: false,
+  },
+  super: {
+    accuracy: Location.Accuracy.Balanced,
+    distanceInterval: 50,
+    timeInterval: 30000,
+    useFreshFix: false,
+  },
 };
 
 export function useGPS(options?: GPSOptions) {
@@ -29,11 +89,15 @@ export function useGPS(options?: GPSOptions) {
   const headingSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
   const retryTimerRef = useRef<number | null>(null);
   const retryCountRef = useRef(0);
-  const lowPowerMode = options?.lowPowerMode ?? false;
   const [magHeading, setMagHeading] = useState<number | null>(null);
   const [trueHeading, setTrueHeading] = useState<number | null>(null);
   const magHeadingRef = useRef<number | null>(null);
   const trueHeadingRef = useRef<number | null>(null);
+
+  const settingsCtx = useContext(SettingsContext);
+  const settingsGpsMode = settingsCtx?.settings.gpsMode ?? 'highAccuracy';
+  const gpsMode = options?.gpsMode ?? settingsGpsMode;
+  const config = GPS_MODE_CONFIG[gpsMode];
 
   useEffect(() => {
     lastLocationRef.current = lastLocation;
@@ -147,14 +211,43 @@ export function useGPS(options?: GPSOptions) {
 
               const mag = typeof h.magHeading === 'number' && h.magHeading >= 0 ? h.magHeading : null;
               const nativeTrue = typeof h.trueHeading === 'number' && h.trueHeading >= 0 ? h.trueHeading : null;
-              
-              if (mag != null) magHeadingRef.current = mag;
-              if (nativeTrue != null) trueHeadingRef.current = nativeTrue;
+
+              const prevMag = magHeadingRef.current;
+              const prevTrue = trueHeadingRef.current;
+
+              if (mag != null) {
+                magHeadingRef.current = mag;
+                setMagHeading(mag);
+              }
+              if (nativeTrue != null) {
+                trueHeadingRef.current = nativeTrue;
+                setTrueHeading(nativeTrue);
+              }
 
               const loc = lastLocationRef.current;
               if (nativeTrue == null && mag != null && loc) {
-                // Background compute true heading
+                // Background compute true heading (Android returns no native trueHeading).
                 void computeAndSetTrueHeading(mag, loc.coords.latitude, loc.coords.longitude, loc.coords.altitude ?? null);
+              }
+
+              // Push heading-only updates into lastLocation so the compass UI
+              // re-renders immediately, regardless of the position watch interval.
+              // Trigger when EITHER mag or true changed so a true-only update still
+              // propagates (e.g. computed-true resolving after a location fix).
+              const headingChanged = mag !== prevMag || trueHeadingRef.current !== prevTrue;
+              if (headingChanged && lastLocationRef.current) {
+                setLastLocation((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        coords: {
+                          ...prev.coords,
+                          magHeading: magHeadingRef.current,
+                          trueHeading: trueHeadingRef.current,
+                        },
+                      }
+                    : prev
+                );
               }
             });
           } catch {
@@ -163,21 +256,37 @@ export function useGPS(options?: GPSOptions) {
         }
 
         // Prime with a current position so UI updates quickly.
-        try {
-          // Use getLastKnownPositionAsync instead of getCurrentPositionAsync 
-          // because getCurrentPositionAsync blocks for 5-10 seconds waiting 
-          // for a perfect navigation lock before watchPositionAsync can even start!
-          const current = await Location.getLastKnownPositionAsync();
-          if (!cancelled && current) {
-            const next = toGPSLocation(current);
-            setLastLocation(next);
-            // If we already have a magnetic heading, convert it to true now that we have coordinates
-            if (magHeadingRef.current != null && trueHeadingRef.current == null) {
-              void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+        if (config.useFreshFix) {
+          // gpsOnly: skip cached positions, wait for a fresh GPS fix
+          try {
+            const current = await Location.getCurrentPositionAsync({
+              accuracy: config.accuracy,
+              mayShowUserSettingsDialog: true,
+            });
+            if (!cancelled && current) {
+              const next = toGPSLocation(current);
+              setLastLocation(next);
+              if (magHeadingRef.current != null && trueHeadingRef.current == null) {
+                void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+              }
             }
+          } catch {
+            // If fresh fix fails, watcher will still provide updates
           }
-        } catch {
-          // Ignore: watchPositionAsync below will still update.
+        } else {
+          // highAccuracy / powerSave: use last known for fast initial position
+          try {
+            const current = await Location.getLastKnownPositionAsync();
+            if (!cancelled && current) {
+              const next = toGPSLocation(current);
+              setLastLocation(next);
+              if (magHeadingRef.current != null && trueHeadingRef.current == null) {
+                void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+              }
+            }
+          } catch {
+            // Ignore: watchPositionAsync below will still update.
+          }
         }
 
         try {
@@ -192,14 +301,21 @@ export function useGPS(options?: GPSOptions) {
         } catch {}
         subscriptionRef.current = await Location.watchPositionAsync(
           {
-            accuracy: lowPowerMode ? Location.Accuracy.Balanced : Location.Accuracy.BestForNavigation,
-            distanceInterval: lowPowerMode ? 5 : 1,
-            timeInterval: lowPowerMode ? 5000 : 1000,
+            accuracy: config.accuracy,
+            distanceInterval: config.distanceInterval,
+            timeInterval: config.timeInterval,
             mayShowUserSettingsDialog: true,
           },
           async (loc) => {
             if (cancelled) return;
             const next = toGPSLocation(loc);
+            // In gpsOnly mode, skip low-accuracy fixes when we already have a better one
+            if (gpsMode === 'gpsOnly' && config.maxAccuracy != null && loc.coords.accuracy != null) {
+              const bestAccuracy = lastLocationRef.current?.coords?.accuracy;
+              if (bestAccuracy != null && loc.coords.accuracy > bestAccuracy && loc.coords.accuracy > config.maxAccuracy) {
+                return;
+              }
+            }
             setLastLocation(next);
             // Convert any existing magnetic heading to true using updated location
             if (magHeadingRef.current != null && trueHeadingRef.current == null) {
@@ -239,7 +355,7 @@ export function useGPS(options?: GPSOptions) {
       } catch {}
       headingSubscriptionRef.current = null;
     };
-  }, [computeAndSetTrueHeading, restartToken, lowPowerMode]);
+  }, [computeAndSetTrueHeading, restartToken, gpsMode, config.accuracy, config.distanceInterval, config.timeInterval, config.useFreshFix, config.maxAccuracy]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -249,8 +365,8 @@ export function useGPS(options?: GPSOptions) {
 
     const handler = (ev: DeviceOrientationEvent & { webkitCompassHeading?: number }) => {
       const now = Date.now();
-      if (lowPowerMode && now - lastUpdate < 500) return;
-      if (!lowPowerMode && now - lastUpdate < 100) return;
+      if (gpsMode === 'powerSave' && now - lastUpdate < 500) return;
+      if (gpsMode !== 'powerSave' && now - lastUpdate < 100) return;
       lastUpdate = now;
 
       const mag = (ev as any).webkitCompassHeading ?? ev.alpha;
@@ -282,7 +398,7 @@ export function useGPS(options?: GPSOptions) {
 
     window.addEventListener('deviceorientation', handler as EventListener);
     return () => window.removeEventListener('deviceorientation', handler as EventListener);
-  }, [computeAndSetTrueHeading, lowPowerMode]);
+  }, [computeAndSetTrueHeading, gpsMode]);
 
   const requestLocation = useCallback(() => {
     // Force the startup effect to run again; useful when permission/services change
@@ -290,5 +406,36 @@ export function useGPS(options?: GPSOptions) {
     setRestartToken((t) => t + 1);
   }, []);
 
-  return { lastLocation, setLastLocation, permissionStatus, error, magHeading, trueHeading, requestLocation } as const;
+  const requestFreshFix = useCallback(async () => {
+    // Get a fresh one-shot position fix, bypassing the watcher interval.
+    // Useful in low-power modes when the user wants an immediate update.
+    try {
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+        mayShowUserSettingsDialog: false,
+      });
+      if (!loc) return;
+      const next: GPSLocation = {
+        coords: {
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+          accuracy: loc.coords.accuracy ?? null,
+          altitude: loc.coords.altitude ?? null,
+          magHeading: magHeadingRef.current,
+          trueHeading: trueHeadingRef.current,
+        },
+        timestamp: loc.timestamp ?? Date.now(),
+      };
+      lastLocationRef.current = next;
+      setLastLocation(next);
+      // Re-compute true heading with fresh coords
+      if (magHeadingRef.current != null && trueHeadingRef.current == null) {
+        void computeAndSetTrueHeading(magHeadingRef.current, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+      }
+    } catch {
+      // If fresh fix fails, user can try again
+    }
+  }, [computeAndSetTrueHeading]);
+
+  return { lastLocation, setLastLocation, permissionStatus, error, magHeading, trueHeading, requestLocation, requestFreshFix } as const;
 }

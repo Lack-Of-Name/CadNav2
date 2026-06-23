@@ -10,6 +10,7 @@ type Props = {
   onTap: () => void;
   onGrid: () => void;
   onProject: () => void;
+  disableTap?: boolean;
 };
 
 const OPTIONS = [
@@ -18,7 +19,7 @@ const OPTIONS = [
   { id: 'project', label: 'Project point', desc: 'Bearing and distance', icon: 'safari.fill' },
 ] as const;
 
-export function CheckpointModeDrawer({ visible, onClose, onTap, onGrid, onProject }: Props) {
+export function CheckpointModeDrawer({ visible, onClose, onTap, onGrid, onProject, disableTap }: Props) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
@@ -50,30 +51,37 @@ export function CheckpointModeDrawer({ visible, onClose, onTap, onGrid, onProjec
           <Text style={[styles.hint, { color: theme.textMuted }]}>
             Clears the current map route and places one temporary checkpoint.
           </Text>
-          {OPTIONS.map((opt, index) => (
-            <TouchableOpacity
-              key={opt.id}
-              style={[
-                styles.row,
-                { borderBottomColor: theme.divider },
-                index === OPTIONS.length - 1 && styles.rowLast,
-              ]}
-              onPress={() => {
-                handlers[opt.id]();
-                onClose();
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.rowIcon, { borderColor: theme.divider }]}>
-                <IconSymbol name={opt.icon as any} size={18} color={theme.text} />
-              </View>
-              <View style={styles.rowText}>
-                <Text style={[styles.rowLabel, { color: theme.text }]}>{opt.label}</Text>
-                <Text style={[styles.rowDesc, { color: theme.textMuted }]}>{opt.desc}</Text>
-              </View>
-              <IconSymbol name="chevron.right" size={14} color={theme.textSubtle} />
-            </TouchableOpacity>
-          ))}
+          {OPTIONS.map((opt, index) => {
+            const isTap = opt.id === 'tap';
+            const disabled = isTap && disableTap;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                style={[
+                  styles.row,
+                  { borderBottomColor: theme.divider },
+                  index === OPTIONS.length - 1 && styles.rowLast,
+                ]}
+                onPress={() => {
+                  if (disabled) return;
+                  handlers[opt.id]();
+                  onClose();
+                }}
+                activeOpacity={disabled ? 1 : 0.7}
+              >
+                <View style={[styles.rowIcon, { borderColor: theme.divider }]}>
+                  <IconSymbol name={opt.icon as any} size={18} color={disabled ? theme.textSubtle : theme.text} />
+                </View>
+                <View style={styles.rowText}>
+                  <Text style={[styles.rowLabel, { color: disabled ? theme.textSubtle : theme.text }]}>{opt.label}</Text>
+                  <Text style={[styles.rowDesc, { color: disabled ? theme.textSubtle : theme.textMuted }]}>
+                    {disabled ? 'Unavailable — map disabled' : opt.desc}
+                  </Text>
+                </View>
+                <IconSymbol name="chevron.right" size={14} color={theme.textSubtle} />
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
     </Modal>

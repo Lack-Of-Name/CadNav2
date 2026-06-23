@@ -33,7 +33,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const inputTextColor = useThemeColor({}, 'text');
   const inputBorderColor = useThemeColor({}, 'tabIconDefault');
   const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
-  const colorScheme = useColorScheme() ?? 'light';
 
   useEffect(() => {
     (async () => {
@@ -183,22 +182,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       } else {
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status === 'granted') {
-            if (Platform.OS === 'android') {
-              try {
-                // Prompt user to enable high-accuracy network provider (Google Play services).
-                // Resolves when the user accepts; rejects if denied or unavailable.
-                // @ts-ignore: may not exist on all SDK versions
-                
-              } catch {
-                // Show the location modal so user can open settings or retry.
-                setLocationModalVisible(true);
-                void showAlert({
-                  title: 'High accuracy location',
-                  message:
-                    'Enabling high accuracy (Google Play services) improves location quality. Please enable it in settings or retry.',
-                });
-              }
-            }
             return true;
           }
           return false;
@@ -250,8 +233,6 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       void showAlert({ title: 'MapTiler clearApiKey', message: String(err) });
     }
     setApiKey(null);
-    setInput('');
-    setError(null);
     setShowModal(true);
   }
 
@@ -356,6 +337,7 @@ function KeyEntryModal({
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
+  const colorScheme = useColorScheme() ?? 'light';
 
   useEffect(() => {
     if (!visible) {

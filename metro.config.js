@@ -1,8 +1,6 @@
-const {
-  getSentryExpoConfig
-} = require("@sentry/react-native/metro");
+const { getDefaultConfig } = require('expo/metro-config');
 
-const config = getSentryExpoConfig(__dirname);
+const config = getDefaultConfig(__dirname);
 
 config.resolver.assetExts = Array.from(new Set([...(config.resolver.assetExts ?? []), 'cof', 'COF']));
 

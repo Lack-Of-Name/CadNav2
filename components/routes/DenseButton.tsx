@@ -27,9 +27,9 @@ export function DenseButton({
   const theme = Colors[colorScheme];
   const accent = accentColor ?? theme.primary;
 
-  let bg = theme.surface;
-  let border = theme.divider;
-  let text = theme.text;
+  let bg: string = theme.surface;
+  let border: string = theme.divider;
+  let text: string = theme.text;
 
   if (variant === 'primary') {
     bg = accent;

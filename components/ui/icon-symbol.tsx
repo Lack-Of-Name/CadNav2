@@ -1,11 +1,9 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolViewProps, SymbolWeight } from 'expo-symbols';
-import { ComponentProps } from 'react';
+import { SymbolWeight } from 'expo-symbols';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-type IconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
 
 /**
@@ -35,6 +33,7 @@ const MAPPING = {
   'arrow.up.square.fill': 'arrow-circle-up',
   'star.fill': 'star',
   'xmark': 'close',
+  'xmark.circle.fill': 'cancel',
   'square.grid.3x3': 'grid-on',
   'ruler.fill': 'straighten',
   'map.fill': 'map',
@@ -43,12 +42,19 @@ const MAPPING = {
   'arrow.down.circle.fill': 'download',
   'icloud.and.arrow.down': 'cloud-download',
   'trash.fill': 'delete',
+  'trash': 'delete',
   'square.split.2x2': 'space-dashboard',
+  'square.and.arrow.down': 'file-download',
   'textformat.123': 'format-list-numbered',
   'menu': 'menu',
   'plus': 'add',
+  'magnifyingglass': 'search',
   'arrow.up.right.square': 'open-in-new',
-} as IconMapping;
+  'leaf.fill': 'eco',
+  'location.fill': 'gps-fixed',
+  'antenna.radiowaves.left.and.right': 'settings-input-antenna',
+  'bolt.fill': 'bolt',
+} as const;
 
 /**
  * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.

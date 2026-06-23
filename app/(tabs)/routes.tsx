@@ -19,7 +19,7 @@ import { useWorkspaceRoutes } from '@/hooks/use-workspace-routes';
 import { computeRouteDistanceMeters, formatDistance } from '@/lib/geo';
 import type { Checkpoint, RouteItem, SavedLocation, SavedRoute } from '@/types';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -78,7 +78,18 @@ export default function RoutesScreen() {
   const isSyncingRef = useRef(false);
   const hydratedActiveRouteRef = useRef(false);
 
-  function activateRoute(routeItem: RouteItem) {
+  const syncCheckpointsToRoute = useCallback(() => {
+    if (!activeRouteId) return;
+    setRoutes((r) =>
+      r.map((it) =>
+        it.id === activeRouteId
+          ? { ...it, checkpoints: [...checkpoints], isLoop: activeRouteLoop }
+          : it,
+      ),
+    );
+  }, [activeRouteId, setRoutes, checkpoints, activeRouteLoop]);
+
+  const activateRoute = useCallback((routeItem: RouteItem) => {
     syncCheckpointsToRoute();
     isSyncingRef.current = true;
     const cps = routeItem.checkpoints ?? [];
@@ -90,7 +101,7 @@ export default function RoutesScreen() {
     reorderCheckpoints(cps);
     if (routeItem.color) setCheckpointsColor(routeItem.color);
     setTimeout(() => { isSyncingRef.current = false; }, 150);
-  }
+  }, [syncCheckpointsToRoute, setActiveWorkspaceRoute, persistActiveRouteId, setExpandedRouteId, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints, setCheckpointsColor]);
 
   function deactivateRoute() {
     syncCheckpointsToRoute();
@@ -109,18 +120,7 @@ export default function RoutesScreen() {
     if (!route) return;
     hydratedActiveRouteRef.current = true;
     activateRoute(route);
-  }, [routesLoaded, persistedActiveRouteId, activeWorkspaceRouteId, routes]);
-
-  function syncCheckpointsToRoute() {
-    if (!activeRouteId) return;
-    setRoutes((r) =>
-      r.map((it) =>
-        it.id === activeRouteId
-          ? { ...it, checkpoints: [...checkpoints], isLoop: activeRouteLoop }
-          : it,
-      ),
-    );
-  }
+  }, [routesLoaded, persistedActiveRouteId, activeWorkspaceRouteId, routes, activateRoute]);
 
   useEffect(() => {
     if (!activeRouteId || isSyncingRef.current || isTempTargetColor(activeRouteColor)) return;
@@ -131,7 +131,7 @@ export default function RoutesScreen() {
           : it,
       ),
     );
-  }, [checkpoints, activeRouteId, activeRouteLoop, activeRouteColor]);
+  }, [checkpoints, activeRouteId, activeRouteLoop, activeRouteColor, setRoutes]);
 
   function toggleExpanded(id: string) {
     setExpandedRouteId((prev) => (prev === id ? null : id));
@@ -546,7 +546,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 48,
+    paddingTop: 56,
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },

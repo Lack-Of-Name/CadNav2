@@ -6,7 +6,6 @@ import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import * as Sentry from '@sentry/react-native';
 import { Stack, usePathname } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -14,10 +13,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-Sentry.init({
-  dsn: 'https://5302fc03e1b9e181c2a567764b74c597@o4511058552750080.ingest.us.sentry.io/4511058557468672',
-  debug: __DEV__, // If `true`, Sentry will try to print out useful debugging information
-});
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -172,7 +167,7 @@ function RootLayout() {
   );
 }
 
-export default Sentry.wrap(RootLayout);
+export default RootLayout;
 
 const styles = StyleSheet.create({
   menuButton: {
@@ -184,6 +179,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   errorOverlay: {
     position: 'absolute',

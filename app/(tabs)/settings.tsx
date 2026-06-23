@@ -12,9 +12,10 @@ import StyledButton from '@/components/ui/StyledButton';
 import { ThemeSwitch } from '@/components/ui/ThemeSwitch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
+import { getMaplibreModule } from '@/lib/maplibreModule';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
-import { useSettings, type ThemeMode } from '@/hooks/settings';
+import { useSettings, type GpsMode, type ThemeMode } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import * as turf from '@turf/turf';
 import { useRouter } from 'expo-router';
@@ -34,7 +35,7 @@ function SettingsSection({ title, description, children }: { title: string; desc
   );
 }
 
-const THEME_CHOICES: Array<{ value: ThemeMode; label: string; icon: string }> = [
+const THEME_CHOICES: { value: ThemeMode; label: string; icon: string }[] = [
   { value: 'system', label: 'System', icon: 'iphone' },
   { value: 'light', label: 'Light', icon: 'sun.max.fill' },
   { value: 'dark', label: 'Dark', icon: 'moon.stars.fill' },
@@ -64,6 +65,45 @@ function ThemeModeSelector({ value, onChange }: { value: ThemeMode; onChange: (n
               <IconSymbol name={choice.icon as any} size={18} color={active ? '#fff' : theme.primary} />
             </View>
             <ThemedText style={[styles.themeModeLabel, { color: active ? '#fff' : theme.text }]}>{choice.label}</ThemedText>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+const GPS_MODE_CHOICES: { value: GpsMode; label: string; icon: string; desc: string }[] = [
+  { value: 'highAccuracy', label: 'Best Accuracy', icon: 'location.fill', desc: 'GPS + network' },
+  { value: 'gpsOnly', label: 'GPS Priority', icon: 'antenna.radiowaves.left.and.right', desc: 'Satellite preferred' },
+  { value: 'powerSave', label: 'Power Saving', icon: 'bolt.fill', desc: 'Network, less battery' },
+  { value: 'super', label: 'Super Saving', icon: 'leaf.fill', desc: 'Disables the map' },
+];
+
+function GpsModeSelector({ value, onChange }: { value: GpsMode; onChange: (next: GpsMode) => void }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+
+  return (
+    <View style={styles.themeModeGrid}>
+      {GPS_MODE_CHOICES.map((choice) => {
+        const active = value === choice.value;
+        return (
+          <Pressable
+            key={choice.value}
+            onPress={() => onChange(choice.value)}
+            style={[
+              styles.themeModeCard,
+              {
+                backgroundColor: active ? theme.primary : theme.background,
+                borderColor: active ? theme.primary : theme.divider,
+              },
+            ]}
+          >
+            <View style={[styles.themeModeIcon, { backgroundColor: active ? 'rgba(255,255,255,0.16)' : theme.surface }]}>
+              <IconSymbol name={choice.icon as any} size={18} color={active ? '#fff' : theme.primary} />
+            </View>
+            <ThemedText style={[styles.themeModeLabel, { color: active ? '#fff' : theme.text }]}>{choice.label}</ThemedText>
+            <ThemedText style={[styles.themeModeLabel, { color: active ? 'rgba(255,255,255,0.7)' : theme.textMuted, fontSize: 11 }]}>{choice.desc}</ThemedText>
           </Pressable>
         );
       })}
@@ -140,7 +180,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const textColor = theme.text;
-  const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, setSetting } = useSettings();
+  const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
   const { selectedCheckpoint } = useCheckpoints();
@@ -195,8 +235,8 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               if (Platform.OS !== 'web') {
-                const ml = require('@maplibre/maplibre-react-native');
-                const mgr = ml.offlineManager ?? ml.default?.offlineManager;
+                const ml = getMaplibreModule() as any;
+                const mgr = ml?.offlineManager ?? ml?.default?.offlineManager;
                 if (mgr) {
                   await mgr.clearAmbientCache();
                   await alert({ title: 'Cache Cleared', message: 'The map tile cache has been cleared.', buttons: [{ text: 'OK' }] });
@@ -456,6 +496,15 @@ export default function SettingsScreen() {
             onPress={handleClearCache}
             isLast
           />
+        </SettingsSection>
+
+        <SettingsSection title="Location" description="GPS provider priority and power preference. GPS Priority works best in low-reception areas by keeping the satellite lock active.">
+          <View style={styles.appearanceBlock}>
+            <GpsModeSelector
+              value={gpsMode}
+              onChange={(next) => void setSetting('gpsMode', next)}
+            />
+          </View>
         </SettingsSection>
 
         <SettingsSection title="App" description="About this app and maintenance actions.">

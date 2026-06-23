@@ -19,6 +19,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 export type AngleUnit = 'mils' | 'degrees';
 export type MapLayer = 'outdoor' | 'satellite' | 'auto';
 export type ThemeMode = 'system' | 'light' | 'dark';
+export type GpsMode = 'highAccuracy' | 'gpsOnly' | 'powerSave' | 'super';
 
 function isAngleUnit(value: unknown): value is AngleUnit {
   return value === 'mils' || value === 'degrees';
@@ -96,6 +97,13 @@ const SETTINGS_DEFS = {
       return null;
     },
   },
+  gpsMode: {
+    default: 'highAccuracy' as GpsMode,
+    parse: (raw: unknown) => {
+      if (raw === 'gpsOnly' || raw === 'powerSave' || raw === 'super') return raw;
+      return 'highAccuracy';
+    },
+  },
 } as const;
 
 const SETTING_KEYS = Object.keys(SETTINGS_DEFS) as Array<keyof typeof SETTINGS_DEFS>;
@@ -112,6 +120,7 @@ export type Settings = {
   mapGridOrigin: { latitude: number; longitude: number } | null;
   mapGridNumbersEnabled: boolean;
   gridConvergence: number | null;
+  gpsMode: GpsMode;
 };
 
 type PersistedRecord = Record<string, unknown>;
@@ -133,6 +142,7 @@ function buildDefaultSettings(): Settings {
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.default,
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
     gridConvergence: SETTINGS_DEFS.gridConvergence.default,
+    gpsMode: SETTINGS_DEFS.gpsMode.default,
   } as Settings;
 }
 
@@ -146,6 +156,7 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
     mapGridOrigin: SETTINGS_DEFS.mapGridOrigin.parse(persisted ? persisted['mapGridOrigin'] : undefined),
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),
     gridConvergence: SETTINGS_DEFS.gridConvergence.parse(persisted ? persisted['gridConvergence'] : undefined),
+    gpsMode: SETTINGS_DEFS.gpsMode.parse(persisted ? persisted['gpsMode'] : undefined),
   } as Settings;
 }
 
@@ -169,7 +180,7 @@ async function writePersistedSettings(next: Settings): Promise<void> {
   await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next));
 }
 
-const SettingsContext = createContext<SettingsContextValue | null>(null);
+export const SettingsContext = createContext<SettingsContextValue | null>(null);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(() => buildDefaultSettings());

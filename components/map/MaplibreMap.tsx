@@ -1,6 +1,7 @@
 import DownloadProgressOverlay from '@/components/DownloadProgressOverlay';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
+import { AddToRouteModal } from '@/components/map/AddToRouteModal';
 import { CheckpointModeDrawer } from '@/components/map/CheckpointModeDrawer';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { MapPlacementHud, type PlacementHudMode } from '@/components/map/MapPlacementHud';
@@ -9,15 +10,18 @@ import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { useCheckpoints } from '@/hooks/checkpoints';
-import { useGPS } from '@/hooks/gps';
+import { resolveDisplayHeading, useGPS } from '@/hooks/gps';
 import { useOfflineMaps } from '@/hooks/offline-maps';
 import { getMapStyleUrl, useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useWorkspaceRoutes } from '@/hooks/use-workspace-routes';
+import { DEFAULT_ROUTE_COLOR } from '@/constants/routeColors';
+import type { Checkpoint, WorkspaceRoute } from '@/types';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
 import { contrastingTextColor } from '@/lib/colorUtils';
@@ -69,13 +73,7 @@ const checkpointsOuterStyle = {
 const checkpointsInnerStyle = { circleRadius: 8, circleColor: '#fff' };
 const checkpointsDotStyle = { circleRadius: 6, circleColor: ['get', 'color'] };
 
-const locationMarkerPulseStyle = {
-  circleRadius: 12,
-  circleColor: 'rgba(0,122,255,0.15)',
-  circleStrokeWidth: 6,
-  circleStrokeColor: 'rgba(0,122,255,0.15)',
-};
-const locationMarkerBgStyle = { circleRadius: 12, circleColor: Colors.light.primary };
+
 const locationMarkerIconStyle = {
   iconImage: ['case', ['get', 'hasOrientation'], 'location-arrow', 'location-dot'],
   iconSize: 1,
@@ -89,8 +87,9 @@ export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading, promptForKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteColor, setActiveRouteStart, setActiveRouteLoop, clearActiveRoute, setCheckpointLabel, setViewTarget, activeWorkspaceRouteTitle, tempNavigationActive, stashedRouteState, beginTempNavigation, resumeStashedRoute } = useCheckpoints();
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, setSetting } = useSettings();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteTitle, stashedRouteState, beginTempNavigation, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints } = useCheckpoints();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode } = useSettings();
+  const { routes: workspaceRoutes, setRoutes: setWorkspaceRoutes, setActiveRouteId: persistActiveRouteId } = useWorkspaceRoutes();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
   const insets = useSafeAreaInsets();
@@ -112,7 +111,6 @@ export default function MapLibreMap() {
   };
   const computedLocationMarkerBgStyle = { circleRadius: 12, circleColor: primaryHex };
   const iconColor = useThemeColor({}, 'tabIconDefault');
-  const tabIconSelected = useThemeColor({}, 'tabIconSelected');
   const tint = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
@@ -171,7 +169,7 @@ export default function MapLibreMap() {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [mapStyle, androidStyleRetryToken]);
+  }, [mapStyle, androidStyleRetryToken, apiKey]);
   
   const mapImages = React.useMemo(() => {
     return {
@@ -219,11 +217,12 @@ export default function MapLibreMap() {
   const [zoomLevel, setZoomLevel] = useState<number>(1);
   const [visibleBounds, setVisibleBounds] = useState<[[number, number], [number, number]] | null>(null);
 
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen] = useState(false);
   const [chooserOpen, setChooserOpen] = useState(false);
   const [gridPlacementOpen, setGridPlacementOpen] = useState(false);
   const [projectPlacementOpen, setProjectPlacementOpen] = useState(false);
-  const [mapCenter, setMapCenter] = useState<{ latitude: number; longitude: number }>(() => {
+  const [addToRouteOpen, setAddToRouteOpen] = useState(false);
+  const [, setMapCenter] = useState<{ latitude: number; longitude: number }>(() => {
     if (lastLocation?.coords) {
       return { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude };
     }
@@ -235,11 +234,7 @@ export default function MapLibreMap() {
 
   useEffect(() => {
     menuTranslateX.value = withTiming(menuOpen ? 0 : -300, { duration: 250 });
-  }, [menuOpen]);
-
-  const menuAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: menuTranslateX.value }],
-  }));
+  }, [menuOpen, menuTranslateX]);
 
   const tempTargetColor = Colors[colorScheme].tempTarget;
   const tempTargetActive = activeRouteColor === tempTargetColor || activeRouteColor === Colors.light.tempTarget;
@@ -252,12 +247,27 @@ export default function MapLibreMap() {
   const bannerAccentText = contrastingTextColor(bannerAccent);
   const compassHeadingDeg = (() => {
     if (!lastLocation) return null;
-    const useMag = mapHeading === 'magnetic';
-    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
-    return typeof h === 'number' ? h : null;
+    // Honour the true/magnetic preference but fall back to whichever the device
+    // actually reports. Android has no native trueHeading, so without this the
+    // compass dial freezes until a true heading can be computed.
+    const resolved = resolveDisplayHeading(
+      mapHeading,
+      lastLocation.coords.magHeading ?? null,
+      lastLocation.coords.trueHeading ?? null,
+    );
+    return resolved ? resolved.value : null;
   })();
 
-  const compassHeadingRefLabel = compassHeadingDeg == null ? null : (mapHeading === 'true' ? 'True' : 'Magnetic');
+  const compassHeadingRefLabel = (() => {
+    if (compassHeadingDeg == null || !lastLocation) return null;
+    const resolved = resolveDisplayHeading(
+      mapHeading,
+      lastLocation.coords.magHeading ?? null,
+      lastLocation.coords.trueHeading ?? null,
+    );
+    // Label reflects what we actually used, so a fallback to magnetic is honest.
+    return resolved?.reference === 'true' ? 'True' : 'Magnetic';
+  })();
 
   const selectedIndex = selectedCheckpoint
     ? checkpoints.findIndex((c) => c.id === selectedCheckpoint.id)
@@ -278,6 +288,12 @@ export default function MapLibreMap() {
           selectedCheckpoint.longitude
         )
       : null;
+
+  const compassTargetRelativeRotationDeg: number | null = (() => {
+    if (compassTargetBearingDeg == null) return null;
+    if (compassHeadingDeg == null) return compassTargetBearingDeg;
+    return ((compassTargetBearingDeg - compassHeadingDeg) % 360 + 360) % 360;
+  })();
 
   const compassBearingText =
     typeof compassTargetBearingDeg === 'number'
@@ -319,9 +335,6 @@ export default function MapLibreMap() {
         })()
       : null;
 
-  const currentPositionText = lastLocation
-    ? `${lastLocation.coords.latitude.toFixed(5)}, ${lastLocation.coords.longitude.toFixed(5)}`
-    : 'No fix yet';
   const targetGridRefText = selectedCheckpoint
     ? (() => {
         const { easting, northing } = latLonToGridCoords(
@@ -410,16 +423,6 @@ export default function MapLibreMap() {
       programmaticMoveTimerRef.current = null;
       setCameraKey((k) => k + 1); // Force Camera remount to clear native commanded position
     }, holdMs);
-  }, []);
-
-  const clearProgrammaticCameraMove = useCallback(() => {
-    console.log(`[DEBUG] clearProgrammaticCameraMove — clearing flags programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
-    programmaticMoveRef.current = false;
-    followingMoveRef.current = false;
-    if (programmaticMoveTimerRef.current) {
-      clearTimeout(programmaticMoveTimerRef.current);
-      programmaticMoveTimerRef.current = null;
-    }
   }, []);
 
   useEffect(() => {
@@ -574,6 +577,46 @@ export default function MapLibreMap() {
     if (Number.isNaN(lon) || Number.isNaN(lat)) return;
 
     await placeTemporaryCheckpoint(lat, lon);
+  };
+
+  const handleAddTargetToRoute = (route: WorkspaceRoute) => {
+    if (!selectedCheckpoint) return;
+    const cp: Checkpoint = selectedCheckpoint;
+    const color = route.color ?? DEFAULT_ROUTE_COLOR;
+    // Append the temp target to the workspace route's checkpoint list.
+    setWorkspaceRoutes((r) =>
+      r.map((it) =>
+        it.id === route.id
+          ? { ...it, checkpoints: [...(it.checkpoints ?? []), cp] }
+          : it,
+      ),
+    );
+    // Activate the route and load its (now updated) checkpoints with route colour.
+    void setActiveWorkspaceRoute(route.id, route.title);
+    persistActiveRouteId(route.id);
+    setActiveRouteColor(color);
+    setActiveRouteLoop(!!route.isLoop);
+    const routeCps = (route.checkpoints ?? []).map((c) => ({ ...c, color }));
+    reorderCheckpoints([...routeCps, { ...cp, color }]);
+  };
+
+  const handleAddTargetToNewRoute = () => {
+    if (!selectedCheckpoint) return;
+    const cp: Checkpoint = selectedCheckpoint;
+    const title = cp.label?.trim() || 'New route';
+    const color = DEFAULT_ROUTE_COLOR;
+    const newRoute: WorkspaceRoute = {
+      id: String(Date.now()),
+      title,
+      color,
+      checkpoints: [cp],
+    };
+    setWorkspaceRoutes((r) => [newRoute, ...r]);
+    persistActiveRouteId(newRoute.id);
+    void setActiveWorkspaceRoute(newRoute.id, newRoute.title);
+    setActiveRouteColor(color);
+    setActiveRouteLoop(false);
+    reorderCheckpoints([{ ...cp, color }]);
   };
 
   const handleDonePlacing = async () => {
@@ -913,9 +956,12 @@ export default function MapLibreMap() {
 
   const locationMarkerShape = React.useMemo(() => {
     if (!lastLocation) return emptyGeo;
-    const useMag = mapHeading === 'magnetic';
-    const h = useMag ? lastLocation.coords.magHeading : lastLocation.coords.trueHeading;
-    const orientation = typeof h === 'number' ? h : null;
+    const resolved = resolveDisplayHeading(
+      mapHeading,
+      lastLocation.coords.magHeading ?? null,
+      lastLocation.coords.trueHeading ?? null,
+    );
+    const orientation = resolved ? resolved.value : null;
     return {
       type: 'FeatureCollection',
       features: [
@@ -1264,9 +1310,11 @@ export default function MapLibreMap() {
         canResumeRoute={!!stashedRouteState}
         onResumeRoute={() => { void resumeStashedRoute(); }}
         onOpenRoutes={() => router.push('/routes')}
+        canAddToRoute={!!selectedCheckpoint}
+        onAddToRoute={() => setAddToRouteOpen(true)}
         bearingMils={compassBearingMilsText}
         bearingDegreesText={compassBearingDegreesText}
-        bearingRotationDeg={compassTargetBearingDeg}
+        bearingRotationDeg={compassTargetRelativeRotationDeg}
         distanceText={compassDistanceText}
         gridRefText={targetGridRefText}
         angleUnit={angleUnit}
@@ -1325,6 +1373,7 @@ export default function MapLibreMap() {
         onTap={() => { void startPlacementFlow('tap'); }}
         onGrid={() => { void startPlacementFlow('grid'); }}
         onProject={() => { void startPlacementFlow('project'); }}
+        disableTap={gpsMode === 'super'}
       />
 
       <GridReferenceModal
@@ -1337,6 +1386,14 @@ export default function MapLibreMap() {
         visible={projectPlacementOpen}
         onClose={() => setProjectPlacementOpen(false)}
         onAdd={(location) => { void placeTemporaryCheckpoint(location.latitude, location.longitude); }}
+      />
+
+      <AddToRouteModal
+        visible={addToRouteOpen}
+        routes={workspaceRoutes}
+        onClose={() => setAddToRouteOpen(false)}
+        onSelectRoute={handleAddTargetToRoute}
+        onCreateNew={handleAddTargetToNewRoute}
       />
 
       <CompassOverlay

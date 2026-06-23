@@ -31,7 +31,6 @@ async function loadModel(): Promise<Model> {
   
   // Statically require the pre-parsed JSON so the JS engine native C++ JSON parser handles it instantly
   // avoiding any large string allocations or Regex splits on the main thread.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const WMMHR_JSON = require("../../assets/WMMHR.json");
   cached = Promise.resolve(WMMHR_JSON as Model);
   
