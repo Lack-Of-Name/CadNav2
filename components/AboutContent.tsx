@@ -83,6 +83,23 @@ export default function AboutContent() {
       </View>
 
       <View style={styles.section}>
+        <ThemedText style={styles.sectionTitle}>Map data &amp; attribution</ThemedText>
+        <ThemedText style={styles.text}>
+          CadNav renders map tiles supplied by MapTiler, built from OpenStreetMap
+          contributor data. Both are licensed for reuse under their respective terms.
+        </ThemedText>
+        <Pressable onPress={() => open('https://www.maptiler.com/')}>
+          <ThemedText type="link" style={styles.link}>© MapTiler — https://www.maptiler.com/</ThemedText>
+        </Pressable>
+        <Pressable onPress={() => open('https://www.openstreetmap.org/copyright')}>
+          <ThemedText type="link" style={styles.link}>© OpenStreetMap contributors</ThemedText>
+        </Pressable>
+        <Pressable onPress={() => open('https://www.maptiler.com/terms-of-use/')}>
+          <ThemedText type="link" style={styles.link}>MapTiler terms of use</ThemedText>
+        </Pressable>
+      </View>
+
+      <View style={styles.section}>
         <ThemedText style={styles.sectionTitle}>Links</ThemedText>
         <Pressable onPress={() => open('https://github.com/Lack-Of-Name/CadNav2')}>
           <ThemedText type="link" style={styles.link}>GitHub repo: https://github.com/Lack-Of-Name/CadNav2</ThemedText>

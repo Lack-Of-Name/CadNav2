@@ -2,6 +2,7 @@ import DownloadProgressOverlay from '@/components/DownloadProgressOverlay';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { AddToRouteModal } from '@/components/map/AddToRouteModal';
+import { AttributionChip } from '@/components/map/AttributionChip';
 import { CheckpointModeDrawer } from '@/components/map/CheckpointModeDrawer';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { MapPlacementHud, type PlacementHudMode } from '@/components/map/MapPlacementHud';
@@ -558,7 +559,7 @@ export default function MapLibreMap() {
     await beginTempNavigation();
     await setActiveRouteStart(lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null);
     const cp = await addCheckpoint(latitude, longitude);
-    await setCheckpointLabel(cp.id, 'Temporary target');
+    await setCheckpointLabel(cp.id, `Target ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`);
     await setViewTarget({ latitude, longitude, zoom: 15 });
     await cancelPlacementMode();
     setFollowing(false);
@@ -603,7 +604,7 @@ export default function MapLibreMap() {
   const handleAddTargetToNewRoute = () => {
     if (!selectedCheckpoint) return;
     const cp: Checkpoint = selectedCheckpoint;
-    const title = cp.label?.trim() || 'New route';
+    const title = `Route ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
     const color = DEFAULT_ROUTE_COLOR;
     const newRoute: WorkspaceRoute = {
       id: String(Date.now()),
@@ -1294,6 +1295,8 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
       </MapView>
+
+      <AttributionChip left={insets.left} bottom={insets.bottom} />
 
       <DownloadProgressOverlay />
 

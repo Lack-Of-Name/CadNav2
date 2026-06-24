@@ -2,6 +2,7 @@ import { alert as showAlert } from '@/components/alert';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
+import { IconSymbol } from '@/components/ui/icon-symbol';
 import { MAPTILER_API_KEY as STORAGE_KEY } from '@/constants/storageKeys';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -9,7 +10,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
 type ContextValue = {
   apiKey: string | null;
@@ -105,7 +106,11 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       const x = Math.floor(Math.random() * max);
       const y = Math.floor(Math.random() * max);
       const url = `https://api.maptiler.com/maps/outdoor-v2/256/${z}/${x}/${y}.png?key=${key}`;
-      const res = await fetch(url, { method: 'GET' });
+      // Cap the verify request so a flaky field connection can't hang the modal forever.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12000);
+      const res = await fetch(url, { method: 'GET', signal: controller.signal });
+      clearTimeout(timeout);
       if (res.ok) return { ok: true, isNetworkError: false };
       
       // If we got an unauthorized/forbidden, the key is definitely invalid
@@ -118,8 +123,10 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       // Provide status info for better debugging when used from the modal
       return { ok: true, message: `Request failed but not resetting: ${res.status} ${res.statusText}`, isNetworkError: true };
     } catch (err: any) {
-      // Network error, probably offline. Don't remove the key!
-      return { ok: true, message: err?.message ?? 'Network error', isNetworkError: true };
+      // Network error / timeout, probably offline or flaky. Don't reject the key —
+      // let the user save it and try the map; we only reject on an explicit 401/403 above.
+      const isAbort = err?.name === 'AbortError';
+      return { ok: true, message: isAbort ? 'Verification timed out — saved anyway. The map will confirm the key works.' : (err?.message ?? 'Network error'), isNetworkError: true };
     }
   }
 
@@ -258,7 +265,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
         inputBorderColor={inputBorderColor}
         placeholderColor={placeholderColor}
         onCancel={() => setShowModal(false)}
-        onOpenMapTiler={() => Linking.openURL('https://www.maptiler.com/')}
+        onOpenMapTiler={() => Linking.openURL('https://cloud.maptiler.com/account/keys/')}
         onSubmitKey={submitApiKey}
       />
 
@@ -359,50 +366,89 @@ function KeyEntryModal({
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <View style={styles.backdrop}>
           <ThemedView style={styles.container}>
-            <ThemedText style={styles.title}>MapTiler API Key</ThemedText>
-            <ThemedText style={styles.help}>Woah there! This app needs a free MapTiler API key to load maps.</ThemedText>
-            <TextInput
-              autoFocus
-              placeholder="Enter MapTiler API key"
-              placeholderTextColor={placeholderColor}
-              value={input}
-              onChangeText={(t) => {
-                setInput(t);
-                setError(null);
-              }}
-              style={[styles.input, { color: inputTextColor, borderColor: inputBorderColor }]}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="off"
-              textContentType="none"
-              importantForAutofill="no"
-            />
-            {error ? <ThemedText style={[styles.error, { color: Colors[colorScheme].error }]}>{error}</ThemedText> : null}
-            <View style={styles.row}>
-              <StyledButton variant="secondary" onPress={onOpenMapTiler}>
-                Take Me There!
-              </StyledButton>
-              <View style={styles.spacer} />
-              <StyledButton
-                variant="primary"
-                onPress={async () => {
-                  setVerifying(true);
-                  const result = await onSubmitKey(input);
-                  setVerifying(false);
-                  if (!result.ok) setError(result.message);
-                }}
-                disabled={verifying}
-              >
-                {verifying ? <ActivityIndicator color="#fff" /> : 'Verify & Save'}
-              </StyledButton>
-            </View>
-            <TouchableOpacity 
-              style={{ marginTop: 24, paddingVertical: 8, alignItems: 'center' }}
-              onPress={onCancel}>
-              <ThemedText style={{ textDecorationLine: 'underline', color: useThemeColor({ light: '#999', dark: '#666' }, 'text'), fontSize: 13 }}>
-                Use offline mode (no key)
+            <ScrollView bounces={false} overScrollMode="never" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollBody}>
+              <View style={styles.heroRow}>
+                <View style={[styles.heroIcon, { backgroundColor: Colors[colorScheme].primary }]}>
+                  <IconSymbol name="map.fill" size={22} color="#fff" />
+                </View>
+                <View style={styles.heroText}>
+                  <ThemedText style={styles.title}>Load your maps</ThemedText>
+                  <ThemedText style={styles.subtitle}>CadNav uses MapTiler — a free map provider</ThemedText>
+                </View>
+              </View>
+
+              <ThemedText style={styles.help}>
+                CadNav is free and open source, so to keep tile costs at zero we ask you to
+                bring your own free MapTiler key. The free tier is generous and covers normal
+                field use. It takes about two minutes.
               </ThemedText>
-            </TouchableOpacity>
+
+              <View style={styles.stepsBox}>
+                <ThemedText style={styles.stepsTitle}>Get a free key in 3 steps</ThemedText>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <ThemedText style={styles.stepBadgeText}>1</ThemedText>
+                  </View>
+                  <ThemedText style={styles.stepText}>Sign up at MapTiler (free)</ThemedText>
+                </View>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <ThemedText style={styles.stepBadgeText}>2</ThemedText>
+                  </View>
+                  <ThemedText style={styles.stepText}>Open your dashboard → Keys</ThemedText>
+                </View>
+                <View style={styles.stepRow}>
+                  <View style={styles.stepBadge}>
+                    <ThemedText style={styles.stepBadgeText}>3</ThemedText>
+                  </View>
+                  <ThemedText style={styles.stepText}>Copy your key and paste it below</ThemedText>
+                </View>
+              </View>
+
+              <TextInput
+                autoFocus
+                placeholder="Paste your MapTiler key"
+                placeholderTextColor={placeholderColor}
+                value={input}
+                onChangeText={(t) => {
+                  setInput(t);
+                  setError(null);
+                }}
+                style={[styles.input, { color: inputTextColor, borderColor: inputBorderColor }]}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="off"
+                textContentType="none"
+                importantForAutofill="no"
+              />
+              {error ? <ThemedText style={[styles.error, { color: Colors[colorScheme].error }]}>{error}</ThemedText> : null}
+              <View style={styles.row}>
+                <StyledButton variant="secondary" onPress={onOpenMapTiler}>
+                  Get a key
+                </StyledButton>
+                <View style={styles.spacer} />
+                <StyledButton
+                  variant="primary"
+                  onPress={async () => {
+                    setVerifying(true);
+                    const result = await onSubmitKey(input);
+                    setVerifying(false);
+                    if (!result.ok) setError(result.message);
+                  }}
+                  disabled={verifying}
+                >
+                  {verifying ? <ActivityIndicator color="#fff" /> : 'Save key'}
+                </StyledButton>
+              </View>
+              <TouchableOpacity
+                style={styles.offlineLink}
+                onPress={onCancel}
+              >
+                <ThemedText style={styles.offlineLinkText}>
+                  Skip for now (offline mode)
+                </ThemedText>
+              </TouchableOpacity>
+            </ScrollView>
           </ThemedView>
         </View>
       </KeyboardAvoidingView>
@@ -430,27 +476,98 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontWeight: '700',
+  },
+  subtitle: {
+    fontSize: 13,
+    opacity: 0.6,
+    marginTop: 2,
+  },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  heroIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroText: {
+    flex: 1,
   },
   help: {
-    marginBottom: 12,
+    marginBottom: 16,
     opacity: 0.7,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  stepsBox: {
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 14,
+    marginBottom: 16,
+    backgroundColor: 'rgba(128,128,128,0.08)',
+  },
+  stepsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 10,
+    opacity: 0.7,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  stepBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(128,128,128,0.15)',
+  },
+  stepBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    opacity: 0.7,
+  },
+  stepText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  scrollBody: {
+    paddingBottom: 8,
   },
   input: {
     borderWidth: 1,
     borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 8,
     fontSize: 16,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 4,
   },
   spacer: { width: 12 },
   error: {
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  offlineLink: {
+    marginTop: 20,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  offlineLinkText: {
+    fontSize: 13,
+    opacity: 0.5,
   },
   
 });
