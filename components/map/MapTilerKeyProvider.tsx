@@ -3,23 +3,29 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { MAPTILER_API_KEY as STORAGE_KEY } from '@/constants/storageKeys';
+import { FIRST_OPEN_TIME, MAPTILER_API_KEY as STORAGE_KEY, TUTORIALS_COMPLETED } from '@/constants/storageKeys';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+const BUNDLED_KEY = process.env.EXPO_PUBLIC_MAPTILER_BUNDLED_KEY ?? null;
+const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
 
 type ContextValue = {
   apiKey: string | null;
   loading: boolean;
   clearApiKey: () => Promise<void>;
   promptForKey: () => void;
+  pendingTutorialId: string | null;
+  clearPendingTutorial: () => void;
 };
 
-const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true, clearApiKey: async () => {}, promptForKey: () => {} });
+const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true, clearApiKey: async () => {}, promptForKey: () => {}, pendingTutorialId: null, clearPendingTutorial: () => {} });
 
 export function useMapTilerKey() {
   return useContext(MapTilerKeyContext);
@@ -28,9 +34,12 @@ export function useMapTilerKey() {
 function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
+  const [pendingTutorialId, setPendingTutorialId] = useState<string | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
+  const tutorialPromptShownRef = useRef(false);
   const inputTextColor = useThemeColor({}, 'text');
   const inputBorderColor = useThemeColor({}, 'tabIconDefault');
   const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
@@ -38,20 +47,43 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
+        let key: string | null = null;
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
         if (saved) {
-          setApiKey(saved);
-          // Instantly finish loading before permissions check
+          key = saved;
+          setApiKey(key);
+          setShowModal(false);
           setLoading(false);
-          // Do not verify the key network request if we already have it to avoid locking out the app when offline!
+        } else {
+          const firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_TIME);
+          const now = Date.now();
+
+          if (!firstOpenRaw) {
+            await AsyncStorage.setItem(FIRST_OPEN_TIME, String(now));
+            if (BUNDLED_KEY) {
+              key = BUNDLED_KEY;
+              setApiKey(key);
+              setShowModal(false);
+            }
+            setLoading(false);
+          } else {
+            const firstOpen = parseInt(firstOpenRaw, 10);
+            if (now - firstOpen < TRIAL_DURATION_MS && BUNDLED_KEY) {
+              key = BUNDLED_KEY;
+              setApiKey(key);
+              setShowModal(false);
+            }
+            setLoading(false);
+          }
+        }
+
+        if (key) {
           const locOk = await requestLocationPermission();
           if (!locOk) setLocationModalVisible(true);
           else {
             const orientOk = await requestOrientationPermission();
             if (!orientOk) setOrientationModalVisible(true);
           }
-        } else {
-          setShowModal(true);
         }
       } catch (err) {
         setShowModal(true);
@@ -72,6 +104,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
             const saved = await AsyncStorage.getItem(STORAGE_KEY);
             if (saved) {
               if (!mounted) return;
+              setShowModal(false);
               if (!locationModalVisible) {
                 const locOk = await requestLocationPermission();
                 if (!locOk && mounted) setLocationModalVisible(true);
@@ -81,7 +114,19 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
                 }
               }
             } else {
-              if (mounted) setShowModal(true);
+              // No saved key — check if still within trial
+              const firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_TIME);
+              if (firstOpenRaw) {
+                const firstOpen = parseInt(firstOpenRaw, 10);
+                if (Date.now() - firstOpen < TRIAL_DURATION_MS) {
+                  if (mounted) setShowModal(false);
+                } else {
+                  if (mounted) setShowModal(true);
+                }
+              } else {
+                // No first-open recorded (shouldn't happen, but handle gracefully)
+                if (mounted) setShowModal(false);
+              }
             }
           } catch (err) {
             if (mounted) setShowModal(true);
@@ -143,6 +188,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       await AsyncStorage.setItem(STORAGE_KEY, input.trim());
       setApiKey(input.trim());
       setShowModal(false);
+      maybeShowTutorialPrompt();
       // after receiving a valid API key, request location permission (prompt user)
       const locOk = await requestLocationPermission(true);
       if (!locOk) setLocationModalVisible(true);
@@ -236,6 +282,16 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   async function clearApiKey() {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
+      // Fall back to the bundled key if still within the trial period
+      const firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_TIME);
+      if (firstOpenRaw && BUNDLED_KEY) {
+        const firstOpen = parseInt(firstOpenRaw, 10);
+        if (Date.now() - firstOpen < TRIAL_DURATION_MS) {
+          setApiKey(BUNDLED_KEY);
+          setShowModal(false);
+          return;
+        }
+      }
     } catch (err) {
       void showAlert({ title: 'MapTiler clearApiKey', message: String(err) });
     }
@@ -245,6 +301,19 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
 
   function promptForKey() {
     setShowModal(true);
+  }
+
+  async function maybeShowTutorialPrompt() {
+    if (tutorialPromptShownRef.current) return;
+    tutorialPromptShownRef.current = true;
+
+    try {
+      const raw = await AsyncStorage.getItem(TUTORIALS_COMPLETED);
+      const ids: string[] = raw ? JSON.parse(raw) : [];
+      if (ids.includes('map-basics')) return;
+    } catch {}
+
+    setShowTutorialPrompt(true);
   }
 
   function openSettings() {
@@ -257,14 +326,14 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey }}>
+    <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey, pendingTutorialId, clearPendingTutorial: () => setPendingTutorialId(null) }}>
       {children}
       <KeyEntryModal
         visible={showModal}
         inputTextColor={inputTextColor}
         inputBorderColor={inputBorderColor}
         placeholderColor={placeholderColor}
-        onCancel={() => setShowModal(false)}
+        onCancel={() => { setShowModal(false); maybeShowTutorialPrompt(); }}
         onOpenMapTiler={() => Linking.openURL('https://cloud.maptiler.com/account/keys/')}
         onSubmitKey={submitApiKey}
       />
@@ -320,6 +389,32 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
           </ThemedView>
         </View>
       </Modal>
+
+      <Modal visible={showTutorialPrompt} animationType="fade" transparent={true}>
+        <View style={styles.backdrop}>
+          <ThemedView style={styles.container}>
+            <ThemedText style={styles.title}>Learn CadNav?</ThemedText>
+            <ThemedText style={styles.help}>
+              Take a quick tour of the map controls, checkpoints, and grid features to get the most out of CadNav.
+            </ThemedText>
+            <View style={styles.row}>
+              <StyledButton variant="secondary" onPress={() => setShowTutorialPrompt(false)}>
+                Not now
+              </StyledButton>
+              <View style={styles.spacer} />
+              <StyledButton
+                variant="primary"
+                onPress={() => {
+                  setShowTutorialPrompt(false);
+                  setPendingTutorialId('map-basics');
+                }}
+              >
+                Take a tour
+              </StyledButton>
+            </View>
+          </ThemedView>
+        </View>
+      </Modal>
     </MapTilerKeyContext.Provider>
   );
 }
@@ -364,7 +459,8 @@ function KeyEntryModal({
       navigationBarTranslucent={Platform.OS === 'android'}
     >
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={styles.backdrop}>
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
+          <View style={styles.backdrop}>
           <ThemedView style={styles.container}>
             <ScrollView bounces={false} overScrollMode="never" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollBody}>
               <View style={styles.heroRow}>
@@ -372,38 +468,16 @@ function KeyEntryModal({
                   <IconSymbol name="map.fill" size={22} color="#fff" />
                 </View>
                 <View style={styles.heroText}>
-                  <ThemedText style={styles.title}>Load your maps</ThemedText>
-                  <ThemedText style={styles.subtitle}>CadNav uses MapTiler — a free map provider</ThemedText>
+                  <ThemedText style={styles.title}>Free trial ended</ThemedText>
+                  <ThemedText style={styles.subtitle}>Bring your own free MapTiler key to continue</ThemedText>
                 </View>
               </View>
 
               <ThemedText style={styles.help}>
-                CadNav is free and open source, so to keep tile costs at zero we ask you to
-                bring your own free MapTiler key. The free tier is generous and covers normal
-                field use. It takes about two minutes.
+                Your 24-hour free trial has ended. CadNav is free and open source, so to keep
+                tile costs at zero we ask you to add your own free MapTiler key. The free tier
+                is generous and covers normal field use.
               </ThemedText>
-
-              <View style={styles.stepsBox}>
-                <ThemedText style={styles.stepsTitle}>Get a free key in 3 steps</ThemedText>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepBadge}>
-                    <ThemedText style={styles.stepBadgeText}>1</ThemedText>
-                  </View>
-                  <ThemedText style={styles.stepText}>Sign up at MapTiler (free)</ThemedText>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepBadge}>
-                    <ThemedText style={styles.stepBadgeText}>2</ThemedText>
-                  </View>
-                  <ThemedText style={styles.stepText}>Open your dashboard → Keys</ThemedText>
-                </View>
-                <View style={styles.stepRow}>
-                  <View style={styles.stepBadge}>
-                    <ThemedText style={styles.stepBadgeText}>3</ThemedText>
-                  </View>
-                  <ThemedText style={styles.stepText}>Copy your key and paste it below</ThemedText>
-                </View>
-              </View>
 
               <TextInput
                 autoFocus
@@ -459,7 +533,6 @@ function KeyEntryModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -505,42 +578,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  stepsBox: {
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    marginBottom: 16,
-    backgroundColor: 'rgba(128,128,128,0.08)',
-  },
-  stepsTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 10,
-    opacity: 0.7,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
-  },
-  stepBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(128,128,128,0.15)',
-  },
-  stepBadgeText: {
-    fontSize: 12,
-    fontWeight: '800',
-    opacity: 0.7,
-  },
-  stepText: {
-    fontSize: 14,
-    flex: 1,
-  },
+  
   scrollBody: {
     paddingBottom: 8,
   },

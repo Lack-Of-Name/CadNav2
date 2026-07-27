@@ -1,7 +1,8 @@
 import { DenseButton } from '@/components/routes/DenseButton';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, HUD, type ColorScheme } from '@/constants/theme';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable } from 'react-native-gesture-handler';
+import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useState } from 'react';
 
@@ -156,7 +157,7 @@ export function MapPlacementHud({
           <View style={styles.placingCopy}>
             <Text style={[styles.placingTitle, { color: textColor }]}>TAP MAP TO PLACE</Text>
             <Text style={[styles.placingSub, { color: mutedColor }]} numberOfLines={1}>
-              Single temporary target · replaces current
+              Places a single point · replaces current
             </Text>
           </View>
           <DenseButton label="Done" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onDonePlacing} />
@@ -243,7 +244,7 @@ export function MapPlacementHud({
           <View style={styles.idleRow}>
             <View style={styles.idleCopy}>
               <Text style={[styles.idleLabel, { color: mutedColor }]}>
-                {routeLabel ? 'ACTIVE ROUTE' : 'TEMP TARGET'}
+                {routeLabel ? 'ACTIVE ROUTE' : 'TARGET'}
               </Text>
               <Text style={[styles.idleTitle, { color: textColor }]} numberOfLines={1}>
                 {title}

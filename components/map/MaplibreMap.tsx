@@ -1296,7 +1296,7 @@ export default function MapLibreMap() {
         </ShapeSource>
       </MapView>
 
-      <AttributionChip left={insets.left} bottom={insets.bottom} />
+      <AttributionChip right={insets.right} top={insets.top} />
 
       <DownloadProgressOverlay />
 
@@ -1357,7 +1357,7 @@ export default function MapLibreMap() {
       />
       <MapToolButton
         icon="mappin.and.ellipse"
-        label="Set temp target"
+        label="Set target"
         onPress={openPlacementChooser}
         colorScheme={colorScheme}
         active={tempTargetActive || placementModeRequested}

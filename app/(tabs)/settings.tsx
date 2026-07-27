@@ -16,7 +16,9 @@ import { getMaplibreModule } from '@/lib/maplibreModule';
 import { useCheckpoints } from '@/hooks/checkpoints';
 import { useGPS } from '@/hooks/gps';
 import { useSettings, type GpsMode, type ThemeMode } from '@/hooks/settings';
+import { tutorials } from '@/constants/tutorials';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTutorials } from '@/hooks/tutorials';
 import * as turf from '@turf/turf';
 import { useRouter } from 'expo-router';
 
@@ -182,6 +184,7 @@ export default function SettingsScreen() {
   const textColor = theme.text;
   const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
+  const { showTutorial, hasCompleted } = useTutorials();
   const { lastLocation, requestLocation } = useGPS();
   const { selectedCheckpoint } = useCheckpoints();
   const [infoOpen, setInfoOpen] = useState(false);
@@ -513,6 +516,25 @@ export default function SettingsScreen() {
             label="About CadNav"
             color={theme.textMuted}
             onPress={() => setInfoOpen(true)}
+          />
+          <SettingsRow
+            icon="questionmark.circle.fill"
+            label="Tutorials"
+            color={theme.primary}
+            onPress={() => {}}
+            rightElement={
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
+                {tutorials.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    onPress={() => showTutorial(t.id)}
+                    style={[styles.tutorialBadge, { backgroundColor: hasCompleted(t.id) ? theme.success + '30' : theme.warning + '30', borderColor: hasCompleted(t.id) ? theme.success : theme.warning }]}
+                  >
+                    <Text style={[styles.tutorialBadgeText, { color: hasCompleted(t.id) ? theme.success : theme.warning }]}>{t.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            }
             isLast
           />
         </SettingsSection>
@@ -814,6 +836,8 @@ const styles = StyleSheet.create({
   rowRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
+    marginLeft: 8,
   },
   rowValue: {
     fontSize: 17,
@@ -938,5 +962,15 @@ const styles = StyleSheet.create({
   error: {
     color: 'red',
     marginTop: 10,
+  },
+  tutorialBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  tutorialBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

@@ -55,7 +55,7 @@ export function AddToRouteModal({ visible, routes, onClose, onSelectRoute, onCre
             </TouchableOpacity>
           </View>
           <Text style={[styles.hint, { color: theme.textMuted }]}>
-            Appends the current temp target to the end of the chosen route.
+            Appends the current target to the end of the chosen route.
           </Text>
 
           {routes.length === 0 ? (

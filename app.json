@@ -3,7 +3,7 @@
     "name": "CadNav 2",
     "slug": "cadnav2",
     "scheme": "cadnav",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -18,7 +18,28 @@
       "bundleIdentifier": "com.lyren.CadNav",
       "icon": "./assets/icons/CadNavIcon.icon",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSExceptionDomains": {
+            "api.maptiler.com": {
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": true
+            },
+            "maptiler.com": {
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": true,
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            },
+            "maplibre.org": {
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": true
+            },
+            "openstreetmap.org": {
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
       }
     },
     "android": {

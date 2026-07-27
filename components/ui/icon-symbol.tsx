@@ -46,6 +46,7 @@ const MAPPING = {
   'square.split.2x2': 'space-dashboard',
   'square.and.arrow.down': 'file-download',
   'textformat.123': 'format-list-numbered',
+  'line.3.horizontal': 'menu',
   'menu': 'menu',
   'plus': 'add',
   'magnifyingglass': 'search',

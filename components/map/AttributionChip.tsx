@@ -13,22 +13,21 @@ import { ThemedText } from '@/components/themed-text';
 import { HUD } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Linking, Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { useEffect, useState } from 'react';
 
 type Props = {
-  /** Bypasses the safe-area left inset when false (default true). */
-  respectInset?: boolean;
-  /** Left offset in px (use insets.left when positioning manually). */
-  left?: number;
-  /** Bottom offset in px (use insets.bottom when positioning manually). */
-  bottom?: number;
+  /** Right offset in px (use insets.right when positioning manually). */
+  right?: number;
+  /** Top offset in px (use insets.top when positioning manually). */
+  top?: number;
 };
 
 const MAPTILER_URL = 'https://www.maptiler.com/';
 const OSM_URL = 'https://www.openstreetmap.org/copyright';
 const MAPTILER_LICENSE_URL = 'https://www.maptiler.com/terms-of-use/';
 
-export function AttributionChip({ left = 0, bottom = 0 }: Props) {
+export function AttributionChip({ right = 0, top = 0 }: Props) {
   const colorScheme = useColorScheme() ?? 'light';
   const [expanded, setExpanded] = useState(false);
 
@@ -45,9 +44,9 @@ export function AttributionChip({ left = 0, bottom = 0 }: Props) {
     <>
       <View
         pointerEvents="box-none"
-        style={[styles.anchor, { left: 8 + left, bottom: 8 + bottom }]}
+        style={[styles.anchor, { right: 8 + right, top: 8 + top }]}
       >
-        <Pressable
+        <GesturePressable
           accessibilityRole="button"
           accessibilityLabel="Map attribution — MapTiler and OpenStreetMap. Tap for details."
           accessibilityHint="Opens data source and licensing information."
@@ -66,7 +65,7 @@ export function AttributionChip({ left = 0, bottom = 0 }: Props) {
           <View style={styles.infoDot}>
             <ThemedText style={styles.infoDotText}>i</ThemedText>
           </View>
-        </Pressable>
+        </GesturePressable>
       </View>
 
       <Modal visible={expanded} animationType="fade" transparent onRequestClose={() => setExpanded(false)}>
@@ -165,6 +164,10 @@ const styles = StyleSheet.create({
   infoDotText: {
     fontSize: 9,
     fontWeight: '800',
+    lineHeight: 9,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
     opacity: 0.8,
   },
   backdrop: {

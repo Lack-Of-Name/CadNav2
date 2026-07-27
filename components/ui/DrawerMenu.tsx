@@ -4,7 +4,8 @@
 import { Colors, Elevation, HUD, Radius, Space } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from './icon-symbol';
@@ -35,18 +36,21 @@ export function DrawerMenu({ open, onClose, currentRoute }: Props) {
   const router = useRouter();
 
   const translateX = useSharedValue(-300);
+  const overlayOpacity = useSharedValue(0);
 
-  // Update animation when open changes
-  if (open) translateX.value = withTiming(0, { duration: 240 });
-  else translateX.value = withTiming(-300, { duration: 200 });
+  useEffect(() => {
+    if (open) {
+      translateX.value = withTiming(0, { duration: 240 });
+      overlayOpacity.value = withTiming(0.5, { duration: 240 });
+    } else {
+      translateX.value = withTiming(-300, { duration: 200 });
+      overlayOpacity.value = withTiming(0, { duration: 200 });
+    }
+  }, [open]);
 
   const drawerStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
   }));
-
-  const overlayOpacity = useSharedValue(0);
-  if (open) overlayOpacity.value = withTiming(0.5, { duration: 240 });
-  else overlayOpacity.value = withTiming(0, { duration: 200 });
 
   const overlayStyle = useAnimatedStyle(() => ({
     opacity: overlayOpacity.value,
@@ -64,16 +68,21 @@ export function DrawerMenu({ open, onClose, currentRoute }: Props) {
       {open && (
         <Animated.View
           style={[StyleSheet.absoluteFill, { backgroundColor: HUD.bg, zIndex: 99 }, overlayStyle]}
+          pointerEvents="auto"
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         </Animated.View>
       )}
 
-      <Animated.View style={[styles.drawer, { backgroundColor: C.surface, paddingTop: insets.top + Space.md, zIndex: 100 }, drawerStyle, Elevation.high]}>
+      <Animated.View
+        pointerEvents={open ? 'auto' : 'none'}
+        style={[styles.drawer, { backgroundColor: C.surface, paddingTop: insets.top + Space.md, zIndex: 100 }, drawerStyle, Elevation.high]}>
         <View style={styles.drawerHeader}>
-          <View style={[styles.logoMark, { backgroundColor: C.primary }]}>
-            <Text style={[styles.logoText, { color: C.surface } ]}>CN</Text>
-          </View>
+          <Image
+            source={require('@/assets/icons/CadNav.png')}
+            style={[styles.logoMark, { backgroundColor: C.primary }]}
+            resizeMode="contain"
+          />
           <View>
             <Text style={[styles.appName, { color: C.text }]}>CadNav</Text>
             <Text style={[styles.appSub, { color: C.textMuted }]}>Grid Navigation</Text>
@@ -149,7 +158,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoText:    { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.5 },
   appName:     { fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
   appSub:      { fontSize: 12, marginTop: 1 },
   closeBtn:    { marginLeft: 'auto' },

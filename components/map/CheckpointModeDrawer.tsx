@@ -43,13 +43,13 @@ export function CheckpointModeDrawer({ visible, onClose, onTap, onGrid, onProjec
           ]}
         >
           <View style={[styles.header, { borderBottomColor: theme.divider }]}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>SET TEMP TARGET</Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>SET TARGET</Text>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <IconSymbol name="xmark" size={20} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
           <Text style={[styles.hint, { color: theme.textMuted }]}>
-            Clears the current map route and places one temporary checkpoint.
+            Places a navigation target on the map. Clears any existing target.
           </Text>
           {OPTIONS.map((opt, index) => {
             const isTap = opt.id === 'tap';

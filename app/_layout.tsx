@@ -1,9 +1,12 @@
-import MapTilerKeyProvider from '@/components/map/MapTilerKeyProvider';
+import { ManualModal } from '@/components/manual/ManualModal';
+import MapTilerKeyProvider, { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { TutorialModal } from '@/components/tutorial/TutorialModal';
 import { DrawerMenu } from '@/components/ui/DrawerMenu';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, HUD } from '@/constants/theme';
 import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
+import { TutorialProvider, useTutorials } from '@/hooks/tutorials';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, usePathname } from 'expo-router';
@@ -90,6 +93,31 @@ function RuntimeErrorBanner() {
   );
 }
 
+function TutorialGate() {
+  const { activeTutorial, closeTutorial, markCompleted } = useTutorials();
+
+  if (!activeTutorial) return null;
+
+  if (activeTutorial.id === 'full-manual') {
+    return (
+      <ManualModal
+        visible={true}
+        onClose={closeTutorial}
+        onComplete={() => markCompleted('full-manual')}
+      />
+    );
+  }
+
+  return (
+    <TutorialModal
+      tutorial={activeTutorial}
+      visible={!!activeTutorial}
+      onClose={closeTutorial}
+      onComplete={() => markCompleted(activeTutorial.id)}
+    />
+  );
+}
+
 function GlobalNavigationChrome() {
   const colorScheme = useColorScheme() ?? 'light';
   const pathname = usePathname();
@@ -115,7 +143,7 @@ function GlobalNavigationChrome() {
           ]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <IconSymbol name="menu" size={22} color={theme.text} />
+          <IconSymbol name="line.3.horizontal" size={22} color={theme.text} />
         </Pressable>
       )}
 
@@ -134,15 +162,33 @@ function AppThemeShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Bridges the key-provider tutorial request to the tutorial system. */
+function TutorialPromptBridge() {
+  const { pendingTutorialId, clearPendingTutorial } = useMapTilerKey();
+  const { showTutorial } = useTutorials();
+
+  useEffect(() => {
+    if (pendingTutorialId) {
+      showTutorial(pendingTutorialId);
+      clearPendingTutorial();
+    }
+  }, [pendingTutorialId, showTutorial, clearPendingTutorial]);
+
+  return null;
+}
+
 function AppChrome() {
   return (
     <>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen name="manual" options={{ headerShown: false }} />
       </Stack>
       <GlobalNavigationChrome />
       <RuntimeErrorBanner />
+      <TutorialPromptBridge />
+      <TutorialGate />
     </>
   );
 }
@@ -157,7 +203,9 @@ function RootLayout() {
           <AppThemeShell>
             <MapTilerKeyProvider>
               <OfflineMapProvider>
-                <AppChrome />
+                <TutorialProvider>
+                  <AppChrome />
+                </TutorialProvider>
               </OfflineMapProvider>
             </MapTilerKeyProvider>
           </AppThemeShell>

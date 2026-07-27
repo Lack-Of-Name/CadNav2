@@ -1,6 +1,7 @@
 import { triggerHaptic } from '@/components/haptic-tab';
 import { useEffect, useMemo, useRef } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { Pressable } from 'react-native-gesture-handler';
+import { StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { degreesToMils } from './converter';
 
