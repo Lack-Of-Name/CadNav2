@@ -28,7 +28,7 @@ const mapTutorial: Tutorial = {
     },
     {
       title: 'Checkpoints & Routes',
-      text: 'Tap the pin icon (right edge) to open the placement drawer — choose Tap Map, Grid Reference, or Project Point. The bottom panel shows your active target: bearing, distance, and grid reference. In placing mode it shows "TAP MAP TO PLACE" with Done/Cancel. After placing, the panel shows nav info with an approach progress bar and stepper arrows to cycle between multiple targets. Tap the chevron to expand route options (Add to route).',
+      text: 'Tap the pin icon (right edge) to open the placement drawer — choose Tap Map, Grid Reference, or Project Point. The bottom panel shows your active target: bearing, distance, and grid reference. In placing mode it shows "TAP MAP TO PLACE A POINT". With no route active, a placed point becomes your navigation target (replacing the previous one). With a route active, points are appended to the route as waypoints — tap Done to finish placing. After setting a target, the panel shows nav info with an approach progress bar and stepper arrows to cycle between multiple points.',
     },
     {
       title: 'Grid & Bearings',

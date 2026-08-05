@@ -49,13 +49,13 @@ export function AddToRouteModal({ visible, routes, onClose, onSelectRoute, onCre
           ]}
         >
           <View style={[styles.header, { borderBottomColor: theme.divider }]}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>ADD TARGET TO ROUTE</Text>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>ADD POINT TO ROUTE</Text>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <IconSymbol name="xmark" size={20} color={theme.textMuted} />
             </TouchableOpacity>
           </View>
           <Text style={[styles.hint, { color: theme.textMuted }]}>
-            Appends the current target to the end of the chosen route.
+            Appends the point to the end of the chosen route.
           </Text>
 
           {routes.length === 0 ? (
@@ -109,7 +109,7 @@ export function AddToRouteModal({ visible, routes, onClose, onSelectRoute, onCre
             <View style={styles.rowText}>
               <Text style={[styles.rowLabel, { color: theme.primary }]}>New route</Text>
               <Text style={[styles.rowDesc, { color: theme.textMuted }]}>
-                Create a route from this target
+                Create a route from this point
               </Text>
             </View>
           </TouchableOpacity>

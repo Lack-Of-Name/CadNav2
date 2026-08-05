@@ -31,8 +31,6 @@ type StashedRouteState = {
   activeRouteLoop: boolean;
 };
 
-export type PlacementModeIntent = 'temp' | 'route';
-
 type StoreState = {
   checkpoints: Checkpoint[];
   selectedId: string | null;
@@ -319,28 +317,11 @@ export function useCheckpoints() {
     } satisfies StashedRouteState;
   }, []);
 
-  const requestPlacementMode = useCallback(async (intent: PlacementModeIntent = 'route') => {
-    if (intent === 'temp') {
-      const stash = stashActiveRouteForTemp();
-      setStore({
-        ...store,
-        placementModeRequested: true,
-        tempNavigationActive: true,
-        stashedRouteState: stash,
-        checkpoints: [],
-        selectedId: null,
-        activeRouteColor: Colors.light.tempTarget,
-        activeRouteStart: null,
-        activeRouteLoop: false,
-      });
-      return;
-    }
-
-    setStore({
-      ...store,
-      placementModeRequested: true,
-    });
-  }, [stashActiveRouteForTemp]);
+  const requestPlacementMode = useCallback(async () => {
+    // Behavior is decided at placement time: with an active route the point is
+    // appended to it; otherwise it becomes a temp navigation target.
+    setStore({ ...store, placementModeRequested: true });
+  }, []);
 
   const beginTempNavigation = useCallback(async () => {
     const stash = stashActiveRouteForTemp();
@@ -383,13 +364,6 @@ export function useCheckpoints() {
     });
   }, []);
 
-  const consumePlacementModeRequest = useCallback(async () => {
-    if (!store.placementModeRequested) return false;
-    // In continuous placement mode, we don't turn off the flag here.
-    // The user must explicitly cancel via cancelPlacementMode.
-    return true;
-  }, []);
-
   const cancelPlacementMode = useCallback(async () => {
     setStore({ ...store, placementModeRequested: false });
   }, []);
@@ -407,33 +381,34 @@ export function useCheckpoints() {
 
   const addCheckpoint = useCallback(
     async (latitude: number, longitude: number) => {
-      let elevation: number | undefined;
-
-      if (apiKey) {
-        try {
-          const res = await fetch(`https://api.maptiler.com/elevation/at?lon=${longitude}&lat=${latitude}&key=${apiKey}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data && data.length > 0 && typeof data[0] === 'number') {
-              elevation = data[0];
-            }
-          }
-        } catch (err) {
-          console.warn('Failed to fetch elevation for checkpoint', err);
-        }
-      }
-
       const cp: Checkpoint = {
         id: makeId(),
         latitude,
         longitude,
         createdAt: Date.now(),
         color: store.activeRouteColor ?? undefined,
-        elevation,
       };
-      // Keep checkpoints in placement order.
+      // Keep checkpoints in placement order. Render immediately — do not block
+      // the tap on the elevation network request.
       const nextCheckpoints = [...store.checkpoints, cp];
       setStore({ ...store, checkpoints: nextCheckpoints, selectedId: cp.id });
+
+      if (apiKey) {
+        fetch(`https://api.maptiler.com/elevation/at?lon=${longitude}&lat=${latitude}&key=${apiKey}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data && data.length > 0 && typeof data[0] === 'number') {
+              const enriched = store.checkpoints.map((c) =>
+                c.id === cp.id ? { ...c, elevation: data[0] } : c
+              );
+              setStore({ ...store, checkpoints: enriched });
+            }
+          })
+          .catch((err) => {
+            console.warn('Failed to fetch elevation for checkpoint', err);
+          });
+      }
+
       return cp;
     },
     [apiKey]
@@ -618,7 +593,6 @@ export function useCheckpoints() {
     beginTempNavigation,
     resumeStashedRoute,
     setActiveWorkspaceRoute,
-    consumePlacementModeRequest,
     cancelPlacementMode,
     setViewTarget,
     consumeViewTarget,

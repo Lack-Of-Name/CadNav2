@@ -25,6 +25,7 @@ import { ActivityIndicator, Platform, StatusBar, StyleSheet, Text, TouchableOpac
 import { useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedView } from '../themed-view';
+import { Toast } from '@/components/ui/Toast';
 import { contrastingTextColor } from '@/lib/colorUtils';
 import { getMaplibreModule } from '@/lib/maplibreModule';
 import { bearingDegrees, haversineMeters } from './MaplibreMap.utils';
@@ -88,7 +89,7 @@ export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading, promptForKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteTitle, stashedRouteState, beginTempNavigation, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints } = useCheckpoints();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, beginTempNavigation, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteId, activeWorkspaceRouteTitle, stashedRouteState, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints } = useCheckpoints();
   const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode } = useSettings();
   const { routes: workspaceRoutes, setRoutes: setWorkspaceRoutes, setActiveRouteId: persistActiveRouteId } = useWorkspaceRoutes();
   const { initOffline, packs } = useOfflineMaps();
@@ -223,6 +224,16 @@ export default function MapLibreMap() {
   const [gridPlacementOpen, setGridPlacementOpen] = useState(false);
   const [projectPlacementOpen, setProjectPlacementOpen] = useState(false);
   const [addToRouteOpen, setAddToRouteOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastCounter = useRef(0);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    toastCounter.current += 1;
+    setToastMessage(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToastMessage(null), 1700);
+  }, []);
   const [, setMapCenter] = useState<{ latitude: number; longitude: number }>(() => {
     if (lastLocation?.coords) {
       return { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude };
@@ -275,7 +286,7 @@ export default function MapLibreMap() {
     : -1;
 
   const compassTargetLabel = selectedCheckpoint
-    ? selectedCheckpoint.label?.trim() || `Checkpoint ${selectedIndex + 1}`
+    ? selectedCheckpoint.label?.trim() || `Waypoint ${selectedIndex + 1}`
     : null;
 
   const compassTargetColor = selectedCheckpoint?.color || activeRouteColor;
@@ -348,7 +359,7 @@ export default function MapLibreMap() {
     : null;
   const targetTitle = selectedCheckpoint
     ? selectedCheckpoint.label?.trim() || `Waypoint ${selectedIndex + 1}`
-    : 'No temp target';
+    : 'No target';
   const targetBearingDescriptor = compassTargetBearingDeg != null
     ? angleUnit === 'mils'
       ? `Brg ${compassBearingMilsText ?? '—'} mils`
@@ -433,6 +444,9 @@ export default function MapLibreMap() {
       }
       if (pendingLocationRecenterTimerRef.current) {
         clearTimeout(pendingLocationRecenterTimerRef.current);
+      }
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
       }
     };
   }, []);
@@ -541,7 +555,7 @@ export default function MapLibreMap() {
   };
 
   const startPlacementFlow = async (mode: 'tap' | 'grid' | 'project') => {
-    await requestPlacementMode('temp');
+    await requestPlacementMode();
     if (mode !== 'tap') {
       await cancelPlacementMode();
     }
@@ -555,7 +569,17 @@ export default function MapLibreMap() {
     }
   };
 
-  const placeTemporaryCheckpoint = async (latitude: number, longitude: number) => {
+  const placePoint = async (latitude: number, longitude: number) => {
+    const route = workspaceRoutes.find((r) => r.id === activeWorkspaceRouteId);
+    if (route) {
+      // Active route: append as a waypoint. Stay in placement mode to chain more.
+      const cp = await addCheckpoint(latitude, longitude);
+      appendCheckpointToRoute(cp, route);
+      showToast('Point added to route');
+      return;
+    }
+
+    // No active route: temp navigation target (replaces the current one).
     await beginTempNavigation();
     await setActiveRouteStart(lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null);
     const cp = await addCheckpoint(latitude, longitude);
@@ -577,14 +601,12 @@ export default function MapLibreMap() {
     const lat = Number(coords[1]);
     if (Number.isNaN(lon) || Number.isNaN(lat)) return;
 
-    await placeTemporaryCheckpoint(lat, lon);
+    await placePoint(lat, lon);
   };
 
-  const handleAddTargetToRoute = (route: WorkspaceRoute) => {
-    if (!selectedCheckpoint) return;
-    const cp: Checkpoint = selectedCheckpoint;
+  const appendCheckpointToRoute = (cp: Checkpoint, route: WorkspaceRoute) => {
     const color = route.color ?? DEFAULT_ROUTE_COLOR;
-    // Append the temp target to the workspace route's checkpoint list.
+    // Append the point to the workspace route's checkpoint list.
     setWorkspaceRoutes((r) =>
       r.map((it) =>
         it.id === route.id
@@ -601,9 +623,12 @@ export default function MapLibreMap() {
     reorderCheckpoints([...routeCps, { ...cp, color }]);
   };
 
-  const handleAddTargetToNewRoute = () => {
+  const handleAddTargetToRoute = (route: WorkspaceRoute) => {
     if (!selectedCheckpoint) return;
-    const cp: Checkpoint = selectedCheckpoint;
+    appendCheckpointToRoute(selectedCheckpoint, route);
+  };
+
+  const createRouteFromCheckpoint = (cp: Checkpoint) => {
     const title = `Route ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
     const color = DEFAULT_ROUTE_COLOR;
     const newRoute: WorkspaceRoute = {
@@ -618,6 +643,11 @@ export default function MapLibreMap() {
     setActiveRouteColor(color);
     setActiveRouteLoop(false);
     reorderCheckpoints([{ ...cp, color }]);
+  };
+
+  const handleAddTargetToNewRoute = () => {
+    if (!selectedCheckpoint) return;
+    createRouteFromCheckpoint(selectedCheckpoint);
   };
 
   const handleDonePlacing = async () => {
@@ -1332,6 +1362,10 @@ export default function MapLibreMap() {
         }
       />
 
+      {toastMessage ? (
+        <Toast key={toastCounter.current} message={toastMessage} onHide={() => setToastMessage(null)} />
+      ) : null}
+
       <MapToolButton
         icon="location.fill.viewfinder"
         label={locationRecenterPending ? 'Waiting for location' : 'Recenter map'}
@@ -1382,13 +1416,13 @@ export default function MapLibreMap() {
       <GridReferenceModal
         visible={gridPlacementOpen}
         onClose={() => setGridPlacementOpen(false)}
-        onAdd={(location) => { void placeTemporaryCheckpoint(location.latitude, location.longitude); }}
+        onAdd={(location) => { void placePoint(location.latitude, location.longitude); }}
       />
 
       <ProjectPointModal
         visible={projectPlacementOpen}
         onClose={() => setProjectPlacementOpen(false)}
-        onAdd={(location) => { void placeTemporaryCheckpoint(location.latitude, location.longitude); }}
+        onAdd={(location) => { void placePoint(location.latitude, location.longitude); }}
       />
 
       <AddToRouteModal

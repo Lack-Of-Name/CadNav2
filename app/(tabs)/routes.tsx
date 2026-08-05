@@ -141,7 +141,7 @@ export default function RoutesScreen() {
     setAddPanelVisible(false);
     setTimeout(() => {
       if (option === 'place') {
-        void requestPlacementMode('route');
+        void requestPlacementMode();
         router.push('/');
       } else if (option === 'reference') {
         setReferenceModalVisible(true);

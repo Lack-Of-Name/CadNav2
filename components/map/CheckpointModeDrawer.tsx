@@ -49,7 +49,7 @@ export function CheckpointModeDrawer({ visible, onClose, onTap, onGrid, onProjec
             </TouchableOpacity>
           </View>
           <Text style={[styles.hint, { color: theme.textMuted }]}>
-            Places a navigation target on the map. Clears any existing target.
+            Places a point on the map — with an active route it becomes a waypoint, otherwise it becomes your navigation target.
           </Text>
           {OPTIONS.map((opt, index) => {
             const isTap = opt.id === 'tap';

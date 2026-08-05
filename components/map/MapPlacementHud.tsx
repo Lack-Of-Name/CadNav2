@@ -155,9 +155,9 @@ export function MapPlacementHud({
         <View style={styles.placingRow}>
           <View style={[styles.liveDot, { backgroundColor: accentColor }]} />
           <View style={styles.placingCopy}>
-            <Text style={[styles.placingTitle, { color: textColor }]}>TAP MAP TO PLACE</Text>
+            <Text style={[styles.placingTitle, { color: textColor }]}>TAP MAP TO PLACE A POINT</Text>
             <Text style={[styles.placingSub, { color: mutedColor }]} numberOfLines={1}>
-              Places a single point · replaces current
+              {routeLabel ? `Adds a waypoint to ${routeLabel}` : 'Sets your navigation target'}
             </Text>
           </View>
           <DenseButton label="Done" variant="primary" accentColor={accentColor} colorScheme={colorScheme} onPress={onDonePlacing} />

@@ -58,10 +58,10 @@ const sections: ManualSection[] = [
         id: 'setting-a-target',
         title: 'Setting a Target',
         description:
-          'Tap the pin icon (right edge of the map) to open the mode drawer. Choose "Tap Map" to enter placement mode — a crosshair appears and you tap anywhere to drop a pin. Tap "Done" to confirm or "Cancel" to discard. The target becomes your active navigation point, showing distance and bearing from your position. Tap the pin button again to place a new target.',
+          'Tap the pin icon (right edge of the map) to open the mode drawer. Choose "Tap Map" to enter placement mode, then tap anywhere on the map to drop a point. With no route active, the point becomes your navigation target, showing distance and bearing from your position — placing another target replaces it. If a route is active, the point is appended to that route as a waypoint instead. Grid Reference and Project Point behave the same way.',
         imageName: 'manual-setting-target.png',
         imageCaption:
-          'Map with the mode drawer open from the bottom showing three options (Tap Map, Grid Reference, Project Point). Highlight the pin button on the right that triggered it. Then show the placement result: a pin on the map with its info popup and the HUD showing "Done" / "Cancel".',
+          'Map with the mode drawer open from the bottom showing three options (Tap Map, Grid Reference, Project Point). Highlight the pin button on the right that triggered it. Then show the placement result: a target pin on the map with its info popup and the HUD showing bearing, distance, and Done / Cancel.',
       },
       {
         id: 'grid-reference',
@@ -102,7 +102,7 @@ const sections: ManualSection[] = [
         id: 'adding-waypoints',
         title: 'Adding Waypoints to a Route',
         description:
-          'Expand a route card and tap "Waypoint" — the Add Route Panel gives four methods: "Place on map" (jumps to map in placement mode), "Grid Reference" (enter coords), "Project Point" (bearing+distance), and "Saved Library" (import from previously saved routes/locations). Alternatively, set a target on the map first, then tap the HUD chevron → "Add to route" to append it to an existing route.',
+          'Expand a route card and tap "Waypoint" — the Add Route Panel gives four methods: "Place on map" (jumps to the map in placement mode; the route is activated first, so tapping the map adds the waypoint to it immediately — tap "Done" to finish), "Grid Reference" (enter coords), "Project Point" (bearing+distance), and "Saved Library" (import from previously saved routes/locations). You can also tap the pin tool on the map while a route is active — placed points are appended to the route the same way.',
         imageName: 'manual-adding-waypoints.png',
         imageCaption:
           'Composite: (1) Route card expanded showing the "Waypoint" button, (2) The Add Route Panel modal with four method cards, (3) The map HUD with chevron expanded showing "Add to route". Use arrows to connect the three states.',
