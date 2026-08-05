@@ -1,9 +1,11 @@
 import { DenseButton } from '@/components/routes/DenseButton';
+import { ColorSlider } from '@/components/ui/ColorSlider';
 import { Colors } from '@/constants/theme';
-import { DEFAULT_ROUTE_COLOR, ROUTE_COLORS } from '@/constants/routeColors';
+import { DEFAULT_ROUTE_COLOR } from '@/constants/routeColors';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useEffect, useState } from 'react';
+import { hexToHsv, hsvToHex } from '@/lib/colorUtils';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Keyboard,
   KeyboardAvoidingView,
@@ -19,6 +21,8 @@ import {
 } from 'react-native';
 import { ThemedText } from './themed-text';
 import { IconSymbol } from './ui/icon-symbol';
+
+const HUE_STOPS = ['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000'];
 
 type EditRouteModalProps = {
   visible: boolean;
@@ -56,6 +60,20 @@ export function EditRouteModal({
   const iconColor = useThemeColor({}, 'text');
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+
+  const hsv = useMemo(() => hexToHsv(color), [color]);
+  const satStops = useMemo(
+    () => [hsvToHex(hsv.h, 0, hsv.v), hsvToHex(hsv.h, 100, hsv.v)],
+    [hsv.h, hsv.v],
+  );
+  const valStops = useMemo(
+    () => [hsvToHex(hsv.h, hsv.s, 0), hsvToHex(hsv.h, hsv.s, 100)],
+    [hsv.h, hsv.s],
+  );
+
+  function setHue(h: number) { setColor(hsvToHex(h, hsv.s, hsv.v)); }
+  function setSaturation(s: number) { setColor(hsvToHex(hsv.h, s, hsv.v)); }
+  function setValue(v: number) { setColor(hsvToHex(hsv.h, hsv.s, v)); }
 
   useEffect(() => {
     if (visible) {
@@ -123,18 +141,24 @@ export function EditRouteModal({
                 />
 
                 <ThemedText style={[styles.label, { color: theme.textMuted }]}>ACCENT</ThemedText>
-                <View style={styles.colorRow}>
-                  {ROUTE_COLORS.map((c) => (
-                    <TouchableOpacity key={c} onPress={() => setColor(c)} activeOpacity={0.8}>
-                      <View
-                        style={[
-                          styles.colorSwatch,
-                          { backgroundColor: c, borderColor: theme.divider },
-                          color === c && { borderColor: theme.text, borderWidth: 2 },
-                        ]}
-                      />
-                    </TouchableOpacity>
-                  ))}
+                <View style={styles.hsvRow}>
+                  <View style={styles.hsvSliders}>
+                    <View style={styles.sliderLine}>
+                      <ThemedText style={[styles.hsvTag, { color: theme.textMuted }]}>H</ThemedText>
+                      <ColorSlider value={hsv.h} min={0} max={360} stops={HUE_STOPS} onChange={setHue} />
+                    </View>
+                    <View style={styles.sliderLine}>
+                      <ThemedText style={[styles.hsvTag, { color: theme.textMuted }]}>S</ThemedText>
+                      <ColorSlider value={hsv.s} min={0} max={100} stops={satStops} onChange={setSaturation} />
+                    </View>
+                    <View style={styles.sliderLine}>
+                      <ThemedText style={[styles.hsvTag, { color: theme.textMuted }]}>V</ThemedText>
+                      <ColorSlider value={hsv.v} min={0} max={100} stops={valStops} onChange={setValue} />
+                    </View>
+                  </View>
+                  <View
+                    style={[styles.colorPreview, { backgroundColor: color, borderColor: theme.divider }]}
+                  />
                 </View>
 
                 {error ? (
@@ -202,17 +226,32 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     fontSize: 15,
   },
-  colorRow: {
+  hsvRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    alignItems: 'flex-end',
+    gap: 12,
     paddingVertical: 4,
   },
-  colorSwatch: {
-    width: 28,
-    height: 28,
+  hsvSliders: {
+    flex: 1,
+    gap: 2,
+  },
+  sliderLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hsvTag: {
+    width: 14,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  colorPreview: {
+    width: 44,
+    height: 44,
     borderRadius: 2,
     borderWidth: StyleSheet.hairlineWidth,
+    marginBottom: 8,
   },
   footer: {
     flexDirection: 'row',
