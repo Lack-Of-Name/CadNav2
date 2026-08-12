@@ -18,7 +18,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useWorkspaceRoutes } from '@/hooks/use-workspace-routes';
 import { computeRouteDistanceMeters, formatDistance } from '@/lib/geo';
 import { latLonToMGRS } from '@/lib/mgrs';
-import { checkpointSharePayload, routeSharePayload } from '@/lib/sharePayload';
+import { checkpointSharePayload, checkpointShareUrl, routeSharePayload, routeShareUrl } from '@/lib/sharePayload';
 import type { Checkpoint, RouteItem, SavedLocation, SavedRoute } from '@/types';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -75,11 +75,10 @@ export default function RoutesScreen() {
   const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
   const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
   const [editingCheckpoint, setEditingCheckpoint] = useState<Checkpoint | null>(null);
-  const [shareQr, setShareQr] = useState<{ title: string; payload: string } | null>(null);
+  const [shareQr, setShareQr] = useState<{ title: string; qrValue: string; shareText: string } | null>(null);
   const activeRouteId = activeWorkspaceRouteId;
 
   const isSyncingRef = useRef(false);
-  const hydratedActiveRouteRef = useRef(false);
 
   const syncCheckpointsToRoute = useCallback(() => {
     if (!activeRouteId) return;
@@ -117,13 +116,15 @@ export default function RoutesScreen() {
     setTimeout(() => { isSyncingRef.current = false; }, 150);
   }
 
+  // Routes start unloaded: never auto-activate a persisted route on startup.
+  // Clear any stale persisted "active route" marker so the workspace always
+  // boots with no route active.
   useEffect(() => {
-    if (!routesLoaded || hydratedActiveRouteRef.current || activeWorkspaceRouteId || !persistedActiveRouteId) return;
-    const route = routes.find((r) => r.id === persistedActiveRouteId);
-    if (!route) return;
-    hydratedActiveRouteRef.current = true;
-    activateRoute(route);
-  }, [routesLoaded, persistedActiveRouteId, activeWorkspaceRouteId, routes, activateRoute]);
+    if (!routesLoaded) return;
+    if (persistedActiveRouteId) {
+      persistActiveRouteId(null);
+    }
+  }, [routesLoaded, persistedActiveRouteId, persistActiveRouteId]);
 
   useEffect(() => {
     if (!activeRouteId || isSyncingRef.current || isTempTargetColor(activeRouteColor)) return;
@@ -165,6 +166,26 @@ export default function RoutesScreen() {
 
   function handleEditCheckpoint(cp: Checkpoint) {
     setEditingCheckpoint(cp);
+  }
+
+  function handleRemoveCheckpoint(cp: Checkpoint) {
+    const label = cp.label?.trim();
+    void showAlert({
+      title: 'Delete waypoint?',
+      message: label
+        ? `Remove "${label}" from this route?`
+        : `Remove waypoint ${cp.mgrs?.trim() || `${cp.latitude.toFixed(5)}, ${cp.longitude.toFixed(5)}`}?`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void removeCheckpoint(cp.id);
+          },
+        },
+      ],
+    });
   }
 
   function handleSaveCheckpointLabel(label: string) {
@@ -281,7 +302,8 @@ export default function RoutesScreen() {
   function handleShareCheckpointQr(cp: Checkpoint) {
     setShareQr({
       title: cp.label?.trim() ? `Checkpoint — ${cp.label.trim()}` : 'Checkpoint',
-      payload: checkpointSharePayload(cp),
+      qrValue: checkpointShareUrl(cp),
+      shareText: checkpointSharePayload(cp),
     });
   }
 
@@ -295,7 +317,8 @@ export default function RoutesScreen() {
     }
     setShareQr({
       title: `Route — ${item.title}`,
-      payload: routeSharePayload(item, cps, loop),
+      qrValue: routeShareUrl(item, cps, loop),
+      shareText: routeSharePayload(item, cps, loop),
     });
   }
 
@@ -484,7 +507,7 @@ export default function RoutesScreen() {
               onAddWaypoint={() => handleOpenAddPoints(item)}
               onViewMap={handleViewOnMap}
               onSelectCheckpoint={(id) => selectCheckpoint(id)}
-              onRemoveCheckpoint={removeCheckpoint}
+              onRemoveCheckpoint={handleRemoveCheckpoint}
               onEditCheckpoint={handleEditCheckpoint}
               onShareCheckpoint={handleShareCheckpointQr}
               onSaveCheckpointLocation={handleSaveLocationFromCheckpoint}
@@ -573,7 +596,8 @@ export default function RoutesScreen() {
         <ShareQrModal
           visible={shareQr != null}
           title={shareQr?.title ?? ''}
-          payload={shareQr?.payload ?? ''}
+          qrValue={shareQr?.qrValue ?? ''}
+          shareText={shareQr?.shareText ?? ''}
           onClose={() => setShareQr(null)}
         />
       </ThemedView>

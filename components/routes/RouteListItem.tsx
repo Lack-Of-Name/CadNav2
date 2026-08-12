@@ -25,7 +25,7 @@ type Props = {
   onAddWaypoint: () => void;
   onViewMap: () => void;
   onSelectCheckpoint: (id: string) => void;
-  onRemoveCheckpoint: (id: string) => void;
+  onRemoveCheckpoint: (cp: Checkpoint) => void;
   onEditCheckpoint: (cp: Checkpoint) => void;
   onShareCheckpoint: (cp: Checkpoint) => void;
   onSaveCheckpointLocation: (cp: Checkpoint) => void;
@@ -188,7 +188,7 @@ export function RouteListItem({
                             <IconSymbol name="qrcode" size={17} color={theme.textMuted} />
                           </TouchableOpacity>
                           <TouchableOpacity
-                            onPress={() => onRemoveCheckpoint(cp.id)}
+                            onPress={() => onRemoveCheckpoint(cp)}
                             hitSlop={8}
                             style={styles.wpAction}
                           >

@@ -1008,12 +1008,15 @@ export default function MapLibreMap() {
       if (!ref) continue;
       const parsed = parseMGRS(ref);
       if (!parsed) continue;
-      const half = parsed.accuracyMeters / 2;
+      // parseMGRS returns the SW corner of the referenced cell; trace the
+      // actual cell (size = accuracyMeters) so the checkpoint marker at the
+      // cell centre sits in the middle of the inaccuracy polygon.
+      const { easting, northing, accuracyMeters: size } = parsed;
       const corners = [
-        [parsed.easting - half, parsed.northing - half],
-        [parsed.easting + half, parsed.northing - half],
-        [parsed.easting + half, parsed.northing + half],
-        [parsed.easting - half, parsed.northing + half],
+        [easting, northing],
+        [easting + size, northing],
+        [easting + size, northing + size],
+        [easting, northing + size],
       ].map(([e, n]) => {
         const ll = utmToLatLon(parsed.zone, parsed.band, e, n);
         return [ll.longitude, ll.latitude];

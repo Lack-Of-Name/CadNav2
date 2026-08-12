@@ -11,11 +11,14 @@ import StyledButton from './ui/StyledButton';
 type ShareQrModalProps = {
   visible: boolean;
   title: string;
-  payload: string;
+  /** Machine-readable deep link encoded into the QR code (cadnav://import…). */
+  qrValue: string;
+  /** Human-readable text used by the Share button. */
+  shareText: string;
   onClose: () => void;
 };
 
-export function ShareQrModal({ visible, title, payload, onClose }: ShareQrModalProps) {
+export function ShareQrModal({ visible, title, qrValue, shareText, onClose }: ShareQrModalProps) {
   const [shareLabel, setShareLabel] = useState('Share text');
   const textColor = useThemeColor({}, 'text');
   const placeholderColor = useThemeColor({}, 'icon');
@@ -28,7 +31,7 @@ export function ShareQrModal({ visible, title, payload, onClose }: ShareQrModalP
   const handleShareText = useCallback(async () => {
     setShareLabel('Sharing…');
     try {
-      await Share.share({ message: payload, title });
+      await Share.share({ message: shareText, title });
     } catch (error: unknown) {
       void showAlert({
         title: 'Share failed',
@@ -37,7 +40,7 @@ export function ShareQrModal({ visible, title, payload, onClose }: ShareQrModalP
     } finally {
       setShareLabel('Share text');
     }
-  }, [payload, title]);
+  }, [shareText, title]);
 
   function close() {
     onClose();
@@ -54,7 +57,7 @@ export function ShareQrModal({ visible, title, payload, onClose }: ShareQrModalP
           </ThemedText>
 
           <View style={styles.qrFrame}>
-            {payload.length > 2200 ? (
+            {qrValue.length === 0 ? null : qrValue.length > 2200 ? (
               <View style={styles.qrTooBig}>
                 <ThemedText style={styles.qrTooBigTitle}>Too much data for a QR code</ThemedText>
                 <ThemedText style={[styles.qrTooBigBody, { color: placeholderColor }]}>
@@ -64,7 +67,7 @@ export function ShareQrModal({ visible, title, payload, onClose }: ShareQrModalP
               </View>
             ) : (
               <QRCode
-                value={payload}
+                value={qrValue}
                 size={240}
                 color="#000"
                 backgroundColor="#fff"
@@ -82,7 +85,7 @@ export function ShareQrModal({ visible, title, payload, onClose }: ShareQrModalP
             bounces={false}
           >
             <ThemedText style={[styles.payloadText, { color: textColor }]} selectable>
-              {payload}
+              {qrValue}
             </ThemedText>
           </ScrollView>
 
