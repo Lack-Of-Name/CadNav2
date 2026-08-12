@@ -30,7 +30,8 @@ import { contrastingTextColor } from '@/lib/colorUtils';
 import { getMaplibreModule } from '@/lib/maplibreModule';
 import { bearingDegrees, haversineMeters } from './MaplibreMap.utils';
 import { degreesToMils } from './converter';
-import { computeGridCornersFromMapBounds, formatGridReference, generateGridPoints, latLonToGridCoords } from './mapGrid';
+import { computeGridCornersFromMapBounds, generateGzdLines, generateGridPoints, mgrsCellLabel } from './mapGrid';
+import { latLonToMGRS, parseMGRS, utmToLatLon } from '@/lib/mgrs';
 
 const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
 const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
@@ -45,6 +46,18 @@ const gridSublinesStyle = {
   lineWidth: 1,
   lineOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
 };
+// Per standard MGRS map convention: 100,000m square borders are drawn thicker
+// than the 1km grid, and GZD (zone/band) boundaries thicker still.
+const grid100kStyle = {
+  lineColor: 'rgba(0,0,0,0.85)',
+  lineWidth: 3.5,
+  lineOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
+const gridGzdStyle = {
+  lineColor: 'rgba(0,0,0,1)',
+  lineWidth: 6,
+  lineOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+};
 const gridNumbersStyle = {
   textField: ['get', 'label'],
   textSize: 14,
@@ -53,17 +66,14 @@ const gridNumbersStyle = {
   textHaloWidth: 2,
   textOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
 };
-const gridOriginCircleStyle = {
-  circleRadius: 6,
-  circleColor: 'transparent',
-  circleStrokeWidth: 2,
-  circleStrokeColor: 'rgba(0,0,0,0.8)',
-  circleStrokeOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+const accuracyFillStyle = {
+  fillColor: 'rgba(255,0,0,0.18)',
+  fillOpacity: ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 1]
 };
-const gridOriginDotStyle = { 
-  circleRadius: 2, 
-  circleColor: 'rgba(0,0,0,0.8)',
-  circleOpacity: ['interpolate', ['linear'], ['zoom'], 11, 0, 12, 1]
+const accuracyOutlineStyle = {
+  lineColor: 'rgba(255,0,0,0.7)',
+  lineWidth: 1,
+  lineOpacity: ['interpolate', ['linear'], ['zoom'], 10, 0, 11.5, 1]
 };
 
 const checkpointsOuterStyle = {
@@ -89,8 +99,8 @@ export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading, promptForKey } = useMapTilerKey();
   const { lastLocation, requestLocation } = useGPS();
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, beginTempNavigation, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteId, activeWorkspaceRouteTitle, stashedRouteState, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints } = useCheckpoints();
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode } = useSettings();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, beginTempNavigation, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteId, activeWorkspaceRouteTitle, stashedRouteState, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints, pendingEdit, consumePendingEdit, updateCheckpointLocation } = useCheckpoints();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode } = useSettings();
   const { routes: workspaceRoutes, setRoutes: setWorkspaceRoutes, setActiveRouteId: persistActiveRouteId } = useWorkspaceRoutes();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
@@ -224,6 +234,7 @@ export default function MapLibreMap() {
   const [gridPlacementOpen, setGridPlacementOpen] = useState(false);
   const [projectPlacementOpen, setProjectPlacementOpen] = useState(false);
   const [addToRouteOpen, setAddToRouteOpen] = useState(false);
+  const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastCounter = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -250,7 +261,6 @@ export default function MapLibreMap() {
 
   const tempTargetColor = Colors[colorScheme].tempTarget;
   const tempTargetActive = activeRouteColor === tempTargetColor || activeRouteColor === Colors.light.tempTarget;
-  const mapGridOriginForRef = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
   const toolGap = 8;
   const toolsRight = insets.right + 10;
   const toolsBottom = insets.bottom + 10;
@@ -348,14 +358,8 @@ export default function MapLibreMap() {
       : null;
 
   const targetGridRefText = selectedCheckpoint
-    ? (() => {
-        const { easting, northing } = latLonToGridCoords(
-          mapGridOriginForRef,
-          { latitude: selectedCheckpoint.latitude, longitude: selectedCheckpoint.longitude },
-          gridConvergence ?? 0
-        );
-        return formatGridReference(easting, northing);
-      })()
+    ? (selectedCheckpoint.mgrs?.trim() ||
+        latLonToMGRS(selectedCheckpoint.latitude, selectedCheckpoint.longitude, 5))
     : null;
   const targetTitle = selectedCheckpoint
     ? selectedCheckpoint.label?.trim() || `Waypoint ${selectedIndex + 1}`
@@ -569,11 +573,48 @@ export default function MapLibreMap() {
     }
   };
 
-  const placePoint = async (latitude: number, longitude: number) => {
+  // Consume a pending checkpoint edit handed off from the routes screen.
+  useEffect(() => {
+    if (!pendingEdit) return;
+    let cancelled = false;
+    void (async () => {
+      const edit = await consumePendingEdit();
+      if (!edit || cancelled) return;
+      setEditingCheckpointId(edit.id);
+      const cp = checkpoints.find((c) => c.id === edit.id);
+      if (cp) {
+        await setViewTarget({ latitude: cp.latitude, longitude: cp.longitude, zoom: 14 });
+      }
+      if (edit.mode === 'tap') {
+        await requestPlacementMode();
+      } else {
+        await requestPlacementMode();
+        await cancelPlacementMode();
+        if (edit.mode === 'grid') {
+          setGridPlacementOpen(true);
+        } else if (edit.mode === 'project') {
+          setProjectPlacementOpen(true);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pendingEdit, consumePendingEdit, checkpoints, setViewTarget, requestPlacementMode, cancelPlacementMode]);
+
+  const placePoint = async (latitude: number, longitude: number, mgrs?: string) => {
+    if (editingCheckpointId) {
+      await updateCheckpointLocation(editingCheckpointId, latitude, longitude, mgrs);
+      await setViewTarget({ latitude, longitude, zoom: 15 });
+      await cancelPlacementMode();
+      setFollowing(false);
+      setEditingCheckpointId(null);
+      showToast('Checkpoint updated');
+      return;
+    }
+
     const route = workspaceRoutes.find((r) => r.id === activeWorkspaceRouteId);
     if (route) {
       // Active route: append as a waypoint. Stay in placement mode to chain more.
-      const cp = await addCheckpoint(latitude, longitude);
+      const cp = await addCheckpoint(latitude, longitude, mgrs);
       appendCheckpointToRoute(cp, route);
       showToast('Point added to route');
       return;
@@ -582,7 +623,7 @@ export default function MapLibreMap() {
     // No active route: temp navigation target (replaces the current one).
     await beginTempNavigation();
     await setActiveRouteStart(lastLocation ? { latitude: lastLocation.coords.latitude, longitude: lastLocation.coords.longitude } : null);
-    const cp = await addCheckpoint(latitude, longitude);
+    const cp = await addCheckpoint(latitude, longitude, mgrs);
     await setCheckpointLabel(cp.id, `Target ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`);
     await setViewTarget({ latitude, longitude, zoom: 15 });
     await cancelPlacementMode();
@@ -652,10 +693,12 @@ export default function MapLibreMap() {
 
   const handleDonePlacing = async () => {
     await cancelPlacementMode();
+    setEditingCheckpointId(null);
   };
 
   const handleCancelPlacing = async () => {
     await cancelPlacementMode();
+    setEditingCheckpointId(null);
   };
 
   const handleMarkerPress = async (id: string) => {
@@ -800,8 +843,7 @@ export default function MapLibreMap() {
 
   const gridShape = React.useMemo(() => {
     if (!mapGridEnabled || zoomLevel < 10.5 || !visibleBounds) return emptyGeo;
-    const originPt = mapGridOrigin ?? { latitude: -37.8136, longitude: 144.9631 };
-    
+
     // Pad the visible bounds to prevent grid lines from popping into existence while panning.
     const latSpan = Math.abs(visibleBounds[0][1] - visibleBounds[1][1]);
     const lngSpan = Math.abs(visibleBounds[0][0] - visibleBounds[1][0]);
@@ -811,23 +853,24 @@ export default function MapLibreMap() {
 
     const latPad = Math.min(latSpan * 0.5, 0.5); // cap padding to max 0.5 deg to avoid massive shapes
     const lngPad = Math.min(lngSpan * 0.5, 0.5);
-    
+
     const swLat = Math.min(visibleBounds[0][1], visibleBounds[1][1]);
     const swLng = Math.min(visibleBounds[0][0], visibleBounds[1][0]);
     const neLat = Math.max(visibleBounds[0][1], visibleBounds[1][1]);
     const neLng = Math.max(visibleBounds[0][0], visibleBounds[1][0]);
 
-    const sw = { 
-      latitude: swLat - latPad, 
-      longitude: swLng - lngPad 
+    const sw = {
+      latitude: swLat - latPad,
+      longitude: swLng - lngPad,
     };
-    const ne = { 
-      latitude: neLat + latPad, 
-      longitude: neLng + lngPad 
+    const ne = {
+      latitude: neLat + latPad,
+      longitude: neLng + lngPad,
     };
 
-    const gridOffsets = computeGridCornersFromMapBounds(originPt, sw, ne, 1000, gridConvergence ?? 0);
-    const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
+    const gridCtx = computeGridCornersFromMapBounds(sw, ne, 1000);
+    if (!gridCtx) return emptyGeo;
+    const intersections = generateGridPoints(gridCtx, 1000);
 
     const es = Array.from(new Set(intersections.map((p) => p.e))).sort((a, b) => a - b);
     const ns = Array.from(new Set(intersections.map((p) => p.n))).sort((a, b) => a - b);
@@ -838,7 +881,17 @@ export default function MapLibreMap() {
 
     const features: any[] = [];
 
-    // Main grid lines
+    // GZD boundary lines (zone edges every 6° lon, latitude band edges every
+    // 8° lat) — thickest lines, per standard MGRS map convention.
+    for (const line of generateGzdLines(sw, ne)) {
+      features.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: line },
+        properties: { kind: 'gridGzdLine' },
+      });
+    }
+
+    // Main grid lines (heavier where they fall on a 100,000m square boundary)
     for (const e of es) {
       const coords = ns.map((n) => {
         const p = ptMap.get(key(e, n));
@@ -848,7 +901,7 @@ export default function MapLibreMap() {
         features.push({
           type: 'Feature',
           geometry: { type: 'LineString', coordinates: coords },
-          properties: { kind: 'gridLine' },
+          properties: { kind: e % 100000 === 0 ? 'grid100kLine' : 'gridLine' },
         });
       }
     }
@@ -862,7 +915,7 @@ export default function MapLibreMap() {
         features.push({
           type: 'Feature',
           geometry: { type: 'LineString', coordinates: coords },
-          properties: { kind: 'gridLine' },
+          properties: { kind: n % 100000 === 0 ? 'grid100kLine' : 'gridLine' },
         });
       }
     }
@@ -920,7 +973,7 @@ export default function MapLibreMap() {
       }
     }
 
-    // Grid numbers
+    // Grid numbers (MGRS cell labels)
     if (mapGridNumbersEnabled && es.length >= 2 && ns.length >= 2) {
       for (let i = 0; i < es.length - 1; i++) {
         for (let j = 0; j < ns.length - 1; j++) {
@@ -935,12 +988,10 @@ export default function MapLibreMap() {
           if (p00 && p10 && p01 && p11) {
             const centerLon = (p00.longitude + p10.longitude + p01.longitude + p11.longitude) / 4;
             const centerLat = (p00.latitude + p10.latitude + p01.latitude + p11.latitude) / 4;
-            const eStr = (e0 < 0 ? '-' : '') + Math.abs(Math.floor(e0 / 1000)).toString().padStart(2, '0').slice(-2);
-            const nStr = (n0 < 0 ? '-' : '') + Math.abs(Math.floor(n0 / 1000)).toString().padStart(2, '0').slice(-2);
             features.push({
               type: 'Feature',
               geometry: { type: 'Point', coordinates: [centerLon, centerLat] },
-              properties: { kind: 'gridNumber', label: `${eStr} ${nStr}` },
+              properties: { kind: 'gridNumber', label: mgrsCellLabel(e0, n0, gridCtx.zone) },
             });
           }
         }
@@ -948,21 +999,35 @@ export default function MapLibreMap() {
     }
 
     return { type: 'FeatureCollection', features };
-  }, [mapGridEnabled, zoomLevel, visibleBounds, mapGridOrigin, gridConvergence, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, emptyGeo]);
+  }, [mapGridEnabled, zoomLevel, visibleBounds, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, emptyGeo]);
 
-  const gridOriginShape = React.useMemo(() => {
-    if (!mapGridEnabled || !mapGridOrigin) return emptyGeo;
-    return {
-      type: 'FeatureCollection',
-      features: [
-        {
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [mapGridOrigin.longitude, mapGridOrigin.latitude] },
-          properties: { kind: 'gridOrigin' },
-        },
-      ],
-    };
-  }, [mapGridEnabled, mapGridOrigin, emptyGeo]);
+  const checkpointAccuracyShape = React.useMemo(() => {
+    const features: any[] = [];
+    for (const cp of checkpoints) {
+      const ref = cp.mgrs?.trim();
+      if (!ref) continue;
+      const parsed = parseMGRS(ref);
+      if (!parsed) continue;
+      const half = parsed.accuracyMeters / 2;
+      const corners = [
+        [parsed.easting - half, parsed.northing - half],
+        [parsed.easting + half, parsed.northing - half],
+        [parsed.easting + half, parsed.northing + half],
+        [parsed.easting - half, parsed.northing + half],
+      ].map(([e, n]) => {
+        const ll = utmToLatLon(parsed.zone, parsed.band, e, n);
+        return [ll.longitude, ll.latitude];
+      });
+      corners.push(corners[0]);
+      features.push({
+        type: 'Feature',
+        id: `acc-${cp.id}`,
+        geometry: { type: 'Polygon', coordinates: [corners] },
+        properties: { kind: 'accuracyCell' },
+      });
+    }
+    return { type: 'FeatureCollection', features };
+  }, [checkpoints]);
 
   const checkpointsShape = React.useMemo(() => {
     const validCps = checkpoints.filter(cp => Number.isFinite(cp.latitude) && Number.isFinite(cp.longitude));
@@ -1060,7 +1125,7 @@ export default function MapLibreMap() {
     );
   }
 
-  const { Camera, LineLayer, CircleLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
+  const { Camera, LineLayer, CircleLayer, FillLayer, SymbolLayer, MapView, ShapeSource, Images } = maplibre as any;
 
   if (Platform.OS === 'android' && !androidMapStyle) {
     return (
@@ -1231,6 +1296,16 @@ export default function MapLibreMap() {
             filter={['==', 'kind', 'gridSubLine']}
             style={gridSublinesStyle}
           />
+          <LineLayer
+            id="grid-100k-lines"
+            filter={['==', 'kind', 'grid100kLine']}
+            style={grid100kStyle}
+          />
+          <LineLayer
+            id="grid-gzd-lines"
+            filter={['==', 'kind', 'gridGzdLine']}
+            style={gridGzdStyle}
+          />
           <SymbolLayer
             id="grid-numbers"
             filter={['==', 'kind', 'gridNumber']}
@@ -1238,14 +1313,16 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
 
-        <ShapeSource id="grid-origin-source" shape={gridOriginShape}>
-          <CircleLayer
-            id="grid-origin-circle"
-            style={gridOriginCircleStyle}
+        <ShapeSource id="checkpoint-accuracy-source" shape={checkpointAccuracyShape}>
+          <FillLayer
+            id="checkpoint-accuracy-fill"
+            filter={['==', 'kind', 'accuracyCell']}
+            style={accuracyFillStyle}
           />
-          <CircleLayer
-            id="grid-origin-dot"
-            style={gridOriginDotStyle}
+          <LineLayer
+            id="checkpoint-accuracy-outline"
+            filter={['==', 'kind', 'accuracyCell']}
+            style={accuracyOutlineStyle}
           />
         </ShapeSource>
 
@@ -1378,7 +1455,7 @@ export default function MapLibreMap() {
       <MapToolButton
         icon="safari.fill"
         label="Compass"
-        onPress={() => setCompassOpen(true)}
+        onPress={() => setCompassOpen((v) => !v)}
         colorScheme={colorScheme}
         active={compassOpen}
         accentColor={String(tint)}
@@ -1386,7 +1463,9 @@ export default function MapLibreMap() {
           position: 'absolute',
           right: toolsRight,
           bottom: toolsBottom + MAP_TOOL_BUTTON_SIZE + toolGap,
-          zIndex: 50,
+          // Sit above the compass overlay backdrop so re-tapping the button
+          // closes the panel directly (backdrop handles taps elsewhere).
+          zIndex: compassOpen ? 70 : 50,
         }}
       />
       <MapToolButton
@@ -1415,13 +1494,13 @@ export default function MapLibreMap() {
 
       <GridReferenceModal
         visible={gridPlacementOpen}
-        onClose={() => setGridPlacementOpen(false)}
-        onAdd={(location) => { void placePoint(location.latitude, location.longitude); }}
+        onClose={() => { setGridPlacementOpen(false); setEditingCheckpointId(null); }}
+        onAdd={(location, mgrs) => { void placePoint(location.latitude, location.longitude, mgrs); }}
       />
 
       <ProjectPointModal
         visible={projectPlacementOpen}
-        onClose={() => setProjectPlacementOpen(false)}
+        onClose={() => { setProjectPlacementOpen(false); setEditingCheckpointId(null); }}
         onAdd={(location) => { void placePoint(location.latitude, location.longitude); }}
       />
 

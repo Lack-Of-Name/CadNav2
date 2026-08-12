@@ -67,10 +67,10 @@ const sections: ManualSection[] = [
         id: 'grid-reference',
         title: 'Grid Reference Entry',
         description:
-          'Choosing "Grid Reference" opens a modal where you enter easting and northing values (relative to your grid origin). Tap +/- to toggle the sign. The grid origin is set in Settings → Grid → Grid Origin. Tap "Add Point" to convert to lat/lon and place the checkpoint. This is the fastest way to navigate to a known map reference.',
+          'Choosing "Grid Reference" opens a modal where you enter a Military Grid Reference System (MGRS) reference: the Grid Zone Designator (GZD, e.g. 55H) and 100km square (e.g. DV), prefilled from your GPS location, then easting and northing digits. Use 3 digits each for 100 m precision or 5 digits each for 1 m precision. The reference is stored with the checkpoint, and a semi-transparent polygon shows its accuracy on the map. Tap "Add Point" to convert to lat/lon and place the checkpoint. This is the fastest way to navigate to a known map reference.',
         imageName: 'manual-grid-ref.png',
         imageCaption:
-          'The Grid Reference modal: two input fields (Easting, Northing) with +/- toggles, and "Add Point" / "Cancel" buttons at the bottom. Add a callout note: "Your grid origin must be set in Settings first."',
+          'The Grid Reference modal: GZD and 100km square fields prefilled from GPS, an easting/northing precision toggle (3 or 5 digits), a live reference preview showing the accuracy, and "Add Point" / "Cancel" buttons at the bottom.',
       },
       {
         id: 'project-point',
@@ -111,10 +111,10 @@ const sections: ManualSection[] = [
         id: 'grid-overlay',
         title: 'Grid Overlay',
         description:
-          'Settings → Grid lets you enable an MGRS-style grid on the map. Toggle "Grid Overlay" to show lines, "Subdivisions" for finer detail, and "Grid Labels" for coordinate numbers. "Grid Origin" sets the reference point (use your GPS location or enter a grid reference) — all grid references in the app are relative to this origin. "Grid Convergence" adjusts the angle between true north and grid north.',
+          'Settings → Grid lets you enable an MGRS (Military Grid Reference System) grid on the map. The grid is aligned to the UTM zone you are in — the 1000 m lines, subdivisions, and labels switch automatically as you pan across zone boundaries. Toggle "Grid Overlay" to show lines, "Subdivisions" for finer detail, and "Grid Labels" for coordinate numbers.',
         imageName: 'manual-grid-overlay.png',
         imageCaption:
-          'The Grid section in Settings showing all rows. Overlay a map screenshot with the grid active — show grid lines, labels, and the origin marker. Use callouts to connect settings toggles to their visual effect on the map.',
+          'The Grid section in Settings showing the overlay, subdivisions, and labels toggles. Overlay a map screenshot with the grid active — show grid lines, labels, and the UTM zone in the corner. Use callouts to connect settings toggles to their visual effect on the map.',
       },
     ],
   },

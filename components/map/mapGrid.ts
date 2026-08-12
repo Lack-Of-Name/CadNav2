@@ -1,84 +1,48 @@
-import * as turf from '@turf/turf';
+import { latLonToUtm, latLonToUtmGridCoords, mgrs100kSquare, utmGridCoordsToLatLon, type LatLon } from '@/lib/mgrs';
 
-type LatLon = { latitude: number; longitude: number };
+/** The 10,000,000 m northing offset used for southern-hemisphere UTM. */
+const NORTHING_OFFSET = 10000000;
 
-/**
- * Convert grid offsets in meters to latitude/longitude.
- * @param origin The origin point { latitude, longitude }
- * @param easting Offset in meters east from origin
- * @param northing Offset in meters north from origin
- * @returns New point { latitude, longitude }
- */
-export function gridOffsetMetersToLatLon(origin: LatLon, easting: number, northing: number): LatLon {
-  // Start at origin [lon, lat]
-  const originPoint = turf.point([origin.longitude, origin.latitude]);
+export type GridOffsets = {
+  bottomLeft: { easting: number; northing: number };
+  topRight: { easting: number; northing: number };
+};
 
-  // Move east by easting meters
-  const eastPoint = turf.destination(originPoint, easting, 90, { units: 'meters' });
-
-  // Move north by northing meters
-  const finalPoint = turf.destination(eastPoint, northing, 0, { units: 'meters' });
-
-  const [lon, lat] = finalPoint.geometry.coordinates;
-  return { latitude: lat, longitude: lon };
-}
+export type GridContext = {
+  /** UTM zone the grid is drawn in. */
+  zone: number;
+  /** MGRS latitude band of the grid's origin area. */
+  band: string;
+  offsets: GridOffsets;
+};
 
 /**
- * Given an origin and two corner lat/lon points (map bottom-left and top-right),
- * compute expanded grid-aligned corner coordinates around the origin.
- *
- * Steps:
- * 1. Calculate easting (meters east of origin) and northing (meters north of origin)
- *    for both corners.
- * 2. For bottom-left subtract 1km from both easting and northing and round to nearest 1km.
- *    For top-right add 1km to both and round to nearest 1km.
- * 3. Convert the adjusted easting/northing back to lat/lon to produce grid bounds.
+ * Given the map's visible bounds, compute the UTM grid (1km-aligned) that
+ * covers it. The grid is drawn in the UTM zone containing the bounds centre.
+ * Returns null when the area is outside MGRS limits (beyond 84N/80S).
  */
 export function computeGridCornersFromMapBounds(
-  origin: LatLon,
   bottomLeft: LatLon,
   topRight: LatLon,
-  step = 1000,
-  gridConvergence = 0
-): {
-  offsets: {
-    bottomLeft: { easting: number; northing: number };
-    topRight: { easting: number; northing: number };
-  };
-} {
-  const originPoint = turf.point([origin.longitude, origin.latitude]);
+  step = 1000
+): GridContext | null {
+  const centerLat = (bottomLeft.latitude + topRight.latitude) / 2;
+  const centerLon = (bottomLeft.longitude + topRight.longitude) / 2;
 
-  // Build all four corners of the map bounds
-  const bl = turf.point([bottomLeft.longitude, bottomLeft.latitude]);
-  const br = turf.point([topRight.longitude, bottomLeft.latitude]);
-  const tl = turf.point([bottomLeft.longitude, topRight.latitude]);
-  const tr = turf.point([topRight.longitude, topRight.latitude]);
+  const utm = latLonToUtm(centerLat, centerLon);
+  if (utm.band === 'Z') return null; // outside MGRS limits
+  const zone = utm.zone;
 
-  const corners = [bl, br, tl, tr];
+  // Build all four corners of the map bounds, projected into this zone.
+  const bl = { latitude: bottomLeft.latitude, longitude: bottomLeft.longitude };
+  const br = { latitude: bottomLeft.latitude, longitude: topRight.longitude };
+  const tl = { latitude: topRight.latitude, longitude: bottomLeft.longitude };
+  const tr = { latitude: topRight.latitude, longitude: topRight.longitude };
 
-  // Helper: rotate EN vector by degrees
-  const rotate = (e: number, n: number, deg: number) => {
-    const rad = (deg * Math.PI) / 180;
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    return { e: e * cos - n * sin, n: e * sin + n * cos };
-  };
+  const enPoints = [bl, br, tl, tr].map((pt) => latLonToUtmGridCoords(pt.latitude, pt.longitude, zone));
 
-  // Convert each corner to true-east/north offsets (meters) from origin, then rotate
-  // into grid coordinates by applying the inverse of gridConvergence (i.e. -gridConvergence).
-  const enPoints = corners.map((pt) => {
-    const dist = turf.distance(originPoint, pt, { units: 'meters' });
-    const bearing = turf.bearing(originPoint, pt); // degrees from north
-    const rad = (bearing * Math.PI) / 180;
-    const eTrue = dist * Math.sin(rad);
-    const nTrue = dist * Math.cos(rad);
-    // rotate into grid coordinates (grid north = true north + gridConvergence)
-    const { e, n } = rotate(eTrue, nTrue, -gridConvergence);
-    return { e, n };
-  });
-
-  const eVals = enPoints.map((p) => p.e);
-  const nVals = enPoints.map((p) => p.n);
+  const eVals = enPoints.map((p) => p.easting);
+  const nVals = enPoints.map((p) => p.northing);
 
   const eMin = Math.min(...eVals);
   const eMax = Math.max(...eVals);
@@ -93,6 +57,8 @@ export function computeGridCornersFromMapBounds(
   const adjNorthingTR = Math.ceil((nMax + pad) / step) * step;
 
   return {
+    zone,
+    band: utm.band,
     offsets: {
       bottomLeft: { easting: adjEastingBL, northing: adjNorthingBL },
       topRight: { easting: adjEastingTR, northing: adjNorthingTR },
@@ -102,19 +68,10 @@ export function computeGridCornersFromMapBounds(
 
 /**
  * Generate a grid of intersection points (easting, northing) between two corner offsets.
- *
- * Both corners are specified as meters east/north of the origin. The function will
- * return all intersection points (inclusive) on a regular grid with spacing `step`.
- *
- * Returns an array of tuples: [easting, northing]
+ * Both corners are zone-local UTM meters; all intersections on a regular grid
+ * with spacing `step` are returned (inclusive).
  */
-export function generateGridIntersections(
-  offsets: {
-    bottomLeft: { easting: number; northing: number };
-    topRight: { easting: number; northing: number };
-  },
-  step = 1000
-): [number, number][] {
+export function generateGridIntersections(offsets: GridOffsets, step = 1000): [number, number][] {
   const eStart = Math.min(offsets.bottomLeft.easting, offsets.topRight.easting);
   const eEnd = Math.max(offsets.bottomLeft.easting, offsets.topRight.easting);
   const nStart = Math.min(offsets.bottomLeft.northing, offsets.topRight.northing);
@@ -138,82 +95,66 @@ export function generateGridIntersections(
 }
 
 /**
- * Convert grid coordinates (easting,northing) into latitude/longitude, taking
- * grid convergence into account. `gridConvergence` is degrees difference
- * between true north and grid north (gridNorth = trueNorth + gridConvergence).
- */
-export function gridCoordsToLatLon(origin: LatLon, easting: number, northing: number, gridConvergence = 0): LatLon {
-  // rotate grid coords back to true EN by applying +gridConvergence
-  const rad = (gridConvergence * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const eTrue = easting * cos - northing * sin;
-  const nTrue = easting * sin + northing * cos;
-  return gridOffsetMetersToLatLon(origin, eTrue, nTrue);
-}
-
-/**
- * Convert latitude/longitude to grid coordinates (easting, northing) in meters from origin.
- */
-export function latLonToGridCoords(origin: LatLon, target: LatLon, gridConvergence = 0): { easting: number; northing: number } {
-  const originPoint = turf.point([origin.longitude, origin.latitude]);
-  const targetPoint = turf.point([target.longitude, target.latitude]);
-
-  const dist = turf.distance(originPoint, targetPoint, { units: 'meters' });
-  const bearing = turf.bearing(originPoint, targetPoint);
-  
-  const rad = (bearing * Math.PI) / 180;
-  const eTrue = dist * Math.sin(rad);
-  const nTrue = dist * Math.cos(rad);
-
-  // rotate into grid coordinates (grid north = true north + gridConvergence)
-  const convRad = (-gridConvergence * Math.PI) / 180;
-  const cos = Math.cos(convRad);
-  const sin = Math.sin(convRad);
-  
-  const easting = eTrue * cos - nTrue * sin;
-  const northing = eTrue * sin + nTrue * cos;
-
-  return { easting, northing };
-}
-
-/**
- * Format easting and northing as a grid reference string (e.g. "+12345, -67890").
- */
-export function formatGridReference(easting: number, northing: number): string {
-  const formatVal = (val: number) => {
-    if (val >= 0) {
-      return '+' + Math.round(val).toString().padStart(5, '0');
-    } else {
-      const km = Math.floor(val / 1000);
-      const remainder = Math.round(val - (km * 1000));
-      const formatted = (Math.abs(km) * 1000 + remainder).toString().padStart(5, '0');
-      return '-' + formatted;
-    }
-  };
-  return `E${formatVal(easting)} N${formatVal(northing)}`;
-}
-
-/**
- * Generate grid intersections as lat/lon points. Returns an array of objects
- * containing the original grid `e` and `n` values (in meters) and the
- * corresponding `latitude`/`longitude` computed after applying
- * `gridConvergence`.
+ * Generate grid intersections as lat/lon points for the given grid context.
+ * Returns objects with the zone-local `e`/`n` values (meters) and the
+ * corresponding latitude/longitude.
  */
 export function generateGridPoints(
-  origin: LatLon,
-  offsets: {
-    bottomLeft: { easting: number; northing: number };
-    topRight: { easting: number; northing: number };
-  },
-  step = 1000,
-  gridConvergence = 0
+  ctx: GridContext,
+  step = 1000
 ): { e: number; n: number; latitude: number; longitude: number }[] {
   const pts: { e: number; n: number; latitude: number; longitude: number }[] = [];
-  const intersections = generateGridIntersections(offsets, step);
+  const intersections = generateGridIntersections(ctx.offsets, step);
   for (const [e, n] of intersections) {
-    const ll = gridCoordsToLatLon(origin, e, n, gridConvergence);
+    const ll = utmGridCoordsToLatLon(ctx.zone, e, n);
     pts.push({ e, n, latitude: ll.latitude, longitude: ll.longitude });
   }
   return pts;
+}
+
+/**
+ * GZD (grid zone designator) boundary lines covering the bounding box
+ * `sw`/`ne`: UTM zone (column) edges at every 6° of longitude and the
+ * latitude band (row) edges at -80°..84° (8° bands, 12° for the X band).
+ * Each returned line is an array of [lon, lat] pairs.
+ */
+export function generateGzdLines(sw: LatLon, ne: LatLon): [number, number][][] {
+  const lines: [number, number][][] = [];
+
+  // Zone edges run along meridians at every 6 degrees of longitude.
+  const firstLon = Math.ceil(sw.longitude / 6) * 6;
+  const lastLon = Math.floor(ne.longitude / 6) * 6;
+  for (let lon = firstLon; lon <= lastLon; lon += 6) {
+    lines.push([
+      [lon, sw.latitude],
+      [lon, ne.latitude],
+    ]);
+  }
+
+  // Latitude band edges: C (-80..-72) through W (64..72), then X (72..84).
+  const bandEdges: number[] = [];
+  for (let k = 0; k <= 19; k++) bandEdges.push(-80 + 8 * k);
+  bandEdges.push(84);
+  for (const lat of bandEdges) {
+    if (lat < sw.latitude || lat > ne.latitude) continue;
+    lines.push([
+      [sw.longitude, lat],
+      [ne.longitude, lat],
+    ]);
+  }
+
+  return lines;
+}
+
+/**
+ * MGRS label for the 1km grid cell whose SW corner is at zone-local grid
+ * coordinate (e, n), e.g. "DV 12 34". Uses the 100,000m square letters plus
+ * the 2-digit km easting/northing of the corner within that square.
+ */
+export function mgrsCellLabel(e: number, n: number, zone: number): string {
+  const standardN = n >= 0 ? n : n + NORTHING_OFFSET;
+  const square = mgrs100kSquare(e, standardN, zone);
+  const eKm = (Math.floor(e / 1000) % 100 + 100) % 100;
+  const nKm = (Math.floor(standardN / 1000) % 100 + 100) % 100;
+  return `${square} ${String(eKm).padStart(2, '0')} ${String(nKm).padStart(2, '0')}`;
 }

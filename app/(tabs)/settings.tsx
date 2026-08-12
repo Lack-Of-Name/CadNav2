@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -14,12 +14,10 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { getMaplibreModule } from '@/lib/maplibreModule';
 import { useCheckpoints } from '@/hooks/checkpoints';
-import { useGPS } from '@/hooks/gps';
 import { useSettings, type GpsMode, type ThemeMode } from '@/hooks/settings';
 import { tutorials } from '@/constants/tutorials';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTutorials } from '@/hooks/tutorials';
-import * as turf from '@turf/turf';
 import { useRouter } from 'expo-router';
 
 function SettingsSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -181,36 +179,14 @@ export default function SettingsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const textColor = theme.text;
-  const { angleUnit, mapHeading, mapLayer, gridConvergence, mapGridOrigin, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, setSetting } = useSettings();
+  const { angleUnit, mapHeading, mapLayer, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
   const { showTutorial, hasCompleted } = useTutorials();
-  const { lastLocation, requestLocation } = useGPS();
-  const { selectedCheckpoint } = useCheckpoints();
   const [infoOpen, setInfoOpen] = useState(false);
   const [downloadMapsOpen, setDownloadMapsOpen] = useState(false);
-  const [gridModalOpen, setGridModalOpen] = useState(false);
-  const [gridPanel, setGridPanel] = useState<'menu' | 'overlays' | 'origin' | 'convergence'>('menu');
-  const [originEasting, setOriginEasting] = useState('');
-  const [originNorthing, setOriginNorthing] = useState('');
-  const [originEastingSign, setOriginEastingSign] = useState<1 | -1>(1);
-  const [originNorthingSign, setOriginNorthingSign] = useState<1 | -1>(1);
-  const [originError, setOriginError] = useState<string | null>(null);
-  
+
   const borderColor = theme.divider;
   const background = theme.background;
-  const placeholderColor = theme.textSubtle;
-  const rowBg = theme.surface;
-
-  const [inputConvergence, setInputConvergence] = useState<string>('');
-  useEffect(() => {
-    setInputConvergence(gridConvergence != null ? String(gridConvergence) : '');
-  }, [gridConvergence]);
-
-  const gridOriginLabel = useMemo(() => {
-    if (!mapGridOrigin) return 'Not set';
-    return `${mapGridOrigin.latitude.toFixed(6)}, ${mapGridOrigin.longitude.toFixed(6)}`;
-  }, [mapGridOrigin]);
 
   const isMils = angleUnit === 'mils';
   const isTrue = mapHeading === 'true';
@@ -254,94 +230,6 @@ export default function SettingsScreen() {
         },
       ],
     });
-  }
-
-  async function saveConvergence() {
-    const v = inputConvergence.trim();
-    const n = parseFloat(v);
-    if (!v) {
-      await setSetting('gridConvergence', null);
-      setGridModalOpen(false);
-    } else if (!Number.isFinite(n)) {
-      await alert({ title: 'Invalid', message: 'Please enter a valid number for convergence.' });
-    } else {
-      await setSetting('gridConvergence', n);
-      setGridModalOpen(false);
-    }
-  }
-
-  function parseGridValue(value: string, sign: 1 | -1) {
-    const trimmed = value.trim();
-    if (!/^[0-9]+$/.test(trimmed)) return null;
-    const len = trimmed.length;
-    if (len < 1 || len > 5) return null;
-    const scaleByDigits: Record<number, number> = {
-      1: 10000,
-      2: 1000,
-      3: 100,
-      4: 10,
-      5: 1,
-    };
-    const scale = scaleByDigits[len];
-    const num = parseInt(trimmed, 10);
-    return { meters: num * scale * sign, digits: len };
-  }
-
-  async function setOriginToMyLocation() {
-    setOriginError(null);
-    if (!lastLocation) {
-      requestLocation();
-      setOriginError('Current location unavailable. Try again once GPS is ready.');
-      return;
-    }
-    const { latitude, longitude } = lastLocation.coords;
-    await setSetting('mapGridOrigin', { latitude, longitude });
-    setGridModalOpen(false);
-  }
-
-  async function setOriginFromGridRef() {
-    setOriginError(null);
-    if (!lastLocation) {
-      requestLocation();
-      setOriginError('Current location unavailable. Try again once GPS is ready.');
-      return;
-    }
-
-    const eParsed = parseGridValue(originEasting, originEastingSign);
-    const nParsed = parseGridValue(originNorthing, originNorthingSign);
-
-    if (!eParsed || !nParsed) {
-      setOriginError('Enter grid digits only (1–5 digits each).');
-      return;
-    }
-
-    if (eParsed.digits !== nParsed.digits) {
-      setOriginError('Easting and Northing must have the same number of digits (1–5).');
-      return;
-    }
-
-    const lat = lastLocation.coords.latitude;
-    const lon = lastLocation.coords.longitude;
-
-    const ex = -eParsed.meters;
-    const ny = -nParsed.meters;
-    const theta = (gridConvergence ?? 0) * (Math.PI / 180);
-    const eTrue = ex * Math.cos(theta) - ny * Math.sin(theta);
-    const nTrue = ex * Math.sin(theta) + ny * Math.cos(theta);
-    const dist = Math.hypot(eTrue, nTrue);
-    const bearing = (Math.atan2(eTrue, nTrue) * 180) / Math.PI;
-    const bearingNormalized = (bearing + 360) % 360;
-
-    const finalPoint = turf.destination([lon, lat], dist, bearingNormalized, { units: 'meters' });
-    const [originLon, originLat] = finalPoint.geometry.coordinates;
-
-    await setSetting('mapGridOrigin', { latitude: originLat, longitude: originLon });
-    setGridModalOpen(false);
-  }
-
-  async function setOriginFromCheckpoint(latitude: number, longitude: number) {
-    await setSetting('mapGridOrigin', { latitude, longitude });
-    setGridModalOpen(false);
   }
 
   return (
@@ -403,7 +291,7 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Grid" description="Fine-tune the grid overlay and origin settings.">
+        <SettingsSection title="Grid" description="Toggle the MGRS grid overlay on the map.">
           <SettingsRow 
             icon="square.grid.3x3" 
             label="Grid Overlay" 
@@ -439,32 +327,10 @@ export default function SettingsScreen() {
                     onValueChange={(v) => void setSetting('mapGridNumbersEnabled', v)}
                   />
                 }
+                isLast
               />
             </>
           )}
-          <SettingsRow
-            icon="mappin.and.ellipse"
-            label="Grid Origin"
-            color={theme.primary}
-            value={mapGridOrigin ? 'Configured' : 'Not set'}
-            onPress={() => {
-              setOriginError(null);
-              setGridPanel('origin');
-              setGridModalOpen(true);
-            }}
-          />
-          <SettingsRow
-            icon="compass.drawing"
-            label="Grid Convergence"
-            color={theme.primary}
-            value={gridConvergence != null ? `${gridConvergence}°` : 'Not set'}
-            onPress={() => {
-              setOriginError(null);
-              setGridPanel('convergence');
-              setGridModalOpen(true);
-            }}
-            isLast
-          />
         </SettingsSection>
 
         <SettingsSection title="Map" description="Map layer, offline packs, and map key management.">
@@ -541,134 +407,6 @@ export default function SettingsScreen() {
 
         <ThemedText style={styles.footerText}>CadNav v1.0.0 · Grid navigation for field use</ThemedText>
       </ScrollView>
-
-      {/* Grid Settings Modal */}
-      <Modal visible={gridModalOpen} animationType="slide" transparent={true}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <View style={styles.modalBackdrop}>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => { Keyboard.dismiss(); setGridModalOpen(false); }} />
-              <ThemedView style={[styles.modalContainer, { backgroundColor: String(background), borderColor: String(borderColor) }]}> 
-                <ScrollView
-                  bounces={false}
-                  overScrollMode="never"
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={styles.modalScroll}
-                >
-                  <View style={styles.modalHeaderRow}>
-                    <View style={{ width: 64 }} />
-                    <ThemedText type="subtitle">
-                      {gridPanel === 'origin' ? 'Grid Origin' : 'Grid Convergence'}
-                    </ThemedText>
-                    <TouchableOpacity
-                      onPress={() => setGridModalOpen(false)}
-                      style={[styles.headerButton, { borderColor: String(borderColor), backgroundColor: String(rowBg) }]}
-                    >
-                      <ThemedText style={styles.headerButtonText}>Close</ThemedText>
-                    </TouchableOpacity>
-                  </View>
-
-                  {gridPanel === 'convergence' ? (
-                    <View style={{ marginTop: 12 }}>
-                      <ThemedText style={{ marginBottom: 12 }}>
-                        Enter the angle between true north and grid north (positive if grid north is east of true north).
-                      </ThemedText>
-                      <TextInput
-                        style={[styles.input, { borderColor: String(borderColor), color: String(textColor) }]}
-                        placeholder="e.g. -1.23"
-                        placeholderTextColor={String(placeholderColor)}
-                        value={inputConvergence}
-                        onChangeText={setInputConvergence}
-                        autoFocus
-                      />
-                      <View style={styles.modalButtons}>
-                        <StyledButton variant="secondary" onPress={() => setGridModalOpen(false)}>Cancel</StyledButton>
-                        <View style={{ width: 12 }} />
-                        <StyledButton variant="primary" onPress={saveConvergence}>Save</StyledButton>
-                      </View>
-                    </View>
-                  ) : null}
-
-                  {gridPanel === 'origin' ? (
-                    <View style={{ marginTop: 12 }}>
-                      <ThemedText style={{ marginBottom: 6 }}>Current origin</ThemedText>
-                      <ThemedText style={{ marginBottom: 16, opacity: 0.7 }}>{gridOriginLabel}</ThemedText>
-
-                      <StyledButton variant="primary" onPress={setOriginToMyLocation}>
-                        Use my location
-                      </StyledButton>
-
-                      <View style={{ marginTop: 10 }}>
-                        <StyledButton
-                          variant="secondary"
-                          onPress={() => selectedCheckpoint && setOriginFromCheckpoint(selectedCheckpoint.latitude, selectedCheckpoint.longitude)}
-                          disabled={!selectedCheckpoint}
-                        >
-                          Use selected checkpoint
-                        </StyledButton>
-                        {!selectedCheckpoint ? (
-                          <ThemedText style={{ marginTop: 6, opacity: 0.7 }}>No checkpoint selected.</ThemedText>
-                        ) : null}
-                      </View>
-
-                      <View style={{ marginTop: 16 }}>
-                        <ThemedText type="defaultSemiBold">I am at this grid reference</ThemedText>
-                        <ThemedText style={{ marginTop: 4, opacity: 0.7 }}>
-                          Digits set precision (1–5).
-                        </ThemedText>
-
-                        <ThemedText style={{ marginTop: 8 }}>Easting</ThemedText>
-                        <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
-                          <TouchableOpacity 
-                            style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
-                            onPress={() => setOriginEastingSign(s => s === 1 ? -1 : 1)}
-                          >
-                            <ThemedText style={styles.signText}>{originEastingSign === 1 ? '+' : '-'}</ThemedText>
-                          </TouchableOpacity>
-                          <TextInput
-                            style={[styles.inputWithSign, { color: String(textColor) }]}
-                            placeholder="e.g. 12"
-                            placeholderTextColor={String(placeholderColor)}
-                            value={originEasting}
-                            onChangeText={(t) => { setOriginEasting(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                            keyboardType="numeric"
-                            maxLength={5}
-                          />
-                        </View>
-
-                        <ThemedText style={{ marginTop: 8 }}>Northing</ThemedText>
-                        <View style={[styles.inputContainer, { borderColor: String(borderColor) }]}>
-                          <TouchableOpacity 
-                            style={[styles.signButton, { borderRightColor: String(borderColor) }]} 
-                            onPress={() => setOriginNorthingSign(s => s === 1 ? -1 : 1)}
-                          >
-                            <ThemedText style={styles.signText}>{originNorthingSign === 1 ? '+' : '-'}</ThemedText>
-                          </TouchableOpacity>
-                          <TextInput
-                            style={[styles.inputWithSign, { color: String(textColor) }]}
-                            placeholder="e.g. 34"
-                            placeholderTextColor={String(placeholderColor)}
-                            value={originNorthing}
-                            onChangeText={(t) => { setOriginNorthing(t.replace(/[^0-9]/g, '')); setOriginError(null); }}
-                            keyboardType="numeric"
-                            maxLength={5}
-                          />
-                        </View>
-
-                        <View style={{ marginTop: 10 }}>
-                          <StyledButton variant="secondary" onPress={setOriginFromGridRef}>
-                            Use this grid reference
-                          </StyledButton>
-                        </View>
-                      </View>
-
-                      {originError ? <ThemedText style={styles.error}>{originError}</ThemedText> : null}
-                    </View>
-                  ) : null}
-                </ScrollView>
-              </ThemedView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
 
       {/* Download Maps Modal */}
       <DownloadMapsModal visible={downloadMapsOpen} onClose={() => setDownloadMapsOpen(false)} />
@@ -874,50 +612,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 16,
   },
-  modalHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
   modalScroll: {
     paddingBottom: 20,
-  },
-  input: {
-    borderWidth: 1,
-    padding: 12,
-    borderRadius: 8,
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: 8,
-    alignItems: 'center',
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  signButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRightWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(128,128,128,0.1)',
-  },
-  signText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  inputWithSign: {
-    flex: 1,
-    padding: 12,
-    fontSize: 16,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
   },
   menuRow: {
     flexDirection: 'row',
@@ -940,12 +636,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
   },
-  gridRowInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
   backText: {
     opacity: 0.7,
   },
@@ -958,10 +648,6 @@ const styles = StyleSheet.create({
   headerButtonText: {
     fontSize: 13,
     opacity: 0.8,
-  },
-  error: {
-    color: 'red',
-    marginTop: 10,
   },
   tutorialBadge: {
     paddingHorizontal: 8,

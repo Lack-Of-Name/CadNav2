@@ -31,6 +31,11 @@ type StashedRouteState = {
   activeRouteLoop: boolean;
 };
 
+export type PendingEdit = {
+  id: string;
+  mode: 'tap' | 'grid' | 'project';
+};
+
 type StoreState = {
   checkpoints: Checkpoint[];
   selectedId: string | null;
@@ -46,6 +51,7 @@ type StoreState = {
   activeWorkspaceRouteTitle: string | null;
   tempNavigationActive: boolean;
   stashedRouteState: StashedRouteState | null;
+  pendingEdit: PendingEdit | null;
 };
 
 let store: StoreState = {
@@ -63,6 +69,7 @@ let store: StoreState = {
   activeWorkspaceRouteTitle: null,
   tempNavigationActive: false,
   stashedRouteState: null,
+  pendingEdit: null,
 };
 
 export function isTempTargetColor(color: string | null | undefined): boolean {
@@ -164,6 +171,7 @@ async function initStore() {
       activeWorkspaceRouteTitle: null,
       tempNavigationActive: false,
       stashedRouteState: null,
+      pendingEdit: null,
     });
 
     // Ensure storage is initialized with normalized shape.
@@ -186,7 +194,8 @@ function isCheckpoint(value: unknown): value is Checkpoint {
     typeof v.createdAt === 'number' &&
     (v.label === undefined || typeof v.label === 'string') &&
     (v.color === undefined || typeof v.color === 'string') &&
-    (v.elevation === undefined || typeof v.elevation === 'number')
+    (v.elevation === undefined || typeof v.elevation === 'number') &&
+    (v.mgrs === undefined || typeof v.mgrs === 'string')
   );
 }
 
@@ -380,13 +389,14 @@ export function useCheckpoints() {
   }, []);
 
   const addCheckpoint = useCallback(
-    async (latitude: number, longitude: number) => {
+    async (latitude: number, longitude: number, mgrs?: string) => {
       const cp: Checkpoint = {
         id: makeId(),
         latitude,
         longitude,
         createdAt: Date.now(),
         color: store.activeRouteColor ?? undefined,
+        mgrs,
       };
       // Keep checkpoints in placement order. Render immediately — do not block
       // the tap on the elevation network request.
@@ -436,6 +446,50 @@ export function useCheckpoints() {
       return { ...c, label: normalized };
     });
     setStore({ ...store, checkpoints: nextCheckpoints });
+  }, []);
+
+  const updateCheckpointLocation = useCallback(
+    async (id: string, latitude: number, longitude: number, mgrs?: string) => {
+      const nextCheckpoints = store.checkpoints.map((c) => {
+        if (c.id !== id) return c;
+        const next: Checkpoint = { ...c, latitude, longitude, mgrs: mgrs ?? undefined };
+        if (mgrs === undefined) {
+          delete next.mgrs;
+        }
+        return next;
+      });
+      setStore({ ...store, checkpoints: nextCheckpoints });
+
+      if (apiKey) {
+        fetch(`https://api.maptiler.com/elevation/at?lon=${longitude}&lat=${latitude}&key=${apiKey}`)
+          .then((res) => (res.ok ? res.json() : null))
+          .then((data) => {
+            if (data && data.length > 0 && typeof data[0] === 'number') {
+              const enriched = store.checkpoints.map((c) =>
+                c.id === id ? { ...c, elevation: data[0] } : c
+              );
+              setStore({ ...store, checkpoints: enriched });
+            }
+          })
+          .catch((err) => {
+            console.warn('Failed to fetch elevation for updated checkpoint', err);
+          });
+      }
+
+      return nextCheckpoints.find((c) => c.id === id) ?? null;
+    },
+    [apiKey]
+  );
+
+  const setPendingEdit = useCallback(async (edit: PendingEdit | null) => {
+    setStore({ ...store, pendingEdit: edit });
+  }, []);
+
+  const consumePendingEdit = useCallback(async () => {
+    const edit = store.pendingEdit;
+    if (!edit) return null;
+    setStore({ ...store, pendingEdit: null });
+    return edit;
   }, []);
 
   const setCheckpointsColor = useCallback(async (color: string | null) => {
@@ -574,10 +628,14 @@ export function useCheckpoints() {
     activeWorkspaceRouteTitle: snapshot.activeWorkspaceRouteTitle,
     tempNavigationActive: snapshot.tempNavigationActive,
     stashedRouteState: snapshot.stashedRouteState,
+    pendingEdit: snapshot.pendingEdit,
     addCheckpoint,
     removeCheckpoint,
     selectCheckpoint,
     setCheckpointLabel,
+    updateCheckpointLocation,
+    setPendingEdit,
+    consumePendingEdit,
     setCheckpointsColor,
     reorderCheckpoints,
     setActiveRouteColor,

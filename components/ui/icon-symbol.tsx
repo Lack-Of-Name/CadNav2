@@ -34,6 +34,8 @@ const MAPPING = {
   'star.fill': 'star',
   'xmark': 'close',
   'xmark.circle.fill': 'cancel',
+  'pencil': 'edit',
+  'pencil.circle': 'edit',
   'square.grid.3x3': 'grid-on',
   'ruler.fill': 'straighten',
   'map.fill': 'map',
@@ -55,6 +57,7 @@ const MAPPING = {
   'location.fill': 'gps-fixed',
   'antenna.radiowaves.left.and.right': 'settings-input-antenna',
   'bolt.fill': 'bolt',
+  'qrcode': 'qr-code',
 } as const;
 
 /**

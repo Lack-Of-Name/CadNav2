@@ -32,7 +32,7 @@ const mapTutorial: Tutorial = {
     },
     {
       title: 'Grid & Bearings',
-      text: 'Enable the grid overlay in Settings to see MGRS-style grid lines. Choose between mils and degrees for bearings, and set a grid origin for local grid references. The bottom panel displays bearing, distance, and grid reference for the current target.',
+      text: 'Enable the grid overlay in Settings to see MGRS grid lines aligned to your UTM zone. Choose between mils and degrees for bearings. Add a checkpoint via Grid Reference: enter the GZD, 100km square, and easting/northing digits (prefilled from your GPS), and the map shows a polygon for the reference accuracy. The bottom panel displays bearing, distance, and grid reference for the current target.',
     },
     {
       title: 'Revisit Tutorials',

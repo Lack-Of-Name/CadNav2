@@ -188,165 +188,173 @@ export function CompassOverlay({
   if (!open) return null;
 
   return (
-    <View style={[styles.wrap, style]} pointerEvents="box-none">
-      <View style={[styles.card, { backgroundColor: panelBg, borderColor, width: cardWidth, maxWidth: '100%' }]}>
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text style={[styles.title, { color: textColor }]}>Compass</Text>
-            <Text style={[styles.subtitle, { color: textMuted }]} numberOfLines={1}>
-              {targetLabel ? `Target: ${targetLabel}` : 'No target selected'}
-            </Text>
+    <View style={styles.overlayRoot}>
+      <Pressable
+        style={styles.backdrop}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel="Close compass"
+      />
+      <View style={[styles.wrap, style]} pointerEvents="box-none">
+        <View style={[styles.card, { backgroundColor: panelBg, borderColor, width: cardWidth, maxWidth: '100%' }]}>
+          <View style={styles.header}>
+            <View style={styles.headerText}>
+              <Text style={[styles.title, { color: textColor }]}>Compass</Text>
+              <Text style={[styles.subtitle, { color: textMuted }]} numberOfLines={1}>
+                {targetLabel ? `Target: ${targetLabel}` : 'No target selected'}
+              </Text>
+            </View>
+
+            <Pressable
+              style={[styles.close, { borderColor, backgroundColor: background }]}
+              onPress={onToggle}
+              accessibilityRole="button"
+              accessibilityLabel="Close compass"
+            >
+              <Text style={[styles.closeText, { color: textColor }]}>×</Text>
+            </Pressable>
           </View>
 
-          <Pressable
-            style={[styles.close, { borderColor, backgroundColor: background }]}
-            onPress={onToggle}
-            accessibilityRole="button"
-            accessibilityLabel="Close compass"
-          >
-            <Text style={[styles.closeText, { color: textColor }]}>×</Text>
-          </Pressable>
-        </View>
+          <View style={[styles.dial, { backgroundColor: background, borderColor, width: dialSize, height: dialSize }]}>
+            <Animated.View style={[styles.ring, ringStyle]}>
+              {TICKS.map((deg) => {
+                const isMajor = deg % 45 === 0;
+                const cardinal = isCardinal(deg);
+                const label = isMajor ? labelForAngle(deg, angleUnit) : '';
+                const headingLabel = headingLabelForAngle(deg, angleUnit);
 
-        <View style={[styles.dial, { backgroundColor: background, borderColor, width: dialSize, height: dialSize }]}>
-          <Animated.View style={[styles.ring, ringStyle]}>
-            {TICKS.map((deg) => {
-              const isMajor = deg % 45 === 0;
-              const cardinal = isCardinal(deg);
-              const label = isMajor ? labelForAngle(deg, angleUnit) : '';
-              const headingLabel = headingLabelForAngle(deg, angleUnit);
-
-              return (
-                <View
-                  key={deg}
-                  style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}
-                >
+                return (
                   <View
-                    style={[
-                      styles.tick,
-                      cardinal
-                        ? [styles.tickCardinal, { width: 3 * scale, height: 26 * scale, marginTop: 12 * scale }]
-                        : isMajor
-                          ? [styles.tickMajor, { width: 2 * scale, height: 20 * scale, marginTop: 12 * scale }]
-                          : [styles.tickMinor, { width: 1 * scale, height: 12 * scale, marginTop: 18 * scale }],
-                      { backgroundColor: cardinal || isMajor ? tickStrong : tick },
-                    ]}
-                  />
+                    key={deg}
+                    style={[styles.tickWrap, { transform: [{ rotate: `${deg}deg` }] }]}
+                  >
+                    <View
+                      style={[
+                        styles.tick,
+                        cardinal
+                          ? [styles.tickCardinal, { width: 3 * scale, height: 26 * scale, marginTop: 12 * scale }]
+                          : isMajor
+                            ? [styles.tickMajor, { width: 2 * scale, height: 20 * scale, marginTop: 12 * scale }]
+                            : [styles.tickMinor, { width: 1 * scale, height: 12 * scale, marginTop: 18 * scale }],
+                        { backgroundColor: cardinal || isMajor ? tickStrong : tick },
+                      ]}
+                    />
 
-                  {/* Ring label (only for major ticks) */}
-                  {isMajor ? (
-                    <View style={styles.ringLabelWrap}>
-                      <Text
-                        style={[
-                          styles.ringLabel,
-                          { color: tickStrong },
-                          cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                    </View>
-                  ) : null}
+                    {/* Ring label (only for major ticks) */}
+                    {isMajor ? (
+                      <View style={styles.ringLabelWrap}>
+                        <Text
+                          style={[
+                            styles.ringLabel,
+                            { color: tickStrong },
+                            cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                      </View>
+                    ) : null}
 
-                  {/* Heading number label below the tick */}
-                  {cardinal && (
-                    <View style={[styles.headingLabelWrap, { top: 38 * scale }]}>
-                      <Text style={[styles.headingLabel, { color: tickStrong, fontSize: Math.max(7, 8 * scale) }]}>
-                        {headingLabel}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              );
-            })}
+                    {/* Heading number label below the tick */}
+                    {cardinal && (
+                      <View style={[styles.headingLabelWrap, { top: 38 * scale }]}>
+                        <Text style={[styles.headingLabel, { color: tickStrong, fontSize: Math.max(7, 8 * scale) }]}>
+                          {headingLabel}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
 
-            {/* Target bearing marker on the ring */}
-            {targetRingRotation ? (
-              <View style={[styles.targetMarkWrap, { transform: [{ rotate: targetRingRotation }] }]}>
-                <View style={[styles.targetMarkStick, { 
-                  borderBottomColor: targetColor || primary, 
-                  marginTop: 0,
-                  borderLeftWidth: 5 * scale,
-                  borderRightWidth: 5 * scale,
-                  borderBottomWidth: 120 * scale,
-                  transform: [{ translateY: -60 * scale }],
-                }]} />
-                <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
-                  <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
-                </View>
-              </View>
-            ) : null}
-
-            {/* N marker */}
-            <View style={[styles.nLabelWrap, { top: 6 * scale }]}>
-              <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
-                <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
-              </View>
-            </View>
-          </Animated.View>
-
-          {/* Heading needle */}
-          <View
-            style={[
-              styles.needle,
-              { backgroundColor: primary, height: 96 * scale, top: 20 * scale, width: Math.max(1.5, 2 * scale) },
-            ]}
-          />
-
-          {/* Target pointer */}
-          {typeof targetBearingDeg === 'number' ? (
-            <Animated.View style={[styles.targetPointerWrap, pointerStyle]}>
-              <View
-                style={[
-                  styles.targetPointer,
-                  {
+              {/* Target bearing marker on the ring */}
+              {targetRingRotation ? (
+                <View style={[styles.targetMarkWrap, { transform: [{ rotate: targetRingRotation }] }]}>
+                  <View style={[styles.targetMarkStick, {
+                    borderBottomColor: targetColor || primary,
                     marginTop: 0,
                     borderLeftWidth: 5 * scale,
                     borderRightWidth: 5 * scale,
                     borderBottomWidth: 120 * scale,
-                    borderBottomColor: targetColor || primary,
                     transform: [{ translateY: -60 * scale }],
-                  },
-                ]}
-              />
-              <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
-                <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+                  }]} />
+                  <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+                  </View>
+                </View>
+              ) : null}
+
+              {/* N marker */}
+              <View style={[styles.nLabelWrap, { top: 6 * scale }]}>
+                <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
+                  <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
+                </View>
               </View>
             </Animated.View>
-          ) : null}
-        </View>
 
-        {/* READOUT */}
-        <View style={styles.readout}>
-          <View style={styles.readoutRow}>
-            <View style={styles.readoutCell}>
-              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
-              <Text style={[styles.readoutValue, { color: textColor }]}>
-                {heading == null
-                  ? '—'
-                  : angleUnit === 'mils'
-                  ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
-                  : `${Math.round(heading)}°`}
-              </Text>
-              {headingReferenceLabel ? (
-                <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
-                  {headingReferenceLabel}
+            {/* Heading needle */}
+            <View
+              style={[
+                styles.needle,
+                { backgroundColor: primary, height: 96 * scale, top: 20 * scale, width: Math.max(1.5, 2 * scale) },
+              ]}
+            />
+
+            {/* Target pointer */}
+            {typeof targetBearingDeg === 'number' ? (
+              <Animated.View style={[styles.targetPointerWrap, pointerStyle]}>
+                <View
+                  style={[
+                    styles.targetPointer,
+                    {
+                      marginTop: 0,
+                      borderLeftWidth: 5 * scale,
+                      borderRightWidth: 5 * scale,
+                      borderBottomWidth: 120 * scale,
+                      borderBottomColor: targetColor || primary,
+                      transform: [{ translateY: -60 * scale }],
+                    },
+                  ]}
+                />
+                <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+                </View>
+              </Animated.View>
+            ) : null}
+          </View>
+
+          {/* READOUT */}
+          <View style={styles.readout}>
+            <View style={styles.readoutRow}>
+              <View style={styles.readoutCell}>
+                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
+                <Text style={[styles.readoutValue, { color: textColor }]}>
+                  {heading == null
+                    ? '—'
+                    : angleUnit === 'mils'
+                    ? `${Math.round(degreesToMils(heading, { normalize: true }))} mils`
+                    : `${Math.round(heading)}°`}
                 </Text>
-              ) : null}
-            </View>
+                {headingReferenceLabel ? (
+                  <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
+                    {headingReferenceLabel}
+                  </Text>
+                ) : null}
+              </View>
 
-            <View style={styles.readoutCell}>
-              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
-              <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
-                {bearingText ?? '—'}
-              </Text>
-            </View>
+              <View style={styles.readoutCell}>
+                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
+                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                  {bearingText ?? '—'}
+                </Text>
+              </View>
 
-            <View style={styles.readoutCell}>
-              <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
-              <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
-                {distanceText ?? '—'}
-              </Text>
+              <View style={styles.readoutCell}>
+                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
+                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                  {distanceText ?? '—'}
+                </Text>
+              </View>
             </View>
           </View>
         </View>
@@ -356,9 +364,22 @@ export function CompassOverlay({
 }
 
 const styles = StyleSheet.create({
+  overlayRoot: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 65,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
   wrap: {
     position: 'absolute',
     maxWidth: '100%',
+    zIndex: 2,
   },
   card: {
     width: 360,

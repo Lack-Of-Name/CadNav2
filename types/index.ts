@@ -10,6 +10,8 @@ export type Checkpoint = {
   label?: string;
   color?: string;
   elevation?: number;
+  /** MGRS grid reference the checkpoint was entered with (e.g. "55H DV 123 456"). */
+  mgrs?: string;
 };
 
 /** Named route in the saved library (Routes tab → Save, map → Saved). */

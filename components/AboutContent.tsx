@@ -3,13 +3,14 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
+import { utmGridConvergence } from '@/lib/mgrs';
 import Constants from 'expo-constants';
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 export default function AboutContent() {
   const { lastLocation } = useGPS();
-  const { angleUnit, gridConvergence } = useSettings();
+  const { angleUnit } = useSettings();
 
   const [declination, setDeclination] = useState<number | null>(null);
 
@@ -73,8 +74,8 @@ export default function AboutContent() {
             <ThemedText style={styles.mono}>Magnetic heading: {lastLocation.coords.magHeading ?? '—'}</ThemedText>
             <ThemedText style={styles.mono}>True heading: {lastLocation.coords.trueHeading ?? '—'}</ThemedText>
             <ThemedText style={styles.mono}>Declination: {formatAngle(declination)}</ThemedText>
-            <ThemedText style={styles.mono}>Grid convergence: {formatAngle(gridConvergence)}</ThemedText>
-            <ThemedText style={styles.mono}>Grid to magnetic: {declination != null && gridConvergence != null ? formatAngle(declination - gridConvergence) : '—'}</ThemedText>
+            <ThemedText style={styles.mono}>Grid convergence (UTM): {lastLocation ? formatAngle(utmGridConvergence(lastLocation.coords.latitude, lastLocation.coords.longitude)) : '—'}</ThemedText>
+            <ThemedText style={styles.mono}>Grid to magnetic: {declination != null && lastLocation ? formatAngle(declination - utmGridConvergence(lastLocation.coords.latitude, lastLocation.coords.longitude)) : '—'}</ThemedText>
             <ThemedText style={styles.mono}>Timestamp: {new Date(lastLocation.timestamp).toISOString()}</ThemedText>
           </ThemedView>
         ) : (

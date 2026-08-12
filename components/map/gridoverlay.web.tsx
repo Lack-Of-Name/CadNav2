@@ -1,29 +1,21 @@
 import maplibregl from 'maplibre-gl';
 import React, { useEffect, useRef, useState } from 'react';
-import { computeGridCornersFromMapBounds, generateGridPoints } from './mapGrid';
-
-type Origin = { latitude: number; longitude: number } | null;
+import { computeGridCornersFromMapBounds, generateGridPoints, mgrsCellLabel } from './mapGrid';
 
 export default function GridOverlay({
   map,
-  origin,
   minZoom = 12,
   subdivisionsEnabled = true,
   numbersEnabled = false,
-  gridConvergence = 0,
 }: {
   map: maplibregl.Map | null | undefined;
-  origin: Origin;
   minZoom?: number;
   subdivisionsEnabled?: boolean;
   numbersEnabled?: boolean;
-  gridConvergence?: number;
 }) {
   const [gridLines, setGridLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
   const [gridSubLines, setGridSubLines] = useState<{ vertical: string[]; horizontal: string[] }>({ vertical: [], horizontal: [] });
-  const [originScreenPoint, setOriginScreenPoint] = useState<{ x: number; y: number } | null>(null);
-  const [showGrid, setShowGrid] = useState(false);
-  const [cellCenters, setCellCenters] = useState<{ x: number; y: number; e: number; n: number }[]>([]);
+  const [cellCenters, setCellCenters] = useState<{ x: number; y: number; e: number; n: number; zone: number }[]>([]);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -32,18 +24,8 @@ export default function GridOverlay({
     const runUpdate = () => {
       if (!map) return;
       try {
-        // project origin to screen
-        try {
-          const originForProj = origin ?? { latitude: -37.8136, longitude: 144.9631 };
-          const op = map.project([originForProj.longitude, originForProj.latitude]);
-          setOriginScreenPoint({ x: op.x, y: op.y });
-        } catch {
-          setOriginScreenPoint(null);
-        }
-
         const zoom = typeof map.getZoom === 'function' ? map.getZoom() : 0;
         const gridVisible = zoom >= (minZoom ?? 12);
-        setShowGrid(gridVisible);
         if (!gridVisible) {
           setGridLines({ vertical: [], horizontal: [] });
           setGridSubLines({ vertical: [], horizontal: [] });
@@ -54,10 +36,19 @@ export default function GridOverlay({
         const bounds = map.getBounds();
         const sw = bounds.getSouthWest();
         const ne = bounds.getNorthEast();
-        const originPt = origin ?? { latitude: -37.8136, longitude: 144.9631 };
 
-        const gridOffsets = computeGridCornersFromMapBounds(originPt, { latitude: sw.lat, longitude: sw.lng }, { latitude: ne.lat, longitude: ne.lng }, 1000, gridConvergence ?? 0);
-        const intersections = generateGridPoints(originPt, gridOffsets.offsets, 1000, gridConvergence ?? 0);
+        const gridCtx = computeGridCornersFromMapBounds(
+          { latitude: sw.lat, longitude: sw.lng },
+          { latitude: ne.lat, longitude: ne.lng },
+          1000
+        );
+        if (!gridCtx) {
+          setGridLines({ vertical: [], horizontal: [] });
+          setGridSubLines({ vertical: [], horizontal: [] });
+          setCellCenters([]);
+          return;
+        }
+        const intersections = generateGridPoints(gridCtx, 1000);
 
         const pts: { x: number; y: number; e: number; n: number }[] = [];
         for (const inter of intersections) {
@@ -138,7 +129,7 @@ export default function GridOverlay({
         }
 
         // Compute cell centers for grid numbers using projected corners
-        const centers: { x: number; y: number; e: number; n: number }[] = [];
+        const centers: { x: number; y: number; e: number; n: number; zone: number }[] = [];
         if (es.length >= 2 && ns.length >= 2) {
           for (let i = 0; i < es.length - 1; i++) {
             for (let j = 0; j < ns.length - 1; j++) {
@@ -153,7 +144,7 @@ export default function GridOverlay({
               if (!p00 || !p10 || !p01 || !p11) continue;
               const x = (p00.x + p10.x + p01.x + p11.x) / 4;
               const y = (p00.y + p10.y + p01.y + p11.y) / 4;
-              centers.push({ x, y, e: e0, n: n0 });
+              centers.push({ x, y, e: e0, n: n0, zone: gridCtx.zone });
             }
           }
         }
@@ -189,7 +180,7 @@ export default function GridOverlay({
       map.off('moveend', runUpdate);
       map.off('zoomend', runUpdate);
     };
-  }, [map, origin, minZoom, gridConvergence]);
+  }, [map, minZoom]);
 
   return (
     <div style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 40 }}>
@@ -206,47 +197,25 @@ export default function GridOverlay({
         {gridLines.horizontal.map((pts, i) => (
           <polyline key={`h-${i}`} points={pts} stroke="#000" strokeWidth={1} fill="none" />
         ))}
-        {numbersEnabled && cellCenters.map((c, i) => {
-          const eNum = c.e / 1000;
-          const nNum = c.n / 1000;
-          if (eNum > 99 || nNum > 99) return null;
-          return (
-            <text
-              key={`num-${c.e}-${c.n}`}
-              x={c.x}
-              y={c.y}
-              textAnchor="middle"
-              alignmentBaseline="middle"
-              fontSize="13"
-              fontWeight="bold"
-              fill="#000"
-              stroke="#fff"
-              strokeWidth="2"
-              paintOrder="stroke"
-              style={{ pointerEvents: 'none', userSelect: 'none' }}
-            >
-              {`${eNum},${nNum}`}
-            </text>
-          );
-        })}
+        {numbersEnabled && cellCenters.map((c, i) => (
+          <text
+            key={`num-${c.e}-${c.n}`}
+            x={c.x}
+            y={c.y}
+            textAnchor="middle"
+            alignmentBaseline="middle"
+            fontSize="13"
+            fontWeight="bold"
+            fill="#000"
+            stroke="#fff"
+            strokeWidth="2"
+            paintOrder="stroke"
+            style={{ pointerEvents: 'none', userSelect: 'none' }}
+          >
+            {mgrsCellLabel(c.e, c.n, c.zone)}
+          </text>
+        ))}
       </svg>
-      {showGrid && originScreenPoint ? (
-        <div
-          key="grid-origin"
-          style={{
-            position: 'absolute',
-            left: originScreenPoint.x - 10,
-            top: originScreenPoint.y - 10,
-            width: 20,
-            height: 20,
-            borderRadius: 10,
-            background: 'rgba(0,0,0,0.9)',
-            border: '2px solid white',
-            pointerEvents: 'none',
-            zIndex: 19,
-          }}
-        />
-      ) : null}
     </div>
   );
 }

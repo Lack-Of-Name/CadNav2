@@ -1,9 +1,9 @@
-import { formatGridReference, latLonToGridCoords } from '@/components/map/mapGrid';
 import { haversineMeters } from '@/components/map/MaplibreMap.utils';
 import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors, type ColorScheme } from '@/constants/theme';
 import { computeRouteDistanceMeters, formatDistance } from '@/lib/geo';
+import { latLonToMGRS } from '@/lib/mgrs';
 import type { Checkpoint, RouteItem } from '@/types';
 import { Pressable, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 
@@ -17,8 +17,6 @@ type Props = {
   checkpoints: Checkpoint[];
   selectedId: string | null;
   activeRouteLoop: boolean;
-  mapGridOrigin: { latitude: number; longitude: number } | null;
-  gridConvergence: number | null;
   onToggleExpand: () => void;
   onActivate: () => void;
   onDeactivate: () => void;
@@ -28,24 +26,22 @@ type Props = {
   onViewMap: () => void;
   onSelectCheckpoint: (id: string) => void;
   onRemoveCheckpoint: (id: string) => void;
+  onEditCheckpoint: (cp: Checkpoint) => void;
+  onShareCheckpoint: (cp: Checkpoint) => void;
   onSaveCheckpointLocation: (cp: Checkpoint) => void;
   onToggleLoop: () => void;
   onReverse: () => void;
   onRandomise: () => void;
   onSaveToLibrary: () => void;
   onShare: () => void;
+  onShareQr: () => void;
   onClear: () => void;
 };
 
-function gridLabel(
-  lat: number,
-  lon: number,
-  origin: { latitude: number; longitude: number } | null,
-  conv: number,
-): string {
-  if (!origin) return '—';
-  const { easting, northing } = latLonToGridCoords(origin, { latitude: lat, longitude: lon }, conv);
-  return formatGridReference(easting, northing);
+function gridLabel(cp: Checkpoint): string {
+  const ref = cp.mgrs?.trim();
+  if (ref) return ref;
+  return latLonToMGRS(cp.latitude, cp.longitude, 5);
 }
 
 export function RouteListItem({
@@ -56,8 +52,6 @@ export function RouteListItem({
   checkpoints,
   selectedId,
   activeRouteLoop,
-  mapGridOrigin,
-  gridConvergence,
   onToggleExpand,
   onActivate,
   onDeactivate,
@@ -67,16 +61,18 @@ export function RouteListItem({
   onViewMap,
   onSelectCheckpoint,
   onRemoveCheckpoint,
+  onEditCheckpoint,
+  onShareCheckpoint,
   onSaveCheckpointLocation,
   onToggleLoop,
   onReverse,
   onRandomise,
   onSaveToLibrary,
   onShare,
+  onShareQr,
   onClear,
 }: Props) {
   const theme = Colors[colorScheme];
-  const conv = gridConvergence ?? 0;
   const routeColor = item.color ?? theme.primary;
   const cps = isActive ? checkpoints : (item.checkpoints ?? []);
   const loop = isActive ? activeRouteLoop : !!item.isLoop;
@@ -165,7 +161,7 @@ export function RouteListItem({
                               style={[styles.wpGrid, { color: theme.text }]}
                               numberOfLines={1}
                             >
-                              {gridLabel(cp.latitude, cp.longitude, mapGridOrigin, conv)}
+                              {gridLabel(cp)}
                             </ThemedText>
                           </View>
                           <TouchableOpacity
@@ -174,6 +170,22 @@ export function RouteListItem({
                             style={styles.wpAction}
                           >
                             <IconSymbol name="square.and.arrow.down" size={17} color={theme.textMuted} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => onEditCheckpoint(cp)}
+                            hitSlop={8}
+                            style={styles.wpAction}
+                            accessibilityLabel={`Edit checkpoint ${idx + 1}`}
+                          >
+                            <IconSymbol name="pencil" size={15} color={theme.textMuted} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => onShareCheckpoint(cp)}
+                            hitSlop={8}
+                            style={styles.wpAction}
+                            accessibilityLabel={`Share checkpoint ${idx + 1} as QR code`}
+                          >
+                            <IconSymbol name="qrcode" size={17} color={theme.textMuted} />
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => onRemoveCheckpoint(cp.id)}
@@ -213,6 +225,7 @@ export function RouteListItem({
                 {cps.length > 0 ? (
                   <>
                     <DenseButton label="Library" colorScheme={colorScheme} onPress={onSaveToLibrary} />
+                    <DenseButton label="QR" colorScheme={colorScheme} onPress={onShareQr} />
                     <DenseButton label="Share" colorScheme={colorScheme} onPress={onShare} />
                     <DenseButton label="Clear" variant="danger" colorScheme={colorScheme} onPress={onClear} />
                   </>
@@ -235,7 +248,10 @@ export function RouteListItem({
                 <DenseButton label="Open" variant="primary" accentColor={routeColor} colorScheme={colorScheme} onPress={onActivate} />
                 <DenseButton label="Edit" colorScheme={colorScheme} onPress={onEdit} />
                 {pointCount > 0 ? (
-                  <DenseButton label="Share" colorScheme={colorScheme} onPress={onShare} />
+                  <>
+                    <DenseButton label="QR" colorScheme={colorScheme} onPress={onShareQr} />
+                    <DenseButton label="Share" colorScheme={colorScheme} onPress={onShare} />
+                  </>
                 ) : null}
                 <DenseButton label="Delete" variant="danger" colorScheme={colorScheme} onPress={onDelete} />
               </ScrollView>

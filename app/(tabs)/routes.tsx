@@ -1,36 +1,35 @@
 import { AddRoutePanel } from '@/components/AddRoutePanel';
 import { alert as showAlert } from '@/components/alert';
 import { EditRouteModal } from '@/components/EditRouteModal';
+import { EditCheckpointModal } from '@/components/EditCheckpointModal';
 import { GridReferenceModal } from '@/components/GridReferenceModal';
-import { formatGridReference, latLonToGridCoords } from '@/components/map/mapGrid';
 import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { DenseButton } from '@/components/routes/DenseButton';
 import { RouteListItem } from '@/components/routes/RouteListItem';
 import { SavedRoutesModal } from '@/components/SavedRoutesModal';
+import { ShareQrModal } from '@/components/ShareQrModal';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { DEFAULT_ROUTE_COLOR } from '@/constants/routeColors';
 import { Colors } from '@/constants/theme';
 import { isTempTargetColor, useCheckpoints } from '@/hooks/checkpoints';
-import { useSettings } from '@/hooks/settings';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useWorkspaceRoutes } from '@/hooks/use-workspace-routes';
 import { computeRouteDistanceMeters, formatDistance } from '@/lib/geo';
+import { latLonToMGRS } from '@/lib/mgrs';
+import { checkpointSharePayload, routeSharePayload } from '@/lib/sharePayload';
 import type { Checkpoint, RouteItem, SavedLocation, SavedRoute } from '@/types';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-function formatGrid(lat: number, lon: number, origin: { latitude: number; longitude: number } | null, conv: number): string {
-  if (!origin) return '';
-  const { easting, northing } = latLonToGridCoords(origin, { latitude: lat, longitude: lon }, conv);
-  return ` · Grid: ${formatGridReference(easting, northing)}`;
+function checkpointGridRef(cp: Checkpoint): string {
+  return cp.mgrs?.trim() || latLonToMGRS(cp.latitude, cp.longitude, 5);
 }
 
 export default function RoutesScreen() {
-  const { mapGridOrigin, gridConvergence } = useSettings();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -48,6 +47,8 @@ export default function RoutesScreen() {
     selectCheckpoint,
     selectedCheckpoint,
     setViewTarget,
+    setCheckpointLabel,
+    setPendingEdit,
     saveRoute: persistRoute,
     saveLocation: persistLocation,
     activeRouteLoop,
@@ -73,6 +74,8 @@ export default function RoutesScreen() {
   const [projectModalVisible, setProjectModalVisible] = useState(false);
   const [savedRoutesModalVisible, setSavedRoutesModalVisible] = useState(false);
   const [expandedRouteId, setExpandedRouteId] = useState<string | null>(null);
+  const [editingCheckpoint, setEditingCheckpoint] = useState<Checkpoint | null>(null);
+  const [shareQr, setShareQr] = useState<{ title: string; payload: string } | null>(null);
   const activeRouteId = activeWorkspaceRouteId;
 
   const isSyncingRef = useRef(false);
@@ -153,10 +156,27 @@ export default function RoutesScreen() {
     }, 200);
   }
 
-  function handleAddPoint(location: { latitude: number; longitude: number }) {
-    addCheckpoint(location.latitude, location.longitude);
+  function handleAddPoint(location: { latitude: number; longitude: number }, mgrs?: string) {
+    addCheckpoint(location.latitude, location.longitude, mgrs);
     setReferenceModalVisible(false);
     setProjectModalVisible(false);
+    router.push('/');
+  }
+
+  function handleEditCheckpoint(cp: Checkpoint) {
+    setEditingCheckpoint(cp);
+  }
+
+  function handleSaveCheckpointLabel(label: string) {
+    if (!editingCheckpoint) return;
+    void setCheckpointLabel(editingCheckpoint.id, label);
+  }
+
+  function handleRepositionCheckpoint(mode: 'tap' | 'grid' | 'project') {
+    if (!editingCheckpoint) return;
+    const cp = editingCheckpoint;
+    setEditingCheckpoint(null);
+    void setPendingEdit({ id: cp.id, mode });
     router.push('/');
   }
 
@@ -241,20 +261,7 @@ export default function RoutesScreen() {
 
     cps.forEach((cp, idx) => {
       lines.push(`WP ${idx + 1}${cp.label ? ` — ${cp.label}` : ''}`);
-      const gridRef = mapGridOrigin
-        ? formatGridReference(
-            ...Object.values(
-              latLonToGridCoords(
-                mapGridOrigin,
-                { latitude: cp.latitude, longitude: cp.longitude },
-                gridConvergence ?? 0,
-              ),
-            ) as [number, number],
-          )
-        : 'No grid origin';
-      lines.push(`Grid: ${gridRef}`);
-      const grid = formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0);
-      if (grid) lines.push(grid.trim());
+      lines.push(`Grid: ${checkpointGridRef(cp)}`);
       lines.push('');
     });
 
@@ -269,6 +276,27 @@ export default function RoutesScreen() {
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  function handleShareCheckpointQr(cp: Checkpoint) {
+    setShareQr({
+      title: cp.label?.trim() ? `Checkpoint — ${cp.label.trim()}` : 'Checkpoint',
+      payload: checkpointSharePayload(cp),
+    });
+  }
+
+  function handleShareRouteQr(item: RouteItem) {
+    const isActive = item.id === activeRouteId;
+    const cps = isActive ? checkpoints : (item.checkpoints || []);
+    const loop = isActive ? activeRouteLoop : (item.isLoop || false);
+    if (cps.length === 0) {
+      void showAlert({ title: 'Share route', message: 'Add waypoints before sharing.' });
+      return;
+    }
+    setShareQr({
+      title: `Route — ${item.title}`,
+      payload: routeSharePayload(item, cps, loop),
+    });
   }
 
   async function handleExportBackup() {
@@ -288,9 +316,7 @@ export default function RoutesScreen() {
   }
 
   async function handleSaveLocationFromCheckpoint(cp: Checkpoint) {
-    const gridStr = mapGridOrigin
-      ? formatGrid(cp.latitude, cp.longitude, mapGridOrigin, gridConvergence ?? 0).replace(' · Grid: ', '')
-      : '';
+    const gridStr = checkpointGridRef(cp);
     const name = cp.label || gridStr || `${cp.latitude.toFixed(4)}, ${cp.longitude.toFixed(4)}`;
     try {
       await persistLocation(name, cp.latitude, cp.longitude);
@@ -450,8 +476,6 @@ export default function RoutesScreen() {
               checkpoints={checkpoints}
               selectedId={selectedId}
               activeRouteLoop={activeRouteLoop}
-              mapGridOrigin={mapGridOrigin}
-              gridConvergence={gridConvergence}
               onToggleExpand={() => toggleExpanded(item.id)}
               onActivate={() => activateRoute(item)}
               onDeactivate={deactivateRoute}
@@ -461,12 +485,15 @@ export default function RoutesScreen() {
               onViewMap={handleViewOnMap}
               onSelectCheckpoint={(id) => selectCheckpoint(id)}
               onRemoveCheckpoint={removeCheckpoint}
+              onEditCheckpoint={handleEditCheckpoint}
+              onShareCheckpoint={handleShareCheckpointQr}
               onSaveCheckpointLocation={handleSaveLocationFromCheckpoint}
               onToggleLoop={() => setActiveRouteLoop(!activeRouteLoop)}
               onReverse={handleReverseRoute}
               onRandomise={handleRandomiseRoute}
               onSaveToLibrary={() => handleSaveRouteToLibrary(item)}
               onShare={() => handleShareRoute(item)}
+              onShareQr={() => handleShareRouteQr(item)}
               onClear={handleClearPoints}
             />
           )}
@@ -533,6 +560,21 @@ export default function RoutesScreen() {
           onClose={() => setSavedRoutesModalVisible(false)}
           onSelectRoute={handleAddSavedRoute}
           onSelectLocation={handleAddSavedLocation}
+        />
+
+        <EditCheckpointModal
+          visible={editingCheckpoint != null}
+          checkpoint={editingCheckpoint}
+          onClose={() => setEditingCheckpoint(null)}
+          onSaveLabel={handleSaveCheckpointLabel}
+          onReposition={handleRepositionCheckpoint}
+        />
+
+        <ShareQrModal
+          visible={shareQr != null}
+          title={shareQr?.title ?? ''}
+          payload={shareQr?.payload ?? ''}
+          onClose={() => setShareQr(null)}
         />
       </ThemedView>
     </SafeAreaView>
