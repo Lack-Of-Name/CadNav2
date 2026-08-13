@@ -168,9 +168,12 @@ export function latLonToUtm(lat: number, lon: number): { zone: number; band: str
  * flip. Note: the point is projected into `zone` regardless of its own zone.
  */
 export function latLonToUtmGridCoords(lat: number, lon: number, zone: number): { easting: number; northing: number } {
+  // utmForward already returns the signed northing (negative south of the
+  // equator); unlike latLonToUtm we must NOT add the 10,000,000 m hemisphere
+  // offset here, or southern-hemisphere grid lines project to invalid
+  // latitudes and the MGRS overlay silently disappears.
   const { easting, northing } = utmForward(lat, lon, zone);
-  const signed = lat < 0 ? northing - NORTHING_OFFSET : northing;
-  return { easting, northing: signed };
+  return { easting, northing };
 }
 
 /** Convert UTM grid coordinates (signed northing, see above) to lat/lon. */

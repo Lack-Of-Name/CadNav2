@@ -111,13 +111,18 @@ export default function AboutContent() {
       </View>
 
       <View style={styles.section}>
-        <ThemedText style={styles.sectionTitle}>Authors</ThemedText>
+        <ThemedText style={styles.sectionTitle}>Contributors</ThemedText>
         <Pressable onPress={() => open('https://github.com/Lack-Of-Name')}>
-          <ThemedText type="link" style={styles.link}>Scott Webster — https://github.com/Lack-Of-Name</ThemedText>
+          <ThemedText type="link" style={styles.link}>lack-of-name (Lyren) — https://github.com/Lack-Of-Name</ThemedText>
         </Pressable>
         <Pressable onPress={() => open('https://github.com/aellul27')}>
-          <ThemedText type="link" style={styles.link}>Alexander Ellul — https://github.com/aellul27</ThemedText>
+          <ThemedText type="link" style={styles.link}>aellul27 — https://github.com/aellul27</ThemedText>
         </Pressable>
+      </View>
+
+      <View style={styles.section}>
+        <ThemedText style={styles.sectionTitle}>Special thanks</ThemedText>
+        <ThemedText style={styles.text}>You</ThemedText>
       </View>
     </ThemedView>
   );
