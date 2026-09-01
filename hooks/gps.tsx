@@ -12,6 +12,8 @@ export type GPSLocation = {
     altitude?: number | null;
     magHeading?: number | null;
     trueHeading?: number | null;
+    headingAccuracy?: number | null;
+    speed?: number | null;
   };
   timestamp: number;
 };
@@ -91,8 +93,16 @@ export function useGPS(options?: GPSOptions) {
   const retryCountRef = useRef(0);
   const [magHeading, setMagHeading] = useState<number | null>(null);
   const [trueHeading, setTrueHeading] = useState<number | null>(null);
+  const [headingAccuracy, setHeadingAccuracy] = useState<number | null>(null);
+  const [lastHeadingTimestamp, setLastHeadingTimestamp] = useState<number | null>(null);
   const magHeadingRef = useRef<number | null>(null);
   const trueHeadingRef = useRef<number | null>(null);
+  const headingAccuracyRef = useRef<number | null>(null);
+  const lastHeadingTimestampRef = useRef<number | null>(null);
+  const [declinationError, setDeclinationError] = useState<string | null>(null);
+  const declinationErrorRef = useRef<string | null>(null);
+  const [lastDeclinationAt, setLastDeclinationAt] = useState<number | null>(null);
+  const [lastDeclinationCoords, setLastDeclinationCoords] = useState<{ lat: number; lon: number } | null>(null);
 
   const settingsCtx = useContext(SettingsContext);
   const settingsGpsMode = settingsCtx?.settings.gpsMode ?? 'highAccuracy';
@@ -119,6 +129,11 @@ export function useGPS(options?: GPSOptions) {
         const trueH = normalizeDeg(magHeading + decl);
         trueHeadingRef.current = trueH;
         setTrueHeading(trueH);
+        declinationErrorRef.current = null;
+        setDeclinationError(null);
+        const now = Date.now();
+        setLastDeclinationAt(now);
+        setLastDeclinationCoords({ lat, lon });
         setLastLocation((prev) =>
           prev
             ? {
@@ -130,8 +145,10 @@ export function useGPS(options?: GPSOptions) {
               }
             : prev
         );
-      } catch {
-        // ignore declination errors; keep magnetic heading if conversion fails
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Declination failed';
+        declinationErrorRef.current = msg;
+        setDeclinationError(msg);
       }
     },
     [normalizeDeg]
@@ -149,6 +166,8 @@ export function useGPS(options?: GPSOptions) {
           altitude: loc.coords.altitude ?? null,
           magHeading: magHeadingRef.current,
           trueHeading: trueHeadingRef.current,
+          headingAccuracy: headingAccuracyRef.current,
+          speed: (loc.coords as any).speed ?? (loc.coords as any).speed === 0 ? (loc.coords as any).speed : null,
         },
         timestamp: loc.timestamp ?? Date.now(),
       };
@@ -211,9 +230,11 @@ export function useGPS(options?: GPSOptions) {
 
               const mag = typeof h.magHeading === 'number' && h.magHeading >= 0 ? h.magHeading : null;
               const nativeTrue = typeof h.trueHeading === 'number' && h.trueHeading >= 0 ? h.trueHeading : null;
+              const acc = typeof (h as any).accuracy === 'number' && Number.isFinite((h as any).accuracy) ? (h as any).accuracy : null;
 
               const prevMag = magHeadingRef.current;
               const prevTrue = trueHeadingRef.current;
+              const prevAcc = headingAccuracyRef.current;
 
               if (mag != null) {
                 magHeadingRef.current = mag;
@@ -223,6 +244,13 @@ export function useGPS(options?: GPSOptions) {
                 trueHeadingRef.current = nativeTrue;
                 setTrueHeading(nativeTrue);
               }
+              if (acc != null || (acc == null && headingAccuracyRef.current != null)) {
+                headingAccuracyRef.current = acc;
+                setHeadingAccuracy(acc);
+              }
+              const now = Date.now();
+              lastHeadingTimestampRef.current = now;
+              setLastHeadingTimestamp(now);
 
               const loc = lastLocationRef.current;
               if (nativeTrue == null && mag != null && loc) {
@@ -234,7 +262,7 @@ export function useGPS(options?: GPSOptions) {
               // re-renders immediately, regardless of the position watch interval.
               // Trigger when EITHER mag or true changed so a true-only update still
               // propagates (e.g. computed-true resolving after a location fix).
-              const headingChanged = mag !== prevMag || trueHeadingRef.current !== prevTrue;
+              const headingChanged = mag !== prevMag || trueHeadingRef.current !== prevTrue || acc !== prevAcc;
               if (headingChanged && lastLocationRef.current) {
                 setLastLocation((prev) =>
                   prev
@@ -244,6 +272,7 @@ export function useGPS(options?: GPSOptions) {
                           ...prev.coords,
                           magHeading: magHeadingRef.current,
                           trueHeading: trueHeadingRef.current,
+                          headingAccuracy: headingAccuracyRef.current,
                         },
                       }
                     : prev
@@ -378,6 +407,9 @@ export function useGPS(options?: GPSOptions) {
       // set magnetic value first, then convert if we have a location
       magHeadingRef.current = mag;
       setMagHeading(mag);
+      lastHeadingTimestampRef.current = now;
+      setLastHeadingTimestamp(now);
+      // web has no headingAccuracy
       setLastLocation((prev) =>
         prev
           ? {
@@ -423,6 +455,8 @@ export function useGPS(options?: GPSOptions) {
           altitude: loc.coords.altitude ?? null,
           magHeading: magHeadingRef.current,
           trueHeading: trueHeadingRef.current,
+          headingAccuracy: headingAccuracyRef.current,
+          speed: (loc.coords as any).speed ?? null,
         },
         timestamp: loc.timestamp ?? Date.now(),
       };
@@ -437,5 +471,19 @@ export function useGPS(options?: GPSOptions) {
     }
   }, [computeAndSetTrueHeading]);
 
-  return { lastLocation, setLastLocation, permissionStatus, error, magHeading, trueHeading, requestLocation, requestFreshFix } as const;
+  return {
+    lastLocation,
+    setLastLocation,
+    permissionStatus,
+    error,
+    magHeading,
+    trueHeading,
+    headingAccuracy,
+    lastHeadingTimestamp,
+    declinationError,
+    lastDeclinationAt,
+    lastDeclinationCoords,
+    requestLocation,
+    requestFreshFix,
+  } as const;
 }

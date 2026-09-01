@@ -1,15 +1,19 @@
 import { MANUAL_SECTIONS, type ManualItem, type ManualSection } from '@/constants/manual';
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useCallback, useRef, useState } from 'react';
+import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   ImageSourcePropType,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -17,6 +21,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const IMAGE_MAP: Record<string, ImageSourcePropType> = {
   'manual-api-key.png': require('@/assets/images/manual/manual-api-key.png'),
+  'manual-api-key-01-signup.png': require('@/assets/images/manual/manual-api-key-01-signup.png'),
+  'manual-api-key-02-dashboard.png': require('@/assets/images/manual/manual-api-key-02-dashboard.png'),
+  'manual-api-key-03-copy-key.png': require('@/assets/images/manual/manual-api-key-03-copy-key.png'),
+  'manual-api-key-04-paste-key.png': require('@/assets/images/manual/manual-api-key-04-paste-key.png'),
   'manual-drawer.png': require('@/assets/images/manual/manual-drawer.png'),
   'manual-gps-modes.png': require('@/assets/images/manual/manual-gps-modes.png'),
   'manual-setting-target.png': require('@/assets/images/manual/manual-setting-target.png'),
@@ -188,11 +196,28 @@ function SectionsView({
   sections: ManualSection[];
   onSelectSection: (s: ManualSection) => void;
 }) {
+  const apiKeySection = sections.find((s) => s.id === 'api-key-tutorial');
   return (
     <View style={styles.sectionsContainer}>
       <Text style={[styles.introText, { color: C.textMuted }]}>
         Browse by screen or feature area. Each section covers the buttons and controls you will use.
       </Text>
+      {apiKeySection ? (
+        <Pressable
+          style={[styles.featuredCard, { backgroundColor: C.primary, borderColor: C.primary }]}
+          onPress={() => onSelectSection(apiKeySection)}
+          android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.featuredTitle, { color: '#fff' }]}>Get your free map key in about 2 minutes</Text>
+            <Text style={[styles.featuredSummary, { color: 'rgba(255,255,255,0.9)' }]}>
+              The map needs a free MapTiler key. Tap here for the step by step guide with screenshots. No credit card needed. You can paste your key without leaving the guide.
+            </Text>
+            <Text style={[styles.featuredAction, { color: '#fff' }]}>Open guide</Text>
+          </View>
+          <Text style={[styles.chevron, { color: '#fff' }]}>›</Text>
+        </Pressable>
+      ) : null}
       {sections.map((section) => (
         <Pressable
           key={section.id}
@@ -254,6 +279,7 @@ function DetailView({ C, item }: { C: ThemeColors; item: ManualItem }) {
   const { width: screenW } = useWindowDimensions();
   const imgWidth = Math.min(screenW - 48, 500);
   const imgHeight = Math.round(imgWidth / IMAGE_ASPECT_RATIO);
+  const isApiKeyItem = item.id === 'api-key-step-4-paste' || item.id === 'api-key-setup';
 
   return (
     <View style={styles.detailContainer}>
@@ -267,7 +293,7 @@ function DetailView({ C, item }: { C: ThemeColors; item: ManualItem }) {
         </View>
       ) : (
         <View style={[styles.imagePlaceholder, { backgroundColor: C.background, borderColor: C.divider }]}>
-          <Text style={[styles.imagePlaceholderIcon, { color: C.textSubtle }]}>🖼</Text>
+          <Text style={[styles.imagePlaceholderIcon, { color: C.textSubtle }]}>IMG</Text>
           <Text style={[styles.imagePlaceholderText, { color: C.textMuted }]}>
             {item.imageName}
           </Text>
@@ -278,6 +304,79 @@ function DetailView({ C, item }: { C: ThemeColors; item: ManualItem }) {
       )}
       <Text style={[styles.pageTitle, { color: C.text }]}>{item.title}</Text>
       <Text style={[styles.pageDescription, { color: C.textMuted }]}>{item.description}</Text>
+      {isApiKeyItem ? <ApiKeyInlineField C={C} /> : null}
+    </View>
+  );
+}
+
+function ApiKeyInlineField({ C }: { C: ThemeColors }) {
+  const { apiKey, saveApiKey } = useMapTilerKey();
+  const [input, setInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (success) {
+      const t = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(t);
+    }
+  }, [success]);
+
+  const handleSave = async () => {
+    const trimmed = input.trim();
+    if (!trimmed) {
+      setError('Paste your MapTiler key first.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    const res = await saveApiKey(trimmed);
+    setSaving(false);
+    if (!res.ok) setError(res.message);
+    else {
+      setSuccess('Key saved. The map will reload with tiles.');
+      setInput('');
+    }
+  };
+
+  return (
+    <View style={[styles.apiKeyFieldCard, { backgroundColor: C.background, borderColor: C.divider }]}>
+      <Text style={[styles.apiKeyFieldTitle, { color: C.text }]}>Paste your MapTiler key here</Text>
+      <Text style={[styles.apiKeyFieldHelp, { color: C.textMuted }]}>
+        Copy your key from cloud.maptiler.com/account/keys and paste below. Tap Save to store it. Current: {apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : 'none saved'}
+      </Text>
+      <TextInput
+        value={input}
+        onChangeText={(v) => { setInput(v); setError(null); setSuccess(null); }}
+        placeholder="Paste MapTiler key"
+        placeholderTextColor={C.textSubtle}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="off"
+        style={[styles.apiKeyInput, { color: C.text, borderColor: C.divider, backgroundColor: C.surface }]}
+      />
+      {error ? <Text style={[styles.apiKeyError, { color: '#B54A3C' }]}>{error}</Text> : null}
+      {success ? <Text style={[styles.apiKeySuccess, { color: '#5C7A3A' }]}>{success}</Text> : null}
+      <View style={styles.apiKeyActions}>
+        <Pressable
+          onPress={() => Linking.openURL('https://cloud.maptiler.com/account/keys')}
+          style={[styles.apiKeySecondaryBtn, { borderColor: C.divider }]}
+        >
+          <Text style={[styles.apiKeySecondaryBtnText, { color: C.text }]}>Open MapTiler keys</Text>
+        </Pressable>
+        <Pressable
+          onPress={handleSave}
+          disabled={saving}
+          style={[styles.apiKeyPrimaryBtn, { backgroundColor: C.primary, opacity: saving ? 0.7 : 1 }]}
+        >
+          {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.apiKeyPrimaryBtnText}>Save key</Text>}
+        </Pressable>
+      </View>
+      <Pressable onPress={() => Linking.openURL('https://cloud.maptiler.com/')} style={styles.apiKeyLink}>
+        <Text style={[styles.apiKeyLinkText, { color: C.textMuted }]}>Need a key: cloud.maptiler.com - sign up free</Text>
+      </Pressable>
     </View>
   );
 }
@@ -380,6 +479,28 @@ const styles = StyleSheet.create({
     fontWeight: '300',
     marginLeft: Space.sm,
   },
+  featuredCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Space.md,
+    marginBottom: Space.sm,
+  },
+  featuredTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  featuredSummary: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  featuredAction: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
 
   // Items view
   itemsContainer: {
@@ -462,6 +583,70 @@ const styles = StyleSheet.create({
   pageDescription: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  apiKeyFieldCard: {
+    marginTop: Space.sm,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: Space.md,
+    gap: 8,
+  },
+  apiKeyFieldTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  apiKeyFieldHelp: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  apiKeyInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  apiKeyError: {
+    fontSize: 12,
+  },
+  apiKeySuccess: {
+    fontSize: 12,
+  },
+  apiKeyActions: {
+    flexDirection: 'row',
+    gap: Space.sm,
+    marginTop: 4,
+  },
+  apiKeySecondaryBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  apiKeySecondaryBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  apiKeyPrimaryBtn: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  apiKeyPrimaryBtnText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  apiKeyLink: {
+    marginTop: 4,
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  apiKeyLinkText: {
+    fontSize: 12,
   },
 
   // Footer

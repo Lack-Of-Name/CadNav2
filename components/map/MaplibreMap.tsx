@@ -29,9 +29,12 @@ import { Toast } from '@/components/ui/Toast';
 import { contrastingTextColor } from '@/lib/colorUtils';
 import { getMaplibreModule } from '@/lib/maplibreModule';
 import { bearingDegrees, haversineMeters } from './MaplibreMap.utils';
+import { CompassWarningChip } from './CompassWarningChip';
+import { CompassWarningSheet } from './CompassWarningSheet';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGzdLines, generateGridPoints, mgrsCellLabel } from './mapGrid';
 import { latLonToMGRS, parseMGRS, utmToLatLon } from '@/lib/mgrs';
+import { useCompassAccuracy } from '@/hooks/useCompassAccuracy';
 
 const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
 const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
@@ -98,7 +101,9 @@ const locationMarkerIconStyle = {
 export default function MapLibreMap() {
   const maplibre = getMaplibreModule();
   const { apiKey, loading, promptForKey } = useMapTilerKey();
-  const { lastLocation, requestLocation } = useGPS();
+  const { lastLocation, requestLocation, requestFreshFix } = useGPS();
+  const compassAccuracy = useCompassAccuracy();
+  const [compassWarningOpen, setCompassWarningOpen] = useState(false);
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, beginTempNavigation, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteId, activeWorkspaceRouteTitle, stashedRouteState, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints, pendingEdit, consumePendingEdit, updateCheckpointLocation } = useCheckpoints();
   const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode } = useSettings();
   const { routes: workspaceRoutes, setRoutes: setWorkspaceRoutes, setActiveRouteId: persistActiveRouteId } = useWorkspaceRoutes();
@@ -184,11 +189,15 @@ export default function MapLibreMap() {
   }, [mapStyle, androidStyleRetryToken, apiKey]);
   
   const mapImages = React.useMemo(() => {
+    const xColor = Colors[colorScheme].tempTarget;
+    // Simple "X" marker with white halo for contrast on any map background
+    const xSvg = `<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><line x1="6" y1="6" x2="26" y2="26" stroke="white" stroke-width="7" stroke-linecap="round" opacity="0.9"/><line x1="26" y1="6" x2="6" y2="26" stroke="white" stroke-width="7" stroke-linecap="round" opacity="0.9"/><line x1="6" y1="6" x2="26" y2="26" stroke="${xColor}" stroke-width="3.5" stroke-linecap="round"/><line x1="26" y1="6" x2="6" y2="26" stroke="${xColor}" stroke-width="3.5" stroke-linecap="round"/></svg>`;
     return {
       'location-arrow': { uri: 'data:image/svg+xml;base64,' + btoa(arrowSvg) },
       'location-dot': { uri: 'data:image/svg+xml;base64,' + btoa(dotSvg) },
+      'temp-origin-x': { uri: 'data:image/svg+xml;base64,' + btoa(xSvg) },
     };
-  }, []);
+  }, [colorScheme]);
 
   const routeLineStyle = React.useMemo(() => ({
     lineColor: activeRouteColor ?? 'transparent',
@@ -807,6 +816,27 @@ export default function MapLibreMap() {
     } as any;
   }, [activeRouteColor, checkpoints, activeRouteStart, activeRouteLoop, emptyGeo]);
 
+  // "X" at the origin of a temp target dotted line (where the point was placed from)
+  // Mirrors dotted-line condition: only when temp target is active and a line exists (≥1 checkpoint + valid start)
+  const tempOriginShape = React.useMemo(() => {
+    if (!tempTargetActive) return emptyGeo;
+    if (!activeRouteStart || !Number.isFinite(activeRouteStart.latitude) || !Number.isFinite(activeRouteStart.longitude)) return emptyGeo;
+    const hasValidCheckpoint = checkpoints.some(cp => Number.isFinite(cp.latitude) && Number.isFinite(cp.longitude));
+    if (!hasValidCheckpoint) return emptyGeo;
+    // Must match dotted-line condition: activeRouteColor === tempTargetColor (same orange #E8A43C)
+    if (activeRouteColor !== Colors[colorScheme].tempTarget && activeRouteColor !== Colors.light.tempTarget) return emptyGeo;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [activeRouteStart.longitude, activeRouteStart.latitude] },
+          properties: { kind: 'tempOrigin' },
+        },
+      ],
+    } as any;
+  }, [tempTargetActive, activeRouteStart, checkpoints, activeRouteColor, colorScheme, emptyGeo]);
+
   const markerColor = activeRouteColor ?? (colorScheme === 'dark' ? '#0A84FF' : String(tint));
   
   const routeEndpointsShape = React.useMemo(() => {
@@ -1102,27 +1132,46 @@ export default function MapLibreMap() {
         ) : (
           <IconSymbol name="map.fill" size={64} color={iconColor} style={{ marginBottom: 16, opacity: 0.5 }} />
         )}
-        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8, color: textColor }}>
-          {loading ? 'MapTiler API' : 'Map Unavailable'}
+        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8, color: textColor, textAlign: 'center' }}>
+          {loading ? 'MapTiler API' : 'Welcome to CadNav — Let\'s Get Your Maps'}
         </Text>
-        <Text style={{ fontSize: 14, textAlign: 'center', marginHorizontal: 32, marginBottom: 24, color: textColor, opacity: 0.7 }}>
-          {loading ? 'Waiting for MapTiler API key...' : 'No API key configured and no offline maps found. Please add an API key in settings or use downloaded maps.'}
+        <Text style={{ fontSize: 14, textAlign: 'center', marginHorizontal: 32, marginBottom: 12, color: textColor, opacity: 0.7 }}>
+          {loading ? 'Waiting for MapTiler API key...' : 'CadNav uses MapTiler (free) for map tiles. It takes ~2 minutes — no credit card — or use offline maps with no key.'}
         </Text>
         {!loading && (
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <TouchableOpacity
-              style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
-              onPress={promptForKey}
-            >
-              <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Enter API Key</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-            style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
-            onPress={() => router.push('/(tabs)/settings')}
-          >
-            <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Open Settings</Text>
-          </TouchableOpacity>
-          </View>
+          <>
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+              <TouchableOpacity
+                style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+                onPress={promptForKey}
+              >
+                <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Enter API Key</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: 'transparent', borderWidth: 1.5, borderColor: String(bannerAccent), paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
+                onPress={() => router.push('/manual')}
+              >
+                <Text style={{ color: String(bannerAccent), fontWeight: '600' }}>View setup guide</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ backgroundColor: 'rgba(128,128,128,0.14)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
+                onPress={() => router.push('/(tabs)/settings')}
+              >
+                <Text style={{ color: textColor, fontWeight: '600' }}>Open Settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ backgroundColor: 'rgba(128,128,128,0.14)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
+                onPress={() => router.push('/manual')}
+              >
+                <Text style={{ color: textColor, fontWeight: '600', fontSize: 13 }}>Why do I need a key?</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 11, textAlign: 'center', marginHorizontal: 32, marginTop: 14, color: textColor, opacity: 0.45 }}>
+              Skip for now works too — download an offline pack in Settings → Offline Maps.
+            </Text>
+          </>
         )}
       </ThemedView>
     );
@@ -1336,6 +1385,18 @@ export default function MapLibreMap() {
           />
         </ShapeSource>
 
+        <ShapeSource id="temp-origin-source" shape={tempOriginShape}>
+          <SymbolLayer
+            id="temp-origin-x"
+            style={{
+              iconImage: 'temp-origin-x',
+              iconSize: 1,
+              iconAllowOverlap: true,
+              iconIgnorePlacement: true,
+            }}
+          />
+        </ShapeSource>
+
         <ShapeSource id="route-endpoints-source" shape={routeEndpointsShape}>
           <CircleLayer
             id="route-endpoint-circle"
@@ -1408,6 +1469,16 @@ export default function MapLibreMap() {
 
       <AttributionChip right={insets.right} top={insets.top} />
 
+      {compassAccuracy.hasWarning ? (
+        <CompassWarningChip
+          count={compassAccuracy.count}
+          hasCritical={compassAccuracy.hasCritical}
+          top={insets.top + 42}
+          right={insets.right + 8}
+          onPress={() => setCompassWarningOpen(true)}
+        />
+      ) : null}
+
       <DownloadProgressOverlay />
 
       <MapPlacementHud
@@ -1472,7 +1543,7 @@ export default function MapLibreMap() {
         }}
       />
       <MapToolButton
-        icon="mappin.and.ellipse"
+        icon="temp-point-diamond"
         label="Set target"
         onPress={openPlacementChooser}
         colorScheme={colorScheme}
@@ -1540,6 +1611,14 @@ export default function MapLibreMap() {
           right: insets.right + 10,
           bottom: insets.bottom + hudBottomInset,
         }}
+      />
+
+      <CompassWarningSheet
+        visible={compassWarningOpen}
+        onClose={() => setCompassWarningOpen(false)}
+        activeRules={compassAccuracy.warningRules}
+        allRules={compassAccuracy.results}
+        onRefresh={() => void requestFreshFix()}
       />
 
     </ThemedView>

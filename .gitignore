@@ -78,6 +78,9 @@ credentials.json
 !.vscode/launch.json
 *.iml
 *.swp
+
+# Logs
+*.log
 current_tool.txt
 next-steps.txt
 AGENTS.md

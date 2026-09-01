@@ -21,11 +21,12 @@ type ContextValue = {
   loading: boolean;
   clearApiKey: () => Promise<void>;
   promptForKey: () => void;
+  saveApiKey: (rawInput: string) => Promise<{ ok: true } | { ok: false; message: string }>;
   pendingTutorialId: string | null;
   clearPendingTutorial: () => void;
 };
 
-const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true, clearApiKey: async () => {}, promptForKey: () => {}, pendingTutorialId: null, clearPendingTutorial: () => {} });
+const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true, clearApiKey: async () => {}, promptForKey: () => {}, saveApiKey: async () => ({ ok: false, message: 'Not ready' }), pendingTutorialId: null, clearPendingTutorial: () => {} });
 
 export function useMapTilerKey() {
   return useContext(MapTilerKeyContext);
@@ -326,7 +327,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey, pendingTutorialId, clearPendingTutorial: () => setPendingTutorialId(null) }}>
+    <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey, saveApiKey: submitApiKey, pendingTutorialId, clearPendingTutorial: () => setPendingTutorialId(null) }}>
       {children}
       <KeyEntryModal
         visible={showModal}

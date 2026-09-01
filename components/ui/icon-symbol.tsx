@@ -58,6 +58,22 @@ const MAPPING = {
   'antenna.radiowaves.left.and.right': 'settings-input-antenna',
   'bolt.fill': 'bolt',
   'qrcode': 'qr-code',
+  // extra mappings used by AboutContent diagnostics
+  'sensor.tag.radiowaves.forward.fill': 'sensors',
+  'sensor.tag.radiowaves.forward': 'sensors',
+  'move.3d': 'open-with',
+  'gyroscope': '3d-rotation',
+  'barometer': 'speed',
+  'sun.max.fill': 'wb-sunny',
+  'figure.walk': 'directions-walk',
+  'link': 'link',
+  'exclamationmark.bubble.fill': 'feedback',
+  'tag.fill': 'label',
+  'doc.text.fill': 'description',
+  'person.2.fill': 'group',
+  'person.fill': 'person',
+  'arrow.up.right.square.fill': 'open-in-new',
+  'iphone.radiowaves.left.and.right': 'screen-rotation',
 } as const;
 
 /**

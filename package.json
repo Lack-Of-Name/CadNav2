@@ -1,7 +1,7 @@
 {
   "name": "cadnav2",
   "main": "expo-router/entry",
-  "version": "1.0.4",
+  "version": "1.1.0",
   "scripts": {
     "start": "expo start",
     "android": "npx expo run:android",
@@ -9,7 +9,8 @@
     "ios": "npx expo run:ios",
     "web": "expo start --web",
     "dev": "expo start",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "version:update": "node scripts/update-version.mjs"
   },
   "dependencies": {
     "@expo/ngrok": "^4.1.3",

@@ -10,6 +10,9 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useCompassAccuracy } from '@/hooks/useCompassAccuracy';
+import { CompassWarningSheet } from './CompassWarningSheet';
+import Svg, { Path } from 'react-native-svg';
 
 function CompassArrow({ rotationDeg, size, color }: { rotationDeg: number | null; size: number; color: string }) {
   if (rotationDeg == null) return <Text style={styles.noFix}>—</Text>;
@@ -40,6 +43,8 @@ export default function SimpleNavView() {
   const { lastLocation, requestFreshFix } = useGPS();
   const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint } = useCheckpoints();
   const { angleUnit, mapHeading } = useSettings();
+  const compassAccuracy = useCompassAccuracy();
+  const [warningOpen, setWarningOpen] = useState(false);
 
   const [trackedTargetId, setTrackedTargetId] = useState<string | null>(null);
   const [targetStartDistance, setTargetStartDistance] = useState<number | null>(null);
@@ -159,12 +164,34 @@ export default function SimpleNavView() {
 
       <View style={[styles.header, { paddingTop: insets.top + 62, borderBottomColor: theme.divider }]}>
         <Text style={[styles.modeLabel, { color: theme.textMuted }]}>Super Power Saving</Text>
-        <TouchableOpacity
-          onPress={() => router.push('/routes')}
-          style={[styles.headerBtn, { borderColor: theme.divider, backgroundColor: theme.surface }]}
-        >
-          <Text style={[styles.headerBtnText, { color: theme.text }]}>Routes</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {compassAccuracy.hasWarning ? (
+            <TouchableOpacity
+              onPress={() => setWarningOpen(true)}
+              accessibilityLabel={`Compass inaccurate: ${compassAccuracy.count} issues`}
+              style={[
+                styles.warningPill,
+                {
+                  backgroundColor: compassAccuracy.hasCritical ? theme.error : theme.warning,
+                  borderColor: theme.surface,
+                },
+              ]}
+            >
+              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <Path d="M12 2.8 L21.2 20 H2.8 Z" fill="white" />
+                <Path d="M11 8.5 H13 V14 H11 Z" fill={compassAccuracy.hasCritical ? theme.error : theme.warning} />
+                <Path d="M11 16 H13 V18 H11 Z" fill={compassAccuracy.hasCritical ? theme.error : theme.warning} />
+              </Svg>
+              <Text style={styles.warningPillText}>{compassAccuracy.count}</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            onPress={() => router.push('/routes')}
+            style={[styles.headerBtn, { borderColor: theme.divider, backgroundColor: theme.surface }]}
+          >
+            <Text style={[styles.headerBtnText, { color: theme.text }]}>Routes</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.main}>
@@ -277,6 +304,14 @@ export default function SimpleNavView() {
           </Text>
         </View>
       )}
+
+      <CompassWarningSheet
+        visible={warningOpen}
+        onClose={() => setWarningOpen(false)}
+        activeRules={compassAccuracy.warningRules}
+        allRules={compassAccuracy.results}
+        onRefresh={() => void requestFreshFix()}
+      />
     </View>
   );
 }
@@ -447,5 +482,19 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 12,
+  },
+  warningPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1.2,
+  },
+  warningPillText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });
