@@ -332,8 +332,9 @@ export function computeTilt(accel: AccelerometerData | null): { pitch: number; r
   const mag = Math.sqrt(x * x + y * y + z * z);
   if (mag < 0.1) return null;
   // Pitch = rotation around X, Roll around Y. Using standard accel formula.
-  // Range -180..180.
-  const pitch = Math.atan2(y, Math.sqrt(x * x + z * z)) * (180 / Math.PI);
-  const roll = Math.atan2(-x, z) * (180 / Math.PI);
+  // Level = camera (back) facing ground (screen facing sky). Previous formula had it inverted
+  // (level when camera faced sky); rotate 180 by inverting Z/Y so flat screen-up is level.
+  const pitch = Math.atan2(-y, Math.sqrt(x * x + z * z)) * (180 / Math.PI);
+  const roll = Math.atan2(-x, -z) * (180 / Math.PI);
   return { pitch, roll, magnitude: mag };
 }

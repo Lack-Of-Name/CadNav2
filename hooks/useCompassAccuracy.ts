@@ -139,8 +139,103 @@ export function useCompassAccuracy(options?: { enabled?: boolean }) {
   const activeRules = useMemo(() => results.filter((r) => r.active), [results]);
   // R16 is 'info' severity - we do NOT want the orange dot for info alone.
   // Only warn/critical should drive the visible indicator. This avoids permanent dot in powerSave.
-  const warningRules = useMemo(() => activeRules.filter((r) => r.severity !== 'info'), [activeRules]);
+  const rawWarningRules = useMemo(() => activeRules.filter((r) => r.severity !== 'info'), [activeRules]);
 
+  // --- Smoothing: debounce rapid toggling to avoid jarring pop in/out ---
+  // Warnings must be continuously active for ACTIVATION_DELAY before they appear,
+  // and continuously inactive for DEACTIVATION_DELAY before they disappear.
+  const ACTIVATION_DELAY = 1400; // ms - slightly longer to filter brief jitter/drift spikes
+  const DEACTIVATION_DELAY = 2200;
+  const [smoothedWarnings, setSmoothedWarnings] = useState<CompassRuleResult[]>([]);
+  const pendingRef = useRef<Map<string, { targetActive: boolean; since: number; timeout: ReturnType<typeof setTimeout> | null }>>(new Map<string, { targetActive: boolean; since: number; timeout: ReturnType<typeof setTimeout> | null }>());
+  const displayedRef = useRef<Map<string, CompassRuleResult>>(new Map<string, CompassRuleResult>());
+
+  // sync displayedRef from smoothedWarnings
+  useEffect(() => {
+    displayedRef.current = new Map<string, CompassRuleResult>(smoothedWarnings.map((r) => [r.id, r]));
+  }, [smoothedWarnings]);
+
+  useEffect(() => {
+    const rawMap = new Map<string, CompassRuleResult>(rawWarningRules.map((r) => [r.id, r]));
+    const displayed = displayedRef.current as Map<string, CompassRuleResult>;
+    const pending = pendingRef.current;
+
+    // For each possible rule id (union), decide
+    const allIds = new Set<string>([...Array.from(rawMap.keys()), ...Array.from(displayed.keys()), ...Array.from(pending.keys())]);
+
+    allIds.forEach((id) => {
+      const rawActive = rawMap.has(id);
+      const displayedActive = displayed.has(id);
+      const pendingEntry = pending.get(id);
+
+      if (rawActive === displayedActive) {
+        // No transition needed - cancel any pending
+        if (pendingEntry) {
+          if (pendingEntry.timeout) clearTimeout(pendingEntry.timeout);
+          pending.delete(id);
+        }
+        // Keep displayed detail fresh without forcing a re-render debounce - update map silently
+        if (rawActive && displayedActive) {
+          const prev = displayed.get(id);
+          const next = rawMap.get(id)!;
+          // Only update if detail changed to avoid render loops from 800ms ticks
+          if (prev?.detail !== next.detail || prev?.severity !== next.severity || prev?.message !== next.message) {
+            displayed.set(id, next);
+            // Trigger a lightweight state sync without debounce
+            setSmoothedWarnings(Array.from(displayed.values()));
+          }
+        }
+        return;
+      }
+
+      // Transition needed (rawActive != displayedActive)
+      const targetActive = rawActive;
+      // If pending already matches target, keep waiting
+      if (pendingEntry && pendingEntry.targetActive === targetActive) {
+        return;
+      }
+      // Otherwise start/restart pending
+      if (pendingEntry && pendingEntry.timeout) clearTimeout(pendingEntry.timeout);
+
+      const delay = targetActive ? ACTIVATION_DELAY : DEACTIVATION_DELAY;
+      const timeout = setTimeout(() => {
+        const curDisplayed = displayedRef.current;
+        if (targetActive) {
+          const rule = rawMap.get(id) ?? pendingRef.current.get(id) as any;
+          // Re-check raw still matches target at fire time (effect will re-run, but double-check)
+          // Use latest rawMap captured in closure? Need to fetch fresh - use timeout closure stale; instead rely on effect re-evaluation,
+          // but we will just apply and let next effect correct if stale.
+          const latestRaw = rawMap.has(id);
+          if (latestRaw) {
+            curDisplayed.set(id, rawMap.get(id)!);
+          }
+        } else {
+          curDisplayed.delete(id);
+        }
+        pending.delete(id);
+        setSmoothedWarnings(Array.from(curDisplayed.values()));
+      }, delay);
+
+      pending.set(id, { targetActive, since: Date.now(), timeout });
+    });
+
+    // cleanup on unmount
+    return () => {
+      // don't clear pending here - they are ongoing transitions; they will be cleared on next effect or unmount
+    };
+  }, [rawWarningRules]);
+
+  // Cleanup all timeouts on unmount
+  useEffect(() => {
+    return () => {
+      pendingRef.current.forEach((e) => {
+        if (e.timeout) clearTimeout(e.timeout);
+      });
+      pendingRef.current.clear();
+    };
+  }, []);
+
+  const warningRules = smoothedWarnings;
   const hasWarning = warningRules.length > 0;
   const hasCritical = warningRules.some((r) => r.severity === 'critical');
   const count = warningRules.length;
@@ -152,6 +247,7 @@ export function useCompassAccuracy(options?: { enabled?: boolean }) {
     results,
     activeRules,
     warningRules,
+    rawWarningRules,
     hasWarning,
     hasCritical,
     count,

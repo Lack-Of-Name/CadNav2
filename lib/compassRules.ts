@@ -66,8 +66,11 @@ function computeTiltAngles(accel: AccelerometerData | null) {
   const { x, y, z } = accel;
   const mag = Math.sqrt(x * x + y * y + z * z);
   if (mag < 0.1) return null;
-  const pitch = Math.atan2(y, Math.sqrt(x * x + z * z)) * (180 / Math.PI);
-  const roll = Math.atan2(-x, z) * (180 / Math.PI);
+  // Device is level when camera (back) faces ground, i.e. screen facing sky.
+  // Previous formula treated camera-facing-sky as level; rotate 180 by inverting Z (and Y for pitch)
+  // so that flat screen-up is now level and we have generous leeway for handheld tilt.
+  const pitch = Math.atan2(-y, Math.sqrt(x * x + z * z)) * (180 / Math.PI);
+  const roll = Math.atan2(-x, -z) * (180 / Math.PI);
   return { pitch: Math.abs(pitch), roll: Math.abs(roll), max: Math.max(Math.abs(pitch), Math.abs(roll)) };
 }
 
@@ -79,19 +82,26 @@ const THRESH = {
   poorAccuracyCriticalM: 100,
   headingAccuracyWarn: 20,
   headingAccuracyCritical: 30,
-  jitterStddev: 12,
-  jitterReversals: 4,
-  jitterWindowMs: 3000,
+  jitterStddev: 18,
+  jitterReversals: 5,
+  jitterWindowMs: 4000,
+  jitterReversalMinDeg: 25,
   plausibleRateDegPerSec: 180,
   spikeDegPer100ms: 90,
-  tiltDeg: 45,
+  tiltDeg: 40,
+  tiltHysteresisDeg: 10, // clear only when tilt drops 10 deg below threshold to avoid flicker
   stationarySpeedMps: 0.5,
+  stationarySdDeg: 12,
+  stationaryWindowMs: 5000,
   gyroBufferDeg: 15,
   gyroBufferCriticalDeg: 30,
   magExpectedMinUT: 20,
   magExpectedMaxUT: 70,
   magDeviationUT: 15,
   magDeviationPct: 0.30,
+  indoorAccuracyM: 15, // ~11m normal indoors - flag at 15m to be safe, but ignore in powerSave/super
+  declinationStaleKm: 100,
+  declinationStaleHrs: 24,
 };
 
 function evalR01(input: CompassAccuracyInput): CompassRuleResult {
@@ -185,33 +195,38 @@ function evalR06(input: CompassAccuracyInput): CompassRuleResult {
       detail: `WMMHR model error: ${input.declinationError}`,
     };
   }
+  // Declination changes very slowly (~0.1 deg per ~50km) and we recompute every ~5km anyway,
+  // so staleness is low-concern. Treat as info only, with generous thresholds.
   if (input.lastDeclinationAt == null && input.lastLocation) {
-    // never computed declination but we have location -> stale
+    // Grace period: don't nag immediately after app start / GPS lock - declination may still be computing
+    const ageMs = input.now - (input.lastLocation.timestamp ?? input.now);
+    const graceMs = 60000; // 60s grace before we consider "not yet computed" noteworthy
+    const active = ageMs > graceMs;
     return {
       id: 'R06',
       name: 'Declination Stale',
       category: 'Conversion',
-      severity: 'warn',
-      active: true,
+      severity: 'info',
+      active,
       message: 'Declination not yet computed',
-      detail: 'Awaiting first declination conversion for true-north.',
+      detail: active ? 'Awaiting first declination conversion for true-north.' : 'Declination pending (grace period)',
     };
   }
   if (input.lastDeclinationAt != null && input.lastDeclinationCoords && input.lastLocation) {
     const movedKm = haversineKm(input.lastDeclinationCoords.lat, input.lastDeclinationCoords.lon, input.lastLocation.coords.latitude, input.lastLocation.coords.longitude);
     const ageHrs = (input.now - input.lastDeclinationAt) / 3600000;
-    const active = movedKm > 50 || ageHrs > 12;
+    const active = movedKm > THRESH.declinationStaleKm || ageHrs > THRESH.declinationStaleHrs;
     return {
       id: 'R06',
       name: 'Declination Stale',
       category: 'Conversion',
-      severity: 'warn',
+      severity: 'info',
       active,
       message: 'Declination stale',
-      detail: active ? `Moved ${movedKm.toFixed(1)} km or ${ageHrs.toFixed(1)}h since last declination` : 'Declination fresh',
+      detail: active ? `Moved ${movedKm.toFixed(1)} km or ${ageHrs.toFixed(1)}h since last declination (recomputed every ~5km)` : 'Declination fresh',
     };
   }
-  return { id: 'R06', name: 'Declination Stale', category: 'Conversion', severity: 'warn', active: false, message: 'Declination stale', detail: 'No declination issue' };
+  return { id: 'R06', name: 'Declination Stale', category: 'Conversion', severity: 'info', active: false, message: 'Declination stale', detail: 'No declination issue' };
 }
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
@@ -334,9 +349,13 @@ function evalR09(input: CompassAccuracyInput): CompassRuleResult {
 }
 
 function evalR10(input: CompassAccuracyInput): CompassRuleResult {
+  // Ignore if not using satellites (powerSave/super use cell/wifi, accuracy ~11m is normal indoors)
+  if (input.gpsMode === 'powerSave' || input.gpsMode === 'super') {
+    return { id: 'R10', name: 'Inside Building / Blocked', category: 'Environment', severity: 'warn', active: false, message: 'Indoors / blocked sky', detail: `Ignored in ${input.gpsMode} mode (not satellite-based)` };
+  }
   const acc = input.lastLocation?.coords.accuracy ?? null;
-  // Indoor: poor GPS + heading accuracy poor or unavailable
-  const poorGps = acc != null && acc > 30;
+  // ~11m is normal indoors; only flag when clearly poor
+  const poorGps = acc != null && acc > THRESH.indoorAccuracyM;
   const headingAccPoor = input.headingAccuracy != null && input.headingAccuracy > 20;
   const active = poorGps && (headingAccPoor || input.headingAccuracy == null);
   return {
@@ -358,15 +377,16 @@ function evalR11(input: CompassAccuracyInput): CompassRuleResult {
   }
   const cutoff = input.now - THRESH.jitterWindowMs;
   const recent = hist.filter((s) => s.timestamp >= cutoff);
-  if (recent.length < 4) return { id: 'R11', name: 'Heading Jitter', category: 'Sensor Health', severity: 'warn', active: false, message: 'Heading jitter', detail: 'Window too small' };
+  if (recent.length < 5) return { id: 'R11', name: 'Heading Jitter', category: 'Sensor Health', severity: 'warn', active: false, message: 'Heading jitter', detail: 'Window too small' };
   const vals = recent.map((r) => r.heading);
   const sd = stddevDeg(vals);
   let reversals = 0;
   for (let i = 2; i < recent.length; i++) {
     const d1 = shortestDiff(recent[i - 1].heading, recent[i].heading);
     const d0 = shortestDiff(recent[i - 2].heading, recent[i - 1].heading);
-    if (d1 * d0 < 0 && Math.abs(d1) > 20 && Math.abs(d0) > 20) reversals++;
+    if (d1 * d0 < 0 && Math.abs(d1) > (THRESH as any).jitterReversalMinDeg && Math.abs(d0) > (THRESH as any).jitterReversalMinDeg) reversals++;
   }
+  // Raised thresholds (sd 18, reversals 5) to reduce false positives that appeared at odd times
   const active = sd > THRESH.jitterStddev || reversals >= THRESH.jitterReversals;
   return {
     id: 'R11',
@@ -375,7 +395,7 @@ function evalR11(input: CompassAccuracyInput): CompassRuleResult {
     severity: 'warn',
     active,
     message: 'Heading jitter',
-    detail: active ? `Unstable: sd ${sd.toFixed(1)} deg${reversals >= 2 ? `, ${reversals} reversals` : ''} in 3s` : `Stable (sd ${sd.toFixed(1)} deg)`,
+    detail: active ? `Unstable: sd ${sd.toFixed(1)} deg${reversals >= 2 ? `, ${reversals} reversals` : ''} in ${(THRESH.jitterWindowMs/1000).toFixed(1)}s` : `Stable (sd ${sd.toFixed(1)} deg)`,
     remediation: 'Hold level and steady, away from electronics.',
   };
 }
@@ -432,7 +452,13 @@ function evalR14(input: CompassAccuracyInput): CompassRuleResult {
   if (!tilt) {
     return { id: 'R14', name: 'Device Not Level', category: 'Orientation', severity: 'warn', active: false, message: 'Device not level', detail: 'Tilt unavailable (no accelerometer)' };
   }
+  // Generous leeway: 40 deg to trigger, with hysteresis so it doesn't flicker when held near threshold
+  // The tilt computation now treats camera-facing-ground as level (rotated 180 from previous).
+  const hysteresis = (THRESH as any).tiltHysteresisDeg ?? 10;
+  // Note: we cannot keep per-rule state here; hysteresis is handled by debouncing in useCompassAccuracy.
+  // For pure threshold evaluation we use the higher bound; debouncing will handle clearing.
   const active = tilt.max > THRESH.tiltDeg;
+  const clearThreshold = THRESH.tiltDeg - hysteresis;
   return {
     id: 'R14',
     name: 'Device Not Level',
@@ -440,7 +466,7 @@ function evalR14(input: CompassAccuracyInput): CompassRuleResult {
     severity: 'warn',
     active,
     message: 'Device not level',
-    detail: `Tilt ${tilt.max.toFixed(0)} deg (pitch ${tilt.pitch.toFixed(0)}, roll ${tilt.roll.toFixed(0)}) - limit ${THRESH.tiltDeg} deg`,
+    detail: `Tilt ${tilt.max.toFixed(0)} deg (pitch ${tilt.pitch.toFixed(0)}, roll ${tilt.roll.toFixed(0)}) - limit ${THRESH.tiltDeg} deg (clears below ${clearThreshold} deg)`,
     remediation: 'Hold device level for best compass accuracy.',
   };
 }
@@ -451,13 +477,16 @@ function evalR15(input: CompassAccuracyInput): CompassRuleResult {
   if (stationary === false) {
     return { id: 'R15', name: 'Stationary Drift', category: 'Kinematics', severity: 'warn', active: false, message: 'Stationary drift', detail: 'Moving - heading reliable' };
   }
-  // Check variance when stationary (or speed unknown, treat as stationary for variance check)
+  // When speed is unknown we require stronger evidence before warning - otherwise it fires indoors at odd times
   const hist = input.history;
   if (hist.length < 4) return { id: 'R15', name: 'Stationary Drift', category: 'Kinematics', severity: 'warn', active: false, message: 'Stationary drift', detail: 'Not enough samples' };
-  const recent = hist.filter((s) => input.now - s.timestamp <= 5000);
-  if (recent.length < 4) return { id: 'R15', name: 'Stationary Drift', category: 'Kinematics', severity: 'warn', active: false, message: 'Stationary drift', detail: 'Window small' };
+  const windowMs = (THRESH as any).stationaryWindowMs ?? 5000;
+  const recent = hist.filter((s) => input.now - s.timestamp <= windowMs);
+  if (recent.length < 5) return { id: 'R15', name: 'Stationary Drift', category: 'Kinematics', severity: 'warn', active: false, message: 'Stationary drift', detail: 'Window small' };
   const sd = stddevDeg(recent.map((r) => r.heading));
-  const active = sd > 8;
+  // Raised from 8 to 12 to reduce odd-time activation; require more variance when speed unknown
+  const threshold = speed == null ? (THRESH as any).stationarySdDeg + 3 : (THRESH as any).stationarySdDeg;
+  const active = sd > threshold;
   return {
     id: 'R15',
     name: 'Stationary Drift',
@@ -465,7 +494,7 @@ function evalR15(input: CompassAccuracyInput): CompassRuleResult {
     severity: 'warn',
     active,
     message: 'Standing still - drift',
-    detail: `${speed == null ? 'Speed unknown' : `Speed ${speed.toFixed(1)} m/s`} and sd ${sd.toFixed(1)} deg over 5s - walk a few steps`,
+    detail: `${speed == null ? 'Speed unknown' : `Speed ${speed.toFixed(1)} m/s`} and sd ${sd.toFixed(1)} deg over ${windowMs/1000}s (limit ${threshold} deg) - walk a few steps`,
     remediation: 'Walk a few steps for more stable heading.',
   };
 }

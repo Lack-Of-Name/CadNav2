@@ -102,7 +102,9 @@ export function useGPS(options?: GPSOptions) {
   const [declinationError, setDeclinationError] = useState<string | null>(null);
   const declinationErrorRef = useRef<string | null>(null);
   const [lastDeclinationAt, setLastDeclinationAt] = useState<number | null>(null);
+  const lastDeclinationAtRef = useRef<number | null>(null);
   const [lastDeclinationCoords, setLastDeclinationCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const lastDeclinationCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
 
   const settingsCtx = useContext(SettingsContext);
   const settingsGpsMode = settingsCtx?.settings.gpsMode ?? 'highAccuracy';
@@ -119,6 +121,29 @@ export function useGPS(options?: GPSOptions) {
     return v;
   }, []);
 
+  // Helper: distance in km between two lat/lon
+  const haversineKm = useCallback((lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(a));
+  }, []);
+
+  // Decide if declination should be recomputed: based on timer of last computation and distance moved.
+  // We recompute every ~5km (as per R06 comment) so lastDeclinationAt / lastDeclinationCoords are the authoritative timers.
+  const shouldRecomputeDeclination = useCallback((lat: number, lon: number) => {
+    const lastCoords = lastDeclinationCoordsRef.current;
+    const lastAt = lastDeclinationAtRef.current;
+    if (lastCoords == null || lastAt == null) return true; // never computed
+    const movedKm = haversineKm(lastCoords.lat, lastCoords.lon, lat, lon);
+    if (movedKm > 5) return true;
+    // Also recompute if timer is very stale (24h) even without movement - keeps declination fresh
+    const ageHrs = (Date.now() - lastAt) / 3600000;
+    if (ageHrs > 24) return true;
+    return false;
+  }, [haversineKm]);
+
   // Compute declination and convert a magnetic heading to true heading.
   const computeAndSetTrueHeading = useCallback(
     async (magHeading: number | null, lat: number, lon: number, altitudeMeters?: number | null) => {
@@ -132,8 +157,11 @@ export function useGPS(options?: GPSOptions) {
         declinationErrorRef.current = null;
         setDeclinationError(null);
         const now = Date.now();
+        lastDeclinationAtRef.current = now;
         setLastDeclinationAt(now);
-        setLastDeclinationCoords({ lat, lon });
+        const coords = { lat, lon };
+        lastDeclinationCoordsRef.current = coords;
+        setLastDeclinationCoords(coords);
         setLastLocation((prev) =>
           prev
             ? {
@@ -253,9 +281,13 @@ export function useGPS(options?: GPSOptions) {
               setLastHeadingTimestamp(now);
 
               const loc = lastLocationRef.current;
-              if (nativeTrue == null && mag != null && loc) {
-                // Background compute true heading (Android returns no native trueHeading).
-                void computeAndSetTrueHeading(mag, loc.coords.latitude, loc.coords.longitude, loc.coords.altitude ?? null);
+              if (mag != null && loc) {
+                const needsTrue = nativeTrue == null && trueHeadingRef.current == null;
+                const staleDeclination = shouldRecomputeDeclination(loc.coords.latitude, loc.coords.longitude);
+                if (needsTrue || staleDeclination) {
+                  // Background compute true heading (Android returns no native trueHeading). Recomputes every ~5km based on timer of last computation.
+                  void computeAndSetTrueHeading(mag, loc.coords.latitude, loc.coords.longitude, loc.coords.altitude ?? null);
+                }
               }
 
               // Push heading-only updates into lastLocation so the compass UI
@@ -295,8 +327,12 @@ export function useGPS(options?: GPSOptions) {
             if (!cancelled && current) {
               const next = toGPSLocation(current);
               setLastLocation(next);
-              if (magHeadingRef.current != null && trueHeadingRef.current == null) {
-                void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+              if (magHeadingRef.current != null) {
+                const needsTrue = trueHeadingRef.current == null;
+                const stale = shouldRecomputeDeclination(next.coords.latitude, next.coords.longitude);
+                if (needsTrue || stale) {
+                  void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+                }
               }
             }
           } catch {
@@ -309,8 +345,12 @@ export function useGPS(options?: GPSOptions) {
             if (!cancelled && current) {
               const next = toGPSLocation(current);
               setLastLocation(next);
-              if (magHeadingRef.current != null && trueHeadingRef.current == null) {
-                void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+              if (magHeadingRef.current != null) {
+                const needsTrue = trueHeadingRef.current == null;
+                const stale = shouldRecomputeDeclination(next.coords.latitude, next.coords.longitude);
+                if (needsTrue || stale) {
+                  void computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+                }
               }
             }
           } catch {
@@ -346,9 +386,14 @@ export function useGPS(options?: GPSOptions) {
               }
             }
             setLastLocation(next);
-            // Convert any existing magnetic heading to true using updated location
-            if (magHeadingRef.current != null && trueHeadingRef.current == null) {
-              await computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+            // Convert any existing magnetic heading to true using updated location.
+            // Recompute every ~5km (timer of last declination computation) even if trueHeading already exists, to keep declination fresh.
+            if (magHeadingRef.current != null) {
+              const needsTrue = trueHeadingRef.current == null;
+              const stale = shouldRecomputeDeclination(next.coords.latitude, next.coords.longitude);
+              if (needsTrue || stale) {
+                await computeAndSetTrueHeading(magHeadingRef.current as number, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+              }
             }
           }
         );
@@ -384,7 +429,7 @@ export function useGPS(options?: GPSOptions) {
       } catch {}
       headingSubscriptionRef.current = null;
     };
-  }, [computeAndSetTrueHeading, restartToken, gpsMode, config.accuracy, config.distanceInterval, config.timeInterval, config.useFreshFix, config.maxAccuracy]);
+  }, [computeAndSetTrueHeading, shouldRecomputeDeclination, restartToken, gpsMode, config.accuracy, config.distanceInterval, config.timeInterval, config.useFreshFix, config.maxAccuracy]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') return;
@@ -424,13 +469,17 @@ export function useGPS(options?: GPSOptions) {
 
       const loc = lastLocationRef.current;
       if (mag != null && loc) {
-        void computeAndSetTrueHeading(mag, loc.coords.latitude, loc.coords.longitude, loc.coords.altitude ?? null);
+        const needsTrue = trueHeadingRef.current == null;
+        const stale = shouldRecomputeDeclination(loc.coords.latitude, loc.coords.longitude);
+        if (needsTrue || stale) {
+          void computeAndSetTrueHeading(mag, loc.coords.latitude, loc.coords.longitude, loc.coords.altitude ?? null);
+        }
       }
     };
 
     window.addEventListener('deviceorientation', handler as EventListener);
     return () => window.removeEventListener('deviceorientation', handler as EventListener);
-  }, [computeAndSetTrueHeading, gpsMode]);
+  }, [computeAndSetTrueHeading, shouldRecomputeDeclination, gpsMode]);
 
   const requestLocation = useCallback(() => {
     // Force the startup effect to run again; useful when permission/services change
@@ -463,13 +512,17 @@ export function useGPS(options?: GPSOptions) {
       lastLocationRef.current = next;
       setLastLocation(next);
       // Re-compute true heading with fresh coords
-      if (magHeadingRef.current != null && trueHeadingRef.current == null) {
-        void computeAndSetTrueHeading(magHeadingRef.current, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+      if (magHeadingRef.current != null) {
+        const needsTrue = trueHeadingRef.current == null;
+        const stale = shouldRecomputeDeclination(next.coords.latitude, next.coords.longitude);
+        if (needsTrue || stale) {
+          void computeAndSetTrueHeading(magHeadingRef.current, next.coords.latitude, next.coords.longitude, next.coords.altitude ?? null);
+        }
       }
     } catch {
       // If fresh fix fails, user can try again
     }
-  }, [computeAndSetTrueHeading]);
+  }, [computeAndSetTrueHeading, shouldRecomputeDeclination]);
 
   return {
     lastLocation,

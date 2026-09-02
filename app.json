@@ -3,7 +3,7 @@
     "name": "CadNav 2",
     "slug": "cadnav2",
     "scheme": "cadnav",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

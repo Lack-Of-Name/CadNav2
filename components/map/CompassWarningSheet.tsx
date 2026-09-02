@@ -2,6 +2,7 @@ import { Colors } from '@/constants/theme';
 import type { CompassRuleResult } from '@/lib/compassRules';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path } from 'react-native-svg';
 
@@ -81,8 +82,11 @@ export function CompassWarningSheet({ visible, onClose, activeRules }: Props) {
               sorted.map((r) => {
                 const dot = r.severity === 'critical' ? palette.error : palette.warning;
                 return (
-                  <View
+                  <Animated.View
                     key={r.id}
+                    entering={FadeIn.duration(220)}
+                    exiting={FadeOut.duration(180)}
+                    layout={LinearTransition.duration(220)}
                     style={[
                       styles.row,
                       { backgroundColor: palette.background, borderColor: palette.divider },
@@ -92,7 +96,7 @@ export function CompassWarningSheet({ visible, onClose, activeRules }: Props) {
                     <Text style={[styles.rowText, { color: palette.text }]} numberOfLines={1}>
                       {r.name}
                     </Text>
-                  </View>
+                  </Animated.View>
                 );
               })
             )}

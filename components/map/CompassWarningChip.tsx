@@ -1,6 +1,7 @@
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Pressable, StyleSheet, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import Svg, { Path } from 'react-native-svg';
 
 type Props = {
@@ -34,22 +35,24 @@ export function CompassWarningChip({ count, hasCritical, top, right, onPress }: 
 
   return (
     <View pointerEvents="box-none" style={[styles.anchor, { top, right }]}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Compass inaccurate: ${count} issue${count === 1 ? '' : 's'}`}
-        hitSlop={10}
-        style={({ pressed }) => [
-          styles.chip,
-          {
-            backgroundColor: bg,
-            borderColor: palette.surface,
-            opacity: pressed ? 0.92 : 1,
-          },
-        ]}
-      >
-        <WarningIcon size={18} bg={bg} />
-      </Pressable>
+      <Animated.View entering={ZoomIn.duration(220).springify().damping(16)} exiting={ZoomOut.duration(180)} style={{}}>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Compass inaccurate: ${count} issue${count === 1 ? '' : 's'}`}
+          hitSlop={10}
+          style={({ pressed }) => [
+            styles.chip,
+            {
+              backgroundColor: bg,
+              borderColor: palette.surface,
+              opacity: pressed ? 0.92 : 1,
+            },
+          ]}
+        >
+          <WarningIcon size={18} bg={bg} />
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }

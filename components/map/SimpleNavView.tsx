@@ -9,6 +9,7 @@ import { bearingDegrees, haversineMeters } from './MaplibreMap.utils';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, ZoomIn, ZoomOut } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCompassAccuracy } from '@/hooks/useCompassAccuracy';
 import { CompassWarningSheet } from './CompassWarningSheet';
@@ -166,24 +167,26 @@ export default function SimpleNavView() {
         <Text style={[styles.modeLabel, { color: theme.textMuted }]}>Super Power Saving</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           {compassAccuracy.hasWarning ? (
-            <TouchableOpacity
-              onPress={() => setWarningOpen(true)}
-              accessibilityLabel={`Compass inaccurate: ${compassAccuracy.count} issues`}
-              style={[
-                styles.warningPill,
-                {
-                  backgroundColor: compassAccuracy.hasCritical ? theme.error : theme.warning,
-                  borderColor: theme.surface,
-                },
-              ]}
-            >
-              <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                <Path d="M12 2.8 L21.2 20 H2.8 Z" fill="white" />
-                <Path d="M11 8.5 H13 V14 H11 Z" fill={compassAccuracy.hasCritical ? theme.error : theme.warning} />
-                <Path d="M11 16 H13 V18 H11 Z" fill={compassAccuracy.hasCritical ? theme.error : theme.warning} />
-              </Svg>
-              <Text style={styles.warningPillText}>{compassAccuracy.count}</Text>
-            </TouchableOpacity>
+            <Animated.View entering={ZoomIn.duration(220).springify().damping(16)} exiting={ZoomOut.duration(180)}>
+              <TouchableOpacity
+                onPress={() => setWarningOpen(true)}
+                accessibilityLabel={`Compass inaccurate: ${compassAccuracy.count} issues`}
+                style={[
+                  styles.warningPill,
+                  {
+                    backgroundColor: compassAccuracy.hasCritical ? theme.error : theme.warning,
+                    borderColor: theme.surface,
+                  },
+                ]}
+              >
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <Path d="M12 2.8 L21.2 20 H2.8 Z" fill="white" />
+                  <Path d="M11 8.5 H13 V14 H11 Z" fill={compassAccuracy.hasCritical ? theme.error : theme.warning} />
+                  <Path d="M11 16 H13 V18 H11 Z" fill={compassAccuracy.hasCritical ? theme.error : theme.warning} />
+                </Svg>
+                <Text style={styles.warningPillText}>{compassAccuracy.count}</Text>
+              </TouchableOpacity>
+            </Animated.View>
           ) : null}
           <TouchableOpacity
             onPress={() => router.push('/routes')}
