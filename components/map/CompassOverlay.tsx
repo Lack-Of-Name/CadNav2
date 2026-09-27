@@ -1,13 +1,14 @@
 import { triggerHaptic } from '@/components/haptic-tab';
+import { Colors, type ColorScheme } from '@/constants/theme';
 import { useEffect, useMemo, useRef } from 'react';
-import { Pressable } from 'react-native-gesture-handler';
-import { StyleSheet, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
+import { StyleSheet, Pressable, Text, useWindowDimensions, View, ViewStyle } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { degreesToMils } from './converter';
 
 type Props = {
   open: boolean;
   onToggle: () => void;
+  colorScheme: ColorScheme;
   headingDeg?: number | null;
   angleUnit?: 'mils' | 'degrees' | string;
   targetBearingDeg?: number | null;
@@ -16,16 +17,16 @@ type Props = {
   distanceText?: string | null;
   headingReferenceLabel?: string | null;
   targetColor?: string | null;
-  style?: ViewStyle;
-  panelBg: string;
-  borderColor: string;
-  background: string;
-  textColor: string;
-  textMuted: string;
-  textSubtle: string;
-  primary: string;
-  tick: string;
-  tickStrong: string;
+  onFloat?: () => void;
+  style?: ViewStyle;  panelBg?: string;
+  borderColor?: string;
+  background?: string;
+  textColor?: string;
+  textMuted?: string;
+  textSubtle?: string;
+  primary?: string;
+  tick?: string;
+  tickStrong?: string;
 };
 
 const normalize360 = (value: number) => {
@@ -64,6 +65,7 @@ function headingLabelForAngle(deg: number, unit?: string) {
 export function CompassOverlay({
   open,
   onToggle,
+  colorScheme,
   headingDeg,
   angleUnit,
   targetBearingDeg,
@@ -72,6 +74,7 @@ export function CompassOverlay({
   distanceText,
   headingReferenceLabel,
   targetColor,
+  onFloat,
   style,
   panelBg,
   borderColor,
@@ -83,6 +86,16 @@ export function CompassOverlay({
   tick,
   tickStrong,
 }: Props) {
+  const theme = Colors[colorScheme];
+  const resolvedPanelBg = panelBg ?? theme.surface;
+  const resolvedBorder = borderColor ?? theme.divider;
+  const resolvedBackground = background ?? theme.background;
+  const resolvedText = textColor ?? theme.text;
+  const resolvedMuted = textMuted ?? theme.textMuted;
+  const resolvedSubtle = textSubtle ?? theme.textSubtle;
+  const resolvedPrimary = primary ?? theme.primary;
+  const resolvedTick = tick ?? theme.textSubtle;
+  const resolvedTickStrong = tickStrong ?? theme.text;
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const heading = typeof headingDeg === 'number' ? normalize360(headingDeg) : null;
 
@@ -196,26 +209,26 @@ export function CompassOverlay({
         accessibilityLabel="Close compass"
       />
       <View style={[styles.wrap, style]} pointerEvents="box-none">
-        <View style={[styles.card, { backgroundColor: panelBg, borderColor, width: cardWidth, maxWidth: '100%' }]}>
+        <View style={[styles.card, { backgroundColor: resolvedPanelBg, borderColor: resolvedBorder, width: cardWidth, maxWidth: '100%' }]}>
           <View style={styles.header}>
             <View style={styles.headerText}>
-              <Text style={[styles.title, { color: textColor }]}>Compass</Text>
-              <Text style={[styles.subtitle, { color: textMuted }]} numberOfLines={1}>
+              <Text style={[styles.title, { color: resolvedText }]}>Compass</Text>
+              <Text style={[styles.subtitle, { color: resolvedMuted }]} numberOfLines={1}>
                 {targetLabel ? `Target: ${targetLabel}` : 'No target selected'}
               </Text>
             </View>
 
             <Pressable
-              style={[styles.close, { borderColor, backgroundColor: background }]}
+              style={[styles.close, { borderColor: resolvedBorder, backgroundColor: resolvedBackground }]}
               onPress={onToggle}
               accessibilityRole="button"
               accessibilityLabel="Close compass"
             >
-              <Text style={[styles.closeText, { color: textColor }]}>×</Text>
+              <Text style={[styles.closeText, { color: resolvedText }]}>×</Text>
             </Pressable>
           </View>
 
-          <View style={[styles.dial, { backgroundColor: background, borderColor, width: dialSize, height: dialSize }]}>
+          <View style={[styles.dial, { backgroundColor: resolvedBackground, borderColor: resolvedBorder, width: dialSize, height: dialSize }]}>
             <Animated.View style={[styles.ring, ringStyle]}>
               {TICKS.map((deg) => {
                 const isMajor = deg % 45 === 0;
@@ -236,7 +249,7 @@ export function CompassOverlay({
                           : isMajor
                             ? [styles.tickMajor, { width: 2 * scale, height: 20 * scale, marginTop: 12 * scale }]
                             : [styles.tickMinor, { width: 1 * scale, height: 12 * scale, marginTop: 18 * scale }],
-                        { backgroundColor: cardinal || isMajor ? tickStrong : tick },
+                        { backgroundColor: cardinal || isMajor ? resolvedTickStrong : resolvedTick },
                       ]}
                     />
 
@@ -246,7 +259,7 @@ export function CompassOverlay({
                         <Text
                           style={[
                             styles.ringLabel,
-                            { color: tickStrong },
+                            { color: resolvedTickStrong },
                             cardinal ? styles.ringLabelCardinal : styles.ringLabelDegree,
                           ]}
                         >
@@ -258,7 +271,7 @@ export function CompassOverlay({
                     {/* Heading number label below the tick */}
                     {cardinal && (
                       <View style={[styles.headingLabelWrap, { top: 38 * scale }]}>
-                        <Text style={[styles.headingLabel, { color: tickStrong, fontSize: Math.max(7, 8 * scale) }]}>
+                        <Text style={[styles.headingLabel, { color: resolvedTickStrong, fontSize: Math.max(7, 8 * scale) }]}>
                           {headingLabel}
                         </Text>
                       </View>
@@ -271,23 +284,23 @@ export function CompassOverlay({
               {targetRingRotation ? (
                 <View style={[styles.targetMarkWrap, { transform: [{ rotate: targetRingRotation }] }]}>
                   <View style={[styles.targetMarkStick, {
-                    borderBottomColor: targetColor || primary,
+                    borderBottomColor: targetColor || resolvedPrimary,
                     marginTop: 0,
                     borderLeftWidth: 5 * scale,
                     borderRightWidth: 5 * scale,
                     borderBottomWidth: 120 * scale,
                     transform: [{ translateY: -60 * scale }],
                   }]} />
-                  <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
-                    <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+                  <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || resolvedPrimary, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: resolvedBackground }} />
                   </View>
                 </View>
               ) : null}
 
               {/* N marker */}
               <View style={[styles.nLabelWrap, { top: 6 * scale }]}>
-                <View style={[styles.nLabelPill, { borderColor, backgroundColor: background }]}>
-                  <Text style={[styles.nLabelText, { color: textColor, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
+                <View style={[styles.nLabelPill, { borderColor: resolvedBorder, backgroundColor: resolvedBackground }]}>
+                  <Text style={[styles.nLabelText, { color: resolvedText, fontSize: Math.max(9, 11 * scale) }]}>N</Text>
                 </View>
               </View>
             </Animated.View>
@@ -296,7 +309,7 @@ export function CompassOverlay({
             <View
               style={[
                 styles.needle,
-                { backgroundColor: primary, height: 96 * scale, top: 20 * scale, width: Math.max(1.5, 2 * scale) },
+                { backgroundColor: resolvedPrimary, height: 96 * scale, top: 20 * scale, width: Math.max(1.5, 2 * scale) },
               ]}
             />
 
@@ -311,13 +324,13 @@ export function CompassOverlay({
                       borderLeftWidth: 5 * scale,
                       borderRightWidth: 5 * scale,
                       borderBottomWidth: 120 * scale,
-                      borderBottomColor: targetColor || primary,
+                      borderBottomColor: targetColor || resolvedPrimary,
                       transform: [{ translateY: -60 * scale }],
                     },
                   ]}
                 />
-                <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || primary, alignItems: 'center', justifyContent: 'center' }}>
-                  <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: background }} />
+                <View style={{ position: 'absolute', width: 12 * scale, height: 12 * scale, borderRadius: 6 * scale, backgroundColor: targetColor || resolvedPrimary, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 4 * scale, height: 4 * scale, borderRadius: 2 * scale, backgroundColor: resolvedBackground }} />
                 </View>
               </Animated.View>
             ) : null}
@@ -327,8 +340,8 @@ export function CompassOverlay({
           <View style={styles.readout}>
             <View style={styles.readoutRow}>
               <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Heading</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]}>
+                <Text style={[styles.readoutLabel, { color: resolvedSubtle }]}>Heading</Text>
+                <Text style={[styles.readoutValue, { color: resolvedText }]}>
                   {heading == null
                     ? '—'
                     : angleUnit === 'mils'
@@ -336,27 +349,40 @@ export function CompassOverlay({
                     : `${Math.round(heading)}°`}
                 </Text>
                 {headingReferenceLabel ? (
-                  <Text style={[styles.readoutSub, { color: textMuted }]} numberOfLines={1}>
+                  <Text style={[styles.readoutSub, { color: resolvedMuted }]} numberOfLines={1}>
                     {headingReferenceLabel}
                   </Text>
                 ) : null}
               </View>
 
               <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Bearing</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                <Text style={[styles.readoutLabel, { color: resolvedSubtle }]}>Bearing</Text>
+                <Text style={[styles.readoutValue, { color: resolvedText }]} numberOfLines={1}>
                   {bearingText ?? '—'}
                 </Text>
               </View>
 
               <View style={styles.readoutCell}>
-                <Text style={[styles.readoutLabel, { color: textSubtle }]}>Distance</Text>
-                <Text style={[styles.readoutValue, { color: textColor }]} numberOfLines={1}>
+                <Text style={[styles.readoutLabel, { color: resolvedSubtle }]}>Distance</Text>
+                <Text style={[styles.readoutValue, { color: resolvedText }]} numberOfLines={1}>
                   {distanceText ?? '—'}
                 </Text>
               </View>
             </View>
           </View>
+
+          {onFloat ? (
+            <View style={styles.floatRow}>
+              <Pressable
+                style={[styles.floatBtn, { borderColor: resolvedBorder, backgroundColor: resolvedBackground }]}
+                onPress={onFloat}
+                accessibilityRole="button"
+                accessibilityLabel="Open mini compass"
+              >
+                <Text style={[styles.floatText, { color: resolvedText }]}>Open mini compass</Text>
+              </Pressable>
+            </View>
+          ) : null}
         </View>
       </View>
     </View>
@@ -380,11 +406,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     maxWidth: '100%',
     zIndex: 2,
+    alignItems: 'center',
   },
   card: {
     width: 360,
-    borderWidth: 1.5,
-    borderRadius: 18,
+    alignSelf: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
     padding: 14,
   },
   header: {
@@ -407,7 +435,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 999,
-    borderWidth: 1.5,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -423,7 +451,7 @@ const styles = StyleSheet.create({
     width: 240,
     height: 240,
     borderRadius: 999,
-    borderWidth: 1.5,
+    borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -501,7 +529,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   nLabelPill: {
-    borderWidth: 1.5,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -583,5 +611,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     opacity: 0.9,
+  },
+  floatRow: {
+    marginTop: 12,
+  },
+  floatBtn: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
+    paddingVertical: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatText: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
   },
 });

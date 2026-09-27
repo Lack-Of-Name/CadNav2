@@ -2,8 +2,9 @@ export type ManualItem = {
   id: string;
   title: string;
   description: string;
-  imageName: string;
-  imageCaption: string;
+  /** Optional: items without artwork skip the image block entirely. */
+  imageName?: string;
+  imageCaption?: string;
 };
 
 export type ManualSection = {
@@ -60,25 +61,16 @@ const sections: ManualSection[] = [
   {
     id: 'first-steps',
     title: 'First Steps',
-    summary: 'Getting oriented - the drawer menu, API key, and GPS modes.',
+    summary: 'Getting oriented - the drawer menu and GPS modes.',
     items: [
-      {
-        id: 'api-key-setup',
-        title: 'MapTiler API Key',
-        description:
-          'CadNav needs a free MapTiler API key to load map tiles. Without one the map is blank with an Enter API Key button. Sign up at cloud.maptiler.com, copy your key, then paste it in Settings under Map then MapTiler API Key. The map reloads with tiles once saved. You can paste and save your key in the field below.',
-        imageName: 'manual-api-key.png',
-        imageCaption:
-          'Side-by-side: (1) Blank map with Enter API Key button centered and (2) Settings scrolled to the Map section with the MapTiler API Key row highlighted. Use an arrow showing the flow: blank map to Settings to paste key.',
-      },
       {
         id: 'drawer-navigation',
         title: 'Navigation Drawer',
         description:
-          'There is no visible tab bar - the hamburger menu (three lines, top-left) opens a slide-out drawer to switch between Map, Routes, and Settings. The active screen is highlighted. Tap outside the drawer or the arrow button to close it. Opening the Manual from the drawer works the same way.',
+          'There is no visible tab bar - swipe right from the far left edge of the screen, or tap the tab peeking out at the middle of the left edge, to open the slide-out drawer and switch between Map, Routes, and Settings. The active screen is highlighted. Tap outside the drawer, swipe it back, or tap the arrow button to close it. Opening the Manual from the drawer works the same way.',
         imageName: 'manual-drawer.png',
         imageCaption:
-          'The drawer open from the left showing Map, Routes, Settings, and Manual items with icons. Highlight the hamburger button with a callout. Show the active item with its indicator bar.',
+          'The drawer open from the left showing Map, Routes, Settings, and Manual items with icons. Highlight the edge tab with a callout. Show the active item with its indicator bar.',
       },
       {
         id: 'gps-modes',
@@ -158,6 +150,68 @@ const sections: ManualSection[] = [
         imageName: 'manual-grid-overlay.png',
         imageCaption:
           'The Grid section in Settings showing the overlay, subdivisions, and labels toggles. Overlay a map screenshot with the grid active - show grid lines, labels, and the UTM zone in the corner. Use callouts to connect settings toggles to their visual effect on the map.',
+      },
+    ],
+  },
+
+  {
+    id: 'features',
+    title: 'Features',
+    summary: 'Newer capabilities: GPS tracking, the mini compass, drawer gestures, and map controls.',
+    items: [
+      {
+        id: 'gps-tracking',
+        title: 'Follow Your GPS (Double-Tap to Track)',
+        description:
+          'Single-tap the recenter (viewfinder) button to jump to your location once. Double-tap it to start tracking: the camera follows every GPS update while keeping your zoom. The button stays highlighted while tracking. Tracking stops when you pan or pinch the map, tap the map, or tap the recenter button again.',
+      },
+      {
+        id: 'mini-compass',
+        title: 'Mini Compass Widget',
+        description:
+          'Open the compass panel with the compass button, then tap Open mini compass. A small floating dial appears showing NESW, a fixed facing-direction needle, and a target-direction arrow - nothing else. Drag it anywhere, pinch (or drag the corner grip) to resize, and tap the x to close it. Opening the full compass panel hides the mini widget.',
+      },
+      {
+        id: 'drawer-gestures',
+        title: 'Drawer: Edge Swipe and Tab',
+        description:
+          'There is no hamburger button. Swipe right from the far left edge of the screen and the navigation drawer follows your finger - release past the threshold (or fling) to open it, or let go to spring it back. A small tab peeks out at the middle of the left edge; tapping it opens the drawer too. It slides away while the drawer is open. Vertical map pans starting at the edge never trigger it.',
+      },
+      {
+        id: 'checkpoint-picker',
+        title: 'Pick a Checkpoint (Long-Press)',
+        description:
+          'While a route with more than one checkpoint is active, long-press the checkpoint widget (the bearing block or its text) to open the route list. Each row shows its number, name, grid reference, and live distance. Tap a row to jump straight to that checkpoint instead of stepping with the arrow buttons.',
+      },
+      {
+        id: 'dotted-route-lines',
+        title: 'Dotted Route Lines',
+        description:
+          'Checkpoints in the active route are joined by dotted lines in the route colour, drawn in placement order (including back to the start on loop routes), so you can see the travel sequence at a glance.',
+      },
+      {
+        id: 'location-dot',
+        title: 'Location Dot Colour',
+        description:
+          'Settings under Map then Location Dot changes your position marker colour. Use the Hue, Saturation, and Value sliders to dial in any colour; RESET returns to the theme default, which adapts to light and dark mode automatically.',
+      },
+      {
+        id: 'map-brightness',
+        title: 'Map Brightness',
+        description:
+          'Settings under Map then Map Brightness dims the tiles with a black overlay for night use. 100% is full brightness (no overlay); slide down toward 0% to darken. The overlay never blocks map touches and only affects the tiles - buttons and panels stay full brightness.',
+      },
+      {
+        id: 'warning-notes',
+        title: 'Compass Warning Notes',
+        description:
+          'When the compass warning badge appears, open it to see each active issue with a short action note, for example WAVE FIGURE-EIGHT or MOVE FROM METAL. Issues you cannot fix yourself (like AUTO FALLBACK) say what is happening instead.',
+      },
+      {
+        id: 'widget-menu',
+        title: 'Checkpoint Widget Menu',
+        description:
+          'Tap the chevron on the checkpoint widget to reveal extra actions: Add to route (file the current target into a workspace route), Dismiss checkpoint (drop the target but keep the route), and Close route (unload the route entirely without deleting anything).',
       },
     ],
   },

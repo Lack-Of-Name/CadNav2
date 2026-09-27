@@ -22,10 +22,11 @@ export function useCompassAccuracy(options?: { enabled?: boolean }) {
   const lastGyroTsRef = useRef<number | null>(null);
   const gyroRateDegPerSecRef = useRef<number | null>(null);
 
-  // Tick now every 800ms to re-evaluate staleness
+  // Tick now to re-evaluate staleness. 2s is plenty: every staleness
+  // threshold in the rules is 5s+, and sensor ticks already drive updates.
   useEffect(() => {
     if (!enabled) return;
-    const id = setInterval(() => setNow(Date.now()), 800);
+    const id = setInterval(() => setNow(Date.now()), 2000);
     return () => clearInterval(id);
   }, [enabled]);
 

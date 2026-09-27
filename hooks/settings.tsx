@@ -17,7 +17,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
  */
 
 export type AngleUnit = 'mils' | 'degrees';
-export type MapLayer = 'outdoor' | 'satellite' | 'auto';
+export type MapLayer = 'outdoor' | 'satellite';
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type GpsMode = 'highAccuracy' | 'gpsOnly' | 'powerSave' | 'super';
 
@@ -26,7 +26,7 @@ function isAngleUnit(value: unknown): value is AngleUnit {
 }
 
 function isMapLayer(value: unknown): value is MapLayer {
-  return value === 'outdoor' || value === 'satellite' || value === 'auto';
+  return value === 'outdoor' || value === 'satellite';
 }
 
 function isThemeMode(value: unknown): value is ThemeMode {
@@ -82,6 +82,21 @@ const SETTINGS_DEFS = {
       return 'highAccuracy';
     },
   },
+  locationDotColor: {
+    // null = follow the theme primary colour (adapts to light/dark).
+    default: null as string | null,
+    parse: (raw: unknown) =>
+      typeof raw === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : null,
+  },
+  mapBrightness: {
+    // Map tile brightness, percent. 100 = full brightness (overlay disabled),
+    // 0 = fully blacked out.
+    default: 100,
+    parse: (raw: unknown) =>
+      typeof raw === 'number' && Number.isFinite(raw)
+        ? Math.min(100, Math.max(0, Math.round(raw)))
+        : 100,
+  },
 } as const;
 
 const SETTING_KEYS = Object.keys(SETTINGS_DEFS) as Array<keyof typeof SETTINGS_DEFS>;
@@ -97,6 +112,8 @@ export type Settings = {
   mapGridSubdivisionsEnabled: boolean;
   mapGridNumbersEnabled: boolean;
   gpsMode: GpsMode;
+  locationDotColor: string | null;
+  mapBrightness: number;
 };
 
 type PersistedRecord = Record<string, unknown>;
@@ -112,11 +129,14 @@ function buildDefaultSettings(): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.default,
     mapHeading: SETTINGS_DEFS.mapHeading.default,
+    mapLayer: SETTINGS_DEFS.mapLayer.default,
     mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.default,
     themeMode: SETTINGS_DEFS.themeMode.default,
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.default,
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.default,
     gpsMode: SETTINGS_DEFS.gpsMode.default,
+    locationDotColor: SETTINGS_DEFS.locationDotColor.default,
+    mapBrightness: SETTINGS_DEFS.mapBrightness.default,
   } as Settings;
 }
 
@@ -124,11 +144,14 @@ function hydrateSettings(persisted: PersistedRecord | null): Settings {
   return {
     angleUnit: SETTINGS_DEFS.angleUnit.parse(persisted ? persisted['angleUnit'] : undefined),
     mapHeading: SETTINGS_DEFS.mapHeading.parse(persisted ? persisted['mapHeading'] : undefined),
+    mapLayer: SETTINGS_DEFS.mapLayer.parse(persisted ? persisted['mapLayer'] : undefined),
     mapGridEnabled: SETTINGS_DEFS.mapGridEnabled.parse(persisted ? persisted['mapGridEnabled'] : undefined),
     themeMode: SETTINGS_DEFS.themeMode.parse(persisted ? persisted['themeMode'] : undefined),
     mapGridSubdivisionsEnabled: SETTINGS_DEFS.mapGridSubdivisionsEnabled.parse(persisted ? persisted['mapGridSubdivisionsEnabled'] : undefined),
     mapGridNumbersEnabled: SETTINGS_DEFS.mapGridNumbersEnabled.parse(persisted ? persisted['mapGridNumbersEnabled'] : undefined),
     gpsMode: SETTINGS_DEFS.gpsMode.parse(persisted ? persisted['gpsMode'] : undefined),
+    locationDotColor: SETTINGS_DEFS.locationDotColor.parse(persisted ? persisted['locationDotColor'] : undefined),
+    mapBrightness: SETTINGS_DEFS.mapBrightness.parse(persisted ? persisted['mapBrightness'] : undefined),
   } as Settings;
 }
 
@@ -244,13 +267,8 @@ export function useSetting<K extends keyof Settings>(key: K): readonly [Settings
   return [settings[key], setter] as const;
 }
 
-export function getMapStyleUrl(layer: MapLayer, scheme: 'light' | 'dark', apiKey: string): string {
-  let styleId = 'outdoor-v2';
-  if (layer === 'satellite') {
-    styleId = 'satellite';
-  } else if (layer === 'auto') {
-    styleId = scheme === 'dark' ? 'streets-v2-dark' : 'outdoor-v2';
-  }
+export function getMapStyleUrl(layer: MapLayer, apiKey: string): string {
+  const styleId = layer === 'satellite' ? 'satellite' : 'outdoor-v2';
   return `https://api.maptiler.com/maps/${styleId}/style.json?key=${apiKey}`;
 }
 

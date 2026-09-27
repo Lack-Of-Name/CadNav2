@@ -31,3 +31,6 @@ export const FIRST_OPEN_TIME = 'cadnav2.firstOpenTime.v1';
 
 /** Tutorial completion state (`hooks/tutorials.tsx`). Array of tutorial IDs. */
 export const TUTORIALS_COMPLETED = 'cadnav2.tutorials.completed.v1';
+
+/** Cached GitHub contributors list (`hooks/useContributors.ts`). */
+export const GITHUB_CONTRIBUTORS = 'cadnav2.github.contributors.v1';

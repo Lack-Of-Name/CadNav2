@@ -1,14 +1,56 @@
-import {
-  Accelerometer,
-  Barometer,
-  DeviceMotion,
-  Gyroscope,
-  LightSensor,
-  Magnetometer,
-  MagnetometerUncalibrated,
-} from 'expo-sensors';
+// NOTE: Do NOT statically import 'expo-sensors' (barrel or subpaths).
+// Every expo-sensors native wrapper calls requireNativeModule() at module load,
+// so any static import crashes the whole route tree on runtimes without that
+// native module (e.g. ExponentPedometer / ExponentAccelerometer missing on some
+// emulators or stale dev builds). All sensors are loaded lazily below with
+// requireOptionalNativeModule() guards and degrade to "unavailable".
+import { requireOptionalNativeModule } from 'expo-modules-core';
 import { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
+
+const sensorCache: Record<string, any> = {};
+
+// Metro only allows require() with a static string literal, so each sensor has
+// its own loader. Modules stay unevaluated until first call, and the
+// requireOptionalNativeModule() guard runs first so missing natives bail to
+// null instead of throwing from the wrapper's top-level requireNativeModule().
+function loadSensorModule(nativeName: string, key: string, loader: () => any): any | null {
+  if (sensorCache[key] !== undefined) return sensorCache[key];
+  try {
+    if (!requireOptionalNativeModule(nativeName)) {
+      sensorCache[key] = null;
+      return null;
+    }
+    const mod = loader();
+    const sensor = mod?.default ?? mod ?? null;
+    sensorCache[key] = sensor;
+    return sensor;
+  } catch {
+    sensorCache[key] = null;
+    return null;
+  }
+}
+
+/* eslint-disable @typescript-eslint/no-require-imports */
+const getAccelerometer = () =>
+  loadSensorModule('ExponentAccelerometer', 'accelerometer', () => require('expo-sensors/build/Accelerometer'));
+const getBarometer = () =>
+  loadSensorModule('ExpoBarometer', 'barometer', () => require('expo-sensors/build/Barometer'));
+const getDeviceMotion = () =>
+  loadSensorModule('ExponentDeviceMotion', 'deviceMotion', () => require('expo-sensors/build/DeviceMotion'));
+const getGyroscope = () =>
+  loadSensorModule('ExponentGyroscope', 'gyroscope', () => require('expo-sensors/build/Gyroscope'));
+const getLightSensor = () =>
+  loadSensorModule('ExpoLightSensor', 'lightSensor', () => require('expo-sensors/build/LightSensor'));
+const getMagnetometer = () =>
+  loadSensorModule('ExponentMagnetometer', 'magnetometer', () => require('expo-sensors/build/Magnetometer'));
+const getMagnetometerUncalibrated = () =>
+  loadSensorModule(
+    'ExponentMagnetometerUncalibrated',
+    'magnetometerUncalibrated',
+    () => require('expo-sensors/build/MagnetometerUncalibrated'),
+  );
+/* eslint-enable @typescript-eslint/no-require-imports */
 
 export type MagnetometerData = {
   x: number;
@@ -151,14 +193,23 @@ export function useSensors(options?: {
 
     void (async () => {
       try {
+        const safeCheck = (loader: () => any | null): Promise<boolean> => {
+          try {
+            const sensor = loader();
+            if (!sensor?.isAvailableAsync) return Promise.resolve(false);
+            return sensor.isAvailableAsync().catch(() => false);
+          } catch {
+            return Promise.resolve(false);
+          }
+        };
         const checks: Promise<boolean>[] = [];
-        if (enableMag) checks.push(Magnetometer.isAvailableAsync().catch(() => false)); else { setIsMagnetometerAvailable(null); checks.push(Promise.resolve(false)); }
-        if (enableGyro) checks.push(Gyroscope.isAvailableAsync().catch(() => false)); else { setIsGyroscopeAvailable(null); checks.push(Promise.resolve(false)); }
-        if (enableAccel) checks.push(Accelerometer.isAvailableAsync().catch(() => false)); else { setIsAccelerometerAvailable(null); checks.push(Promise.resolve(false)); }
-        if (enableBaro) checks.push(Barometer.isAvailableAsync().catch(() => false)); else { setIsBarometerAvailable(null); checks.push(Promise.resolve(false)); }
-        if (enableLight) checks.push(LightSensor.isAvailableAsync().catch(() => false)); else { setIsLightSensorAvailable(null); checks.push(Promise.resolve(false)); }
-        if (enableMotion) checks.push(DeviceMotion.isAvailableAsync().catch(() => false)); else { setIsDeviceMotionAvailable(null); checks.push(Promise.resolve(false)); }
-        if (enableMagUncal) checks.push(MagnetometerUncalibrated.isAvailableAsync().catch(() => false)); else { setIsMagnetometerUncalibratedAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableMag) checks.push(safeCheck(getMagnetometer)); else { setIsMagnetometerAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableGyro) checks.push(safeCheck(getGyroscope)); else { setIsGyroscopeAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableAccel) checks.push(safeCheck(getAccelerometer)); else { setIsAccelerometerAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableBaro) checks.push(safeCheck(getBarometer)); else { setIsBarometerAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableLight) checks.push(safeCheck(getLightSensor)); else { setIsLightSensorAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableMotion) checks.push(safeCheck(getDeviceMotion)); else { setIsDeviceMotionAvailable(null); checks.push(Promise.resolve(false)); }
+        if (enableMagUncal) checks.push(safeCheck(getMagnetometerUncalibrated)); else { setIsMagnetometerUncalibratedAvailable(null); checks.push(Promise.resolve(false)); }
 
         const [m, g, a, b, l, dm, mu] = await Promise.all(checks);
         if (cancelled) return;
@@ -180,21 +231,26 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableMag || Platform.OS === 'web') return;
     if (isMagnetometerAvailable === false) return;
+    const Magnetometer = getMagnetometer();
+    if (!Magnetometer) { setIsMagnetometerAvailable(false); return; }
 
     try {
       Magnetometer.setUpdateInterval(magInterval);
     } catch {}
-    const sub = Magnetometer.addListener((data) => {
-      // data.timestamp is seconds (expo), convert to ms
-      const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
-      setMagnetometer({
-        x: data.x,
-        y: data.y,
-        z: data.z,
-        magnitude: magnitude(data.x, data.y, data.z),
-        timestamp: ts,
+    let sub: any = null;
+    try {
+      sub = Magnetometer.addListener((data: any) => {
+        // data.timestamp is seconds (expo), convert to ms
+        const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
+        setMagnetometer({
+          x: data.x,
+          y: data.y,
+          z: data.z,
+          magnitude: magnitude(data.x, data.y, data.z),
+          timestamp: ts,
+        });
       });
-    });
+    } catch { return; }
     magSub.current = sub;
     return () => {
       try { sub.remove(); } catch { try { Magnetometer.removeAllListeners(); } catch {} }
@@ -205,12 +261,17 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableGyro || Platform.OS === 'web') return;
     if (isGyroscopeAvailable === false) return;
+    const Gyroscope = getGyroscope();
+    if (!Gyroscope) { setIsGyroscopeAvailable(false); return; }
 
     try { Gyroscope.setUpdateInterval(gyroInterval); } catch {}
-    const sub = Gyroscope.addListener((data) => {
-      const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
-      setGyroscope({ x: data.x, y: data.y, z: data.z, timestamp: ts });
-    });
+    let sub: any = null;
+    try {
+      sub = Gyroscope.addListener((data: any) => {
+        const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
+        setGyroscope({ x: data.x, y: data.y, z: data.z, timestamp: ts });
+      });
+    } catch { return; }
     gyroSub.current = sub;
     return () => {
       try { sub.remove(); } catch { try { Gyroscope.removeAllListeners(); } catch {} }
@@ -221,12 +282,17 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableAccel || Platform.OS === 'web') return;
     if (isAccelerometerAvailable === false) return;
+    const Accelerometer = getAccelerometer();
+    if (!Accelerometer) { setIsAccelerometerAvailable(false); return; }
 
     try { Accelerometer.setUpdateInterval(accelInterval); } catch {}
-    const sub = Accelerometer.addListener((data) => {
-      const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
-      setAccelerometer({ x: data.x, y: data.y, z: data.z, timestamp: ts });
-    });
+    let sub: any = null;
+    try {
+      sub = Accelerometer.addListener((data: any) => {
+        const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
+        setAccelerometer({ x: data.x, y: data.y, z: data.z, timestamp: ts });
+      });
+    } catch { return; }
     accelSub.current = sub;
     return () => {
       try { sub.remove(); } catch { try { Accelerometer.removeAllListeners(); } catch {} }
@@ -238,11 +304,16 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableBaro || Platform.OS === 'web') return;
     if (isBarometerAvailable === false) return;
+    const Barometer = getBarometer();
+    if (!Barometer) { setIsBarometerAvailable(false); return; }
     try { Barometer.setUpdateInterval(baroInterval); } catch {}
-    const sub = Barometer.addListener((data) => {
-      const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
-      setBarometer({ pressure: data.pressure, relativeAltitude: (data as any).relativeAltitude ?? null, timestamp: ts });
-    });
+    let sub: any = null;
+    try {
+      sub = Barometer.addListener((data: any) => {
+        const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
+        setBarometer({ pressure: data.pressure, relativeAltitude: (data as any).relativeAltitude ?? null, timestamp: ts });
+      });
+    } catch { return; }
     baroSub.current = sub;
     return () => {
       try { sub.remove(); } catch { try { Barometer.removeAllListeners(); } catch {} }
@@ -254,12 +325,14 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableLight || Platform.OS === 'web') return;
     if (isLightSensorAvailable === false) return;
+    const LightSensor = getLightSensor();
+    if (!LightSensor) { setIsLightSensorAvailable(false); return; }
     try { (LightSensor as any).setUpdateInterval?.(lightInterval); } catch {}
     let sub: any = null;
-    try { sub = LightSensor.addListener((data) => {
+    try { sub = LightSensor.addListener((data: any) => {
       const ts = typeof (data as any).timestamp === 'number' ? ((data as any).timestamp > 1e12 ? (data as any).timestamp : (data as any).timestamp * 1000) : Date.now();
       setLightSensor({ illuminance: (data as any).illuminance, timestamp: ts });
-    }); } catch {}
+    }); } catch { return; }
     lightSub.current = sub;
     return () => {
       try { sub?.remove(); } catch { try { LightSensor.removeAllListeners(); } catch {} }
@@ -271,19 +344,24 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableMotion || Platform.OS === 'web') return;
     if (isDeviceMotionAvailable === false) return;
+    const DeviceMotion = getDeviceMotion();
+    if (!DeviceMotion) { setIsDeviceMotionAvailable(false); return; }
     try { DeviceMotion.setUpdateInterval(motionInterval); } catch {}
-    const sub = DeviceMotion.addListener((data: any) => {
-      const ts = Date.now(); // DeviceMotion often lacks top-level timestamp
-      setDeviceMotion({
-        acceleration: data.acceleration ?? null,
-        accelerationIncludingGravity: data.accelerationIncludingGravity,
-        rotation: data.rotation ?? { alpha: 0, beta: 0, gamma: 0 },
-        rotationRate: data.rotationRate ?? null,
-        orientation: data.orientation ?? 0,
-        interval: data.interval ?? motionInterval,
-        timestamp: ts,
+    let sub: any = null;
+    try {
+      sub = DeviceMotion.addListener((data: any) => {
+        const ts = Date.now(); // DeviceMotion often lacks top-level timestamp
+        setDeviceMotion({
+          acceleration: data.acceleration ?? null,
+          accelerationIncludingGravity: data.accelerationIncludingGravity,
+          rotation: data.rotation ?? { alpha: 0, beta: 0, gamma: 0 },
+          rotationRate: data.rotationRate ?? null,
+          orientation: data.orientation ?? 0,
+          interval: data.interval ?? motionInterval,
+          timestamp: ts,
+        });
       });
-    });
+    } catch { return; }
     motionSub.current = sub;
     return () => {
       try { sub.remove(); } catch { try { DeviceMotion.removeAllListeners(); } catch {} }
@@ -295,11 +373,16 @@ export function useSensors(options?: {
   useEffect(() => {
     if (!enabled || !enableMagUncal || Platform.OS === 'web') return;
     if (isMagnetometerUncalibratedAvailable === false) return;
+    const MagnetometerUncalibrated = getMagnetometerUncalibrated();
+    if (!MagnetometerUncalibrated) { setIsMagnetometerUncalibratedAvailable(false); return; }
     try { MagnetometerUncalibrated.setUpdateInterval(magUncalInterval); } catch {}
-    const sub = MagnetometerUncalibrated.addListener((data: any) => {
-      const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
-      setMagnetometerUncalibrated({ x: data.x, y: data.y, z: data.z, timestamp: ts });
-    });
+    let sub: any = null;
+    try {
+      sub = MagnetometerUncalibrated.addListener((data: any) => {
+        const ts = typeof data.timestamp === 'number' ? (data.timestamp > 1e12 ? data.timestamp : data.timestamp * 1000) : Date.now();
+        setMagnetometerUncalibrated({ x: data.x, y: data.y, z: data.z, timestamp: ts });
+      });
+    } catch { return; }
     magUncalSub.current = sub;
     return () => {
       try { sub.remove(); } catch { try { MagnetometerUncalibrated.removeAllListeners(); } catch {} }

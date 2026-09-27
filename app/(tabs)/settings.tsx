@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -8,16 +8,18 @@ import { alert } from '@/components/alert';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ColorSlider } from '@/components/ui/ColorSlider';
 import StyledButton from '@/components/ui/StyledButton';
 import { ThemeSwitch } from '@/components/ui/ThemeSwitch';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { getMaplibreModule } from '@/lib/maplibreModule';
-import { useCheckpoints } from '@/hooks/checkpoints';
-import { useSettings, type GpsMode, type ThemeMode } from '@/hooks/settings';
+import { Colors, Radius } from '@/constants/theme';
 import { tutorials } from '@/constants/tutorials';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCheckpoints } from '@/hooks/checkpoints';
+import { useSettings, type GpsMode, type MapLayer, type ThemeMode } from '@/hooks/settings';
 import { useTutorials } from '@/hooks/tutorials';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { hexToHsv, hsvToHex } from '@/lib/colorUtils';
+import { getMaplibreModule } from '@/lib/maplibreModule';
 import { useRouter } from 'expo-router';
 
 function SettingsSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
@@ -56,15 +58,15 @@ function ThemeModeSelector({ value, onChange }: { value: ThemeMode; onChange: (n
             style={[
               styles.themeModeCard,
               {
-                backgroundColor: active ? theme.primary : theme.background,
+                backgroundColor: active ? theme.primary + '14' : theme.background,
                 borderColor: active ? theme.primary : theme.divider,
               },
             ]}
           >
-            <View style={[styles.themeModeIcon, { backgroundColor: active ? 'rgba(255,255,255,0.16)' : theme.surface }]}>
+            <View style={[styles.themeModeIcon, { backgroundColor: active ? theme.primary : theme.background }]}>
               <IconSymbol name={choice.icon as any} size={18} color={active ? '#fff' : theme.primary} />
             </View>
-            <ThemedText style={[styles.themeModeLabel, { color: active ? '#fff' : theme.text }]}>{choice.label}</ThemedText>
+            <ThemedText style={[styles.themeModeLabel, { color: active ? theme.primary : theme.text }]}>{choice.label}</ThemedText>
           </Pressable>
         );
       })}
@@ -84,26 +86,28 @@ function GpsModeSelector({ value, onChange }: { value: GpsMode; onChange: (next:
   const theme = Colors[colorScheme];
 
   return (
-    <View style={styles.themeModeGrid}>
+    <View style={styles.gpsModeGrid}>
       {GPS_MODE_CHOICES.map((choice) => {
         const active = value === choice.value;
         return (
           <Pressable
             key={choice.value}
             onPress={() => onChange(choice.value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
             style={[
-              styles.themeModeCard,
+              styles.gpsModeCard,
               {
-                backgroundColor: active ? theme.primary : theme.background,
+                backgroundColor: active ? theme.primary + '14' : theme.background,
                 borderColor: active ? theme.primary : theme.divider,
               },
             ]}
           >
-            <View style={[styles.themeModeIcon, { backgroundColor: active ? 'rgba(255,255,255,0.16)' : theme.surface }]}>
-              <IconSymbol name={choice.icon as any} size={18} color={active ? '#fff' : theme.primary} />
+            <View style={[styles.themeModeIcon, { backgroundColor: active ? theme.primary : theme.background }]}>
+              <IconSymbol name={choice.icon as any} size={20} color={active ? '#fff' : theme.primary} />
             </View>
-            <ThemedText style={[styles.themeModeLabel, { color: active ? '#fff' : theme.text }]}>{choice.label}</ThemedText>
-            <ThemedText style={[styles.themeModeLabel, { color: active ? 'rgba(255,255,255,0.7)' : theme.textMuted, fontSize: 11 }]}>{choice.desc}</ThemedText>
+            <ThemedText style={[styles.themeModeLabel, { color: active ? theme.primary : theme.text }]}>{choice.label}</ThemedText>
+            <ThemedText style={[styles.themeModeLabel, { color: theme.textMuted, fontSize: 11 }]}>{choice.desc}</ThemedText>
           </Pressable>
         );
       })}
@@ -111,8 +115,203 @@ function GpsModeSelector({ value, onChange }: { value: GpsMode; onChange: (next:
   );
 }
 
-function SettingsHero() {
+function TutorialList({ onOpen }: { onOpen: (id: string) => void }) {
   const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+  const { hasCompleted } = useTutorials();
+
+  return (
+    <View>
+      {tutorials.map((t, index) => {
+        const done = hasCompleted(t.id);
+        const stepCount = t.pages.length > 0 ? `${t.pages.length} steps` : 'Reference';
+        return (
+          <TouchableOpacity
+            key={t.id}
+            onPress={() => onOpen(t.id)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`${t.title}${done ? ', completed' : ''}`}
+            style={[
+              styles.tutorialRow,
+              index < tutorials.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.divider },
+            ]}
+          >
+            <View style={[styles.tutorialDot, { backgroundColor: done ? theme.success : theme.warning }]} />
+            <View style={styles.tutorialRowCopy}>
+              <ThemedText style={styles.tutorialRowTitle}>{t.title}</ThemedText>
+              <ThemedText style={[styles.tutorialRowSub, { color: theme.textMuted }]}>
+                {done ? `Completed · ${stepCount}` : stepCount}
+              </ThemedText>
+            </View>
+            <IconSymbol name="chevron.right" size={20} color={theme.textMuted} />
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
+// Placeholder layer previews — to update the artwork, overwrite these two
+// PNG files in place (same filenames, ideally ~384x240).
+const MAP_LAYER_CHOICES: { value: MapLayer; label: string; desc: string; image: number }[] = [
+  { value: 'outdoor', label: 'Outdoor', desc: 'Topo trails', image: require('@/assets/images/map-outdoor.png') },
+  { value: 'satellite', label: 'Satellite', desc: 'Aerial imagery', image: require('@/assets/images/map-satellite.png') },
+];
+
+function MapLayerSelector({ value, onChange }: { value: MapLayer; onChange: (next: MapLayer) => void }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+
+  return (
+    <View style={styles.mapLayerGrid}>
+      {MAP_LAYER_CHOICES.map((choice) => {
+        const active = value === choice.value;
+        return (
+          <Pressable
+            key={choice.value}
+            onPress={() => onChange(choice.value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            accessibilityLabel={`${choice.label} map layer${active ? ', selected' : ''}`}
+            style={[
+              styles.mapLayerCard,
+              {
+                backgroundColor: theme.background,
+                borderColor: active ? theme.primary : theme.divider,
+              },
+            ]}
+          >
+            <Image source={choice.image} style={styles.mapLayerImage} resizeMode="cover" />
+            <View style={styles.mapLayerBody}>
+              <View style={styles.mapLayerLabelRow}>
+                <ThemedText style={[styles.mapLayerLabel, { color: theme.text }]}>{choice.label}</ThemedText>
+                <View style={[styles.mapLayerDot, { backgroundColor: active ? theme.primary : 'transparent', borderColor: active ? theme.primary : theme.divider }]} />
+              </View>
+              <ThemedText style={[styles.mapLayerDesc, { color: theme.textMuted }]}>{choice.desc}</ThemedText>
+            </View>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function LocationDotSelector({ value, onChange }: { value: string | null; onChange: (next: string | null) => void }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+
+  const [draft, setDraft] = useState(value ?? theme.primary);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (commitTimer.current) clearTimeout(commitTimer.current); }, []);
+
+  // While following the theme default, keep the preview tracking theme changes.
+  useEffect(() => {
+    if (value == null) setDraft(theme.primary);
+  }, [value, theme.primary]);
+
+  const hsv = useMemo(() => hexToHsv(draft), [draft]);
+  const satStops = useMemo(
+    () => [hsvToHex(hsv.h, 0, hsv.v), hsvToHex(hsv.h, 100, hsv.v)],
+    [hsv.h, hsv.v],
+  );
+  const valStops = useMemo(
+    () => [hsvToHex(hsv.h, hsv.s, 0), hsvToHex(hsv.h, hsv.s, 100)],
+    [hsv.h, hsv.s],
+  );
+
+  // Sliders fire per-frame while dragging — persist debounced, preview instantly.
+  const commit = (hex: string) => {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => { void onChange(hex); }, 450);
+  };
+  const applyChannel = (hex: string) => { setDraft(hex); commit(hex); };
+  const setHue = (h: number) => applyChannel(hsvToHex(h, hsv.s, hsv.v));
+  const setSaturation = (s: number) => applyChannel(hsvToHex(hsv.h, s, hsv.v));
+  const setValue = (v: number) => applyChannel(hsvToHex(hsv.h, hsv.s, v));
+
+  const resetToDefault = () => {
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    setDraft(theme.primary);
+    void onChange(null);
+  };
+
+  return (
+    <View>
+      <View style={styles.hsvRow}>
+        <View style={[styles.colorPreview, { backgroundColor: draft, borderColor: theme.divider }]} />
+        <View style={styles.hsvSliders}>
+          <View style={styles.sliderLine}>
+            <ThemedText style={[styles.hsvTag, { color: theme.textMuted }]}>H</ThemedText>
+            <ColorSlider value={hsv.h} min={0} max={360} stops={HUE_STOPS} onChange={setHue} />
+          </View>
+          <View style={styles.sliderLine}>
+            <ThemedText style={[styles.hsvTag, { color: theme.textMuted }]}>S</ThemedText>
+            <ColorSlider value={hsv.s} min={0} max={100} stops={satStops} onChange={setSaturation} />
+          </View>
+          <View style={styles.sliderLine}>
+            <ThemedText style={[styles.hsvTag, { color: theme.textMuted }]}>V</ThemedText>
+            <ColorSlider value={hsv.v} min={0} max={100} stops={valStops} onChange={setValue} />
+          </View>
+        </View>
+      </View>
+      <View style={styles.dotFooter}>
+        <ThemedText style={[styles.dotCaption, { color: theme.textMuted }]}>
+          {value == null ? 'Theme default' : value.toUpperCase()}
+        </ThemedText>
+        {value != null ? (
+          <Pressable
+            onPress={resetToDefault}
+            accessibilityRole="button"
+            accessibilityLabel="Reset location dot to theme default"
+            hitSlop={8}
+          >
+            <ThemedText style={[styles.dotReset, { color: theme.primary }]}>RESET</ThemedText>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+const HUE_STOPS = ['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000'];
+
+const DIM_STOPS = ['#000000', '#FFFFFF'];
+
+function BrightnessSelector({ value, onChange }: { value: number; onChange: (next: number) => void }) {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
+
+  const [draft, setDraft] = useState(value);
+  const commitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (commitTimer.current) clearTimeout(commitTimer.current); }, []);
+
+  // Sliders fire per-frame while dragging — persist debounced, preview instantly.
+  const handleChange = (v: number) => {
+    const next = Math.min(100, Math.max(0, Math.round(v)));
+    setDraft(next);
+    if (commitTimer.current) clearTimeout(commitTimer.current);
+    commitTimer.current = setTimeout(() => { void onChange(next); }, 450);
+  };
+
+  return (
+    <View>
+      <View style={styles.brightRow}>
+        <ColorSlider value={draft} min={0} max={100} stops={DIM_STOPS} onChange={handleChange} />
+        <ThemedText style={[styles.brightValue, { color: theme.text }]}>
+          {`${draft}%`}
+        </ThemedText>
+      </View>
+      <ThemedText style={[styles.dotCaption, { color: theme.textMuted }]}>
+        Dims the map tiles for night use — slide left to darken.
+        Buttons, widgets and the compass stay full brightness, and map touches
+        pass straight through. At 100% there is no overlay at all.
+      </ThemedText>
+    </View>
+  );
+}
+
+function SettingsHero() {  const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
   return (
@@ -179,9 +378,9 @@ export default function SettingsScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const { angleUnit, mapHeading, mapLayer, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, setSetting } = useSettings();
+  const { angleUnit, mapHeading, mapLayer, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, locationDotColor, mapBrightness, setSetting } = useSettings();
   const { apiKey, clearApiKey } = useMapTilerKey();
-  const { showTutorial, hasCompleted } = useTutorials();
+  const { showTutorial } = useTutorials();
   const [infoOpen, setInfoOpen] = useState(false);
   const [downloadMapsOpen, setDownloadMapsOpen] = useState(false);
 
@@ -333,17 +532,50 @@ export default function SettingsScreen() {
           )}
         </SettingsSection>
 
-        <SettingsSection title="Map" description="Map layer, offline packs, and map key management.">
-          <SettingsRow 
-            icon="square.stack.3d.up.fill" 
-            label="Map Layer" 
-            color={theme.warning}
-            value={mapLayer === 'outdoor' ? 'Outdoor' : mapLayer === 'satellite' ? 'Satellite' : 'Auto Dark'}
-            onPress={() => {
-              const next = mapLayer === 'outdoor' ? 'satellite' : mapLayer === 'satellite' ? 'auto' : 'outdoor';
-              void setSetting('mapLayer', next);
-            }}
-          />
+        <SettingsSection title="Map" description="Choose the base map style, offline packs, and map key management.">
+          <View style={styles.appearanceBlock}>
+            <MapLayerSelector
+              value={mapLayer}
+              onChange={(next) => void setSetting('mapLayer', next)}
+            />
+          </View>
+          <View style={styles.appearanceBlock}>
+            <ThemedText style={[styles.appearanceLabel, { color: theme.textMuted }]}>Location Dot</ThemedText>
+            <LocationDotSelector
+              value={locationDotColor}
+              onChange={(next) => void setSetting('locationDotColor', next)}
+            />
+          </View>
+          <View style={styles.appearanceBlock}>
+            <ThemedText style={[styles.appearanceLabel, { color: theme.textMuted }]}>Map Brightness</ThemedText>
+            <BrightnessSelector
+              value={mapBrightness}
+              onChange={(next) => void setSetting('mapBrightness', next)}
+            />
+          </View>
+          <View style={styles.appearanceBlock}>
+            <ThemedText style={[styles.appearanceLabel, { color: theme.textMuted }]}>Map Key</ThemedText>
+            <ThemedText style={[styles.apiKeyTitle, { color: theme.text }]}>Need a map key?</ThemedText>
+            <ThemedText style={[styles.apiKeyDesc, { color: theme.textMuted }]}>
+              CadNav uses MapTiler for tiles. A free key takes about 2 minutes and no credit card is needed. You can also use offline maps without a key.
+            </ThemedText>
+            <Pressable
+              onPress={() => router.push('/manual')}
+              accessibilityRole="button"
+              accessibilityLabel="Open API key guide"
+              style={[styles.apiKeyBtn, { backgroundColor: theme.primary }]}
+            >
+              <ThemedText style={[styles.apiKeyBtnText, { color: '#fff' }]}>Open API key guide</ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => { void Linking.openURL('https://cloud.maptiler.com/account/keys'); }}
+              accessibilityRole="button"
+              accessibilityLabel="Go to MapTiler keys"
+              style={[styles.apiKeyBtn, { backgroundColor: theme.surface, borderColor: theme.divider, borderWidth: StyleSheet.hairlineWidth }]}
+            >
+              <ThemedText style={[styles.apiKeyBtnText, { color: theme.text }]}>Go to MapTiler keys</ThemedText>
+            </Pressable>
+          </View>
           <SettingsRow 
             icon="arrow.down.circle.fill" 
             label="Offline Maps"
@@ -382,30 +614,13 @@ export default function SettingsScreen() {
             label="About CadNav"
             color={theme.textMuted}
             onPress={() => setInfoOpen(true)}
-          />
-          <SettingsRow
-            icon="questionmark.circle.fill"
-            label="Tutorials"
-            color={theme.primary}
-            onPress={() => {}}
-            rightElement={
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
-                {tutorials.map((t) => (
-                  <TouchableOpacity
-                    key={t.id}
-                    onPress={() => showTutorial(t.id)}
-                    style={[styles.tutorialBadge, { backgroundColor: hasCompleted(t.id) ? theme.success + '30' : theme.warning + '30', borderColor: hasCompleted(t.id) ? theme.success : theme.warning }]}
-                  >
-                    <Text style={[styles.tutorialBadgeText, { color: hasCompleted(t.id) ? theme.success : theme.warning }]}>{t.title}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            }
             isLast
           />
         </SettingsSection>
 
-        <ThemedText style={styles.footerText}>CadNav v1.0.0 · Grid navigation for field use</ThemedText>
+        <SettingsSection title="Tutorials" description="Replay a guide or open the manual. Green means completed.">
+          <TutorialList onOpen={(id) => showTutorial(id)} />
+        </SettingsSection>
       </ScrollView>
 
       {/* Download Maps Modal */}
@@ -420,7 +635,9 @@ export default function SettingsScreen() {
               <StyledButton variant="secondary" onPress={() => setInfoOpen(false)}>Close</StyledButton>
             </View>
             <ScrollView bounces={false} overScrollMode="never" contentContainerStyle={styles.modalScroll}>
-              <AboutContent />
+              {/* Mount only while open: closing unmounts AboutContent, which
+                  drops its sensor subscriptions (incl. extras) via cleanup. */}
+              {infoOpen ? <AboutContent /> : null}
             </ScrollView>
           </ThemedView>
         </View>
@@ -483,7 +700,7 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   sectionContent: {
-    borderRadius: 12,
+    borderRadius: Radius.xl,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
   },
@@ -491,7 +708,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    borderRadius: 16,
+    borderRadius: Radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
     marginBottom: 20,
@@ -521,6 +738,26 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  apiKeyTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  apiKeyDesc: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  apiKeyBtn: {
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'transparent',
+  },
+  apiKeyBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
   themeModeGrid: {
     flexDirection: 'row',
     gap: 10,
@@ -528,7 +765,7 @@ const styles = StyleSheet.create({
   themeModeCard: {
     flex: 1,
     minHeight: 76,
-    borderRadius: 14,
+    borderRadius: Radius.lg,
     borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: 12,
     paddingHorizontal: 10,
@@ -543,9 +780,118 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  gpsModeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  gpsModeCard: {
+    flexGrow: 1,
+    flexBasis: '47%',
+    minHeight: 116,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   themeModeLabel: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  mapLayerGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mapLayerCard: {
+    flex: 1,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  mapLayerImage: {
+    width: '100%',
+    height: 72,
+  },
+  mapLayerBody: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  mapLayerLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mapLayerLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  mapLayerDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  mapLayerDesc: {
+    fontSize: 11,
+  },
+  hsvRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  hsvSliders: {
+    flex: 1,
+    gap: 2,
+  },
+  sliderLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  hsvTag: {
+    width: 14,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  colorPreview: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  dotFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  dotReset: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  dotCaption: {
+    fontSize: 11,
+    marginTop: 8,
+    fontVariant: ['tabular-nums'],
+  },
+  brightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  brightValue: {
+    width: 44,
+    textAlign: 'right',
+    fontSize: 14,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   row: {
     flexDirection: 'row',
@@ -557,7 +903,7 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 30,
     height: 30,
-    borderRadius: 7,
+    borderRadius: Radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -597,7 +943,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     width: '100%',
     maxWidth: 500,
-    borderRadius: 14,
+    borderRadius: Radius.xl,
     padding: 20,
     borderWidth: 1,
     shadowColor: "#000",
@@ -649,14 +995,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     opacity: 0.8,
   },
-  tutorialBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
+  tutorialRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    minHeight: 60,
+    gap: 12,
   },
-  tutorialBadgeText: {
-    fontSize: 11,
+  tutorialDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  tutorialRowCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tutorialRowTitle: {
+    fontSize: 16,
     fontWeight: '600',
+  },
+  tutorialRowSub: {
+    fontSize: 12,
+    marginTop: 2,
   },
 });

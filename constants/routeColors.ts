@@ -14,4 +14,4 @@ export const ROUTE_COLORS = [
   '#6C757D',
 ] as const;
 
-export const DEFAULT_ROUTE_COLOR = ROUTE_COLORS[0];
+export const DEFAULT_ROUTE_COLOR = ROUTE_COLORS[1];

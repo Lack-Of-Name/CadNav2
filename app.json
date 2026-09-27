@@ -3,15 +3,15 @@
     "name": "CadNav 2",
     "slug": "cadnav2",
     "scheme": "cadnav",
-    "version": "1.1.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "icon": "./assets/icons/icon.png",
     "splash": {
-      "image": "./assets/icons/CadNav.png",
+      "image": "./assets/icons/foreground.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F2EFE6"
+      "backgroundColor": "#141810"
     },
     "ios": {
       "supportsTablet": true,

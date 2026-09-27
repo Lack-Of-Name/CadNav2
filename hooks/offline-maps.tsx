@@ -1,6 +1,5 @@
 import { alert as showAlert } from '@/components/alert';
 import { getMapStyleUrl, useSettings } from '@/hooks/settings';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
@@ -99,7 +98,6 @@ export function OfflineMapProvider({ children }: { children: React.ReactNode }) 
   const [activeDownload, setActiveDownload] = useState<ActiveDownload | null>(null);
 
   const { mapLayer } = useSettings();
-  const colorScheme = useColorScheme() ?? 'light';
   const initializedRef = useRef(false);
 
   const getOfflineManager = useCallback(() => {
@@ -202,7 +200,7 @@ export function OfflineMapProvider({ children }: { children: React.ReactNode }) 
 
       const bounds = boundsFromCenter(target.latitude, target.longitude, target.radiusKm);
       const packName = `CadNav_${preset.label}_${Date.now()}`;
-      const styleUrl = getMapStyleUrl(mapLayer, colorScheme, apiKey);
+      const styleUrl = getMapStyleUrl(mapLayer, apiKey);
 
       setActiveDownload({
         packName,

@@ -4,6 +4,7 @@ import { ProjectPointModal } from '@/components/ProjectPointModal';
 import { AddToRouteModal } from '@/components/map/AddToRouteModal';
 import { AttributionChip } from '@/components/map/AttributionChip';
 import { CheckpointModeDrawer } from '@/components/map/CheckpointModeDrawer';
+import { CheckpointPickerModal } from '@/components/map/CheckpointPickerModal';
 import { CompassOverlay } from '@/components/map/CompassOverlay';
 import { MapPlacementHud, type PlacementHudMode } from '@/components/map/MapPlacementHud';
 import { MAP_TOOL_BUTTON_SIZE, MapToolButton } from '@/components/map/MapToolButton';
@@ -31,10 +32,19 @@ import { getMaplibreModule } from '@/lib/maplibreModule';
 import { bearingDegrees, haversineMeters } from './MaplibreMap.utils';
 import { CompassWarningChip } from './CompassWarningChip';
 import { CompassWarningSheet } from './CompassWarningSheet';
+import { MiniCompassWidget } from './MiniCompassWidget';
+import { useMiniCompass } from './useMiniCompass';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGzdLines, generateGridPoints, mgrsCellLabel } from './mapGrid';
 import { latLonToMGRS, parseMGRS, utmToLatLon } from '@/lib/mgrs';
 import { useCompassAccuracy } from '@/hooks/useCompassAccuracy';
+
+/** Debug logging for camera/location flows. Compiled out of production:
+ *  these fire per native region event, and flyCameraTo captures a stack. */
+const dlog = (...args: any[]) => {
+  // eslint-disable-next-line no-console
+  if (__DEV__) console.log(...args);
+};
 
 const arrowSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2 L19 21 L12 17 L5 21 Z" fill="white" /></svg>`;
 const dotSvg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="5" fill="white" /></svg>`;
@@ -104,8 +114,8 @@ export default function MapLibreMap() {
   const { lastLocation, requestLocation, requestFreshFix } = useGPS();
   const compassAccuracy = useCompassAccuracy();
   const [compassWarningOpen, setCompassWarningOpen] = useState(false);
-  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, beginTempNavigation, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteId, activeWorkspaceRouteTitle, stashedRouteState, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints, pendingEdit, consumePendingEdit, updateCheckpointLocation } = useCheckpoints();
-  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode } = useSettings();
+  const { checkpoints, selectCheckpoint, selectedId, selectedCheckpoint, placementModeRequested, requestPlacementMode, cancelPlacementMode, addCheckpoint, beginTempNavigation, activeRouteColor, activeRouteStart, activeRouteLoop, viewTarget, consumeViewTarget, setActiveRouteStart, setCheckpointLabel, setViewTarget, activeWorkspaceRouteId, activeWorkspaceRouteTitle, stashedRouteState, resumeStashedRoute, setActiveWorkspaceRoute, setActiveRouteColor, setActiveRouteLoop, reorderCheckpoints, pendingEdit, consumePendingEdit, updateCheckpointLocation, clearActiveRoute } = useCheckpoints();
+  const { angleUnit, mapHeading, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, mapLayer, gpsMode, locationDotColor, mapBrightness } = useSettings();
   const { routes: workspaceRoutes, setRoutes: setWorkspaceRoutes, setActiveRouteId: persistActiveRouteId } = useWorkspaceRoutes();
   const { initOffline, packs } = useOfflineMaps();
   const hasOfflinePacks = packs && packs.length > 0;
@@ -118,21 +128,25 @@ export default function MapLibreMap() {
     const b = parseInt(c.substring(4, 6), 16);
     return `rgba(${r},${g},${b},${alpha})`;
   }
-  const primaryHex = Colors[colorScheme].primary;
-  const primaryRgba15 = hexToRgba(primaryHex, 0.15);
+  const locationDotHex = locationDotColor ?? Colors[colorScheme].primary;
+  const primaryRgba15 = hexToRgba(locationDotHex, 0.15);
   const computedLocationMarkerPulseStyle = {
     circleRadius: 12,
     circleColor: primaryRgba15,
     circleStrokeWidth: 6,
     circleStrokeColor: primaryRgba15,
   };
-  const computedLocationMarkerBgStyle = { circleRadius: 12, circleColor: primaryHex };
+  const computedLocationMarkerBgStyle = { circleRadius: 12, circleColor: locationDotHex };
   const iconColor = useThemeColor({}, 'tabIconDefault');
   const tint = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
   const background = useThemeColor({}, 'background');
-  const mapStyle = getMapStyleUrl(mapLayer, colorScheme, apiKey || '');
+  const dividerColor = useThemeColor({}, 'divider');
+  const surfaceColor = useThemeColor({}, 'surface');
+  const mutedThemeColor = useThemeColor({}, 'textMuted');
+  const subtleThemeColor = useThemeColor({}, 'textSubtle');
+  const mapStyle = getMapStyleUrl(mapLayer, apiKey || '');
   const [androidMapStyle, setAndroidMapStyle] = useState<any | null>(null);
   const [androidStyleLoadFailed, setAndroidStyleLoadFailed] = useState(false);
   const [androidStyleRetryToken, setAndroidStyleRetryToken] = useState(0);
@@ -199,13 +213,15 @@ export default function MapLibreMap() {
     };
   }, [colorScheme]);
 
+  // Connector between checkpoints in route colour. Round caps + a short
+  // dash / long gap reads as dots at lineWidth 3 (units scale with width).
   const routeLineStyle = React.useMemo(() => ({
     lineColor: activeRouteColor ?? 'transparent',
     lineOpacity: activeRouteColor ? 0.75 : 0,
     lineWidth: 3,
-    lineDasharray: activeRouteColor === Colors[colorScheme].tempTarget ? [0.8, 1.6] : [1],
+    lineDasharray: [0.5, 3],
     lineCap: 'round',
-  }), [activeRouteColor, colorScheme]);
+  }), [activeRouteColor]);
 
   const checkpointsLabelsStyle = React.useMemo(() => ({
     textField: ['get', 'label'],
@@ -230,9 +246,19 @@ export default function MapLibreMap() {
   const pendingViewTargetRef = useRef<{ latitude: number; longitude: number; zoom?: number } | null>(null);
   const pendingLocationRecenterRef = useRef(false);
   const pendingLocationRecenterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [, setFollowing] = useState(false);
+  const [following, setFollowing] = useState(false);
+  const followingRef = useRef(false);
+  const lastRecenterTapRef = useRef(0);
+  const singleRecenterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [locationRecenterPending, setLocationRecenterPending] = useState(false);
   const [compassOpen, setCompassOpen] = useState(false);
+  const {
+    miniCompassOpen,
+    openMiniCompass,
+    closeMiniCompass,
+    handleCompassToolPress,
+    compassToolActive,
+  } = useMiniCompass(compassOpen, setCompassOpen);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
   const [zoomLevel, setZoomLevel] = useState<number>(1);
@@ -243,6 +269,7 @@ export default function MapLibreMap() {
   const [gridPlacementOpen, setGridPlacementOpen] = useState(false);
   const [projectPlacementOpen, setProjectPlacementOpen] = useState(false);
   const [addToRouteOpen, setAddToRouteOpen] = useState(false);
+  const [checkpointListOpen, setCheckpointListOpen] = useState(false);
   const [editingCheckpointId, setEditingCheckpointId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastCounter = useRef(0);
@@ -273,7 +300,16 @@ export default function MapLibreMap() {
   const toolGap = 8;
   const toolsRight = insets.right + 10;
   const toolsBottom = insets.bottom + 10;
-  const hudBottomInset = 118;
+  // Measured HUD height (dp) — the compass panel sits one gap above it and
+  // shares its horizontal bounds so the two widgets align. Falls back to a
+  // static estimate before the first layout pass.
+  const [hudHeight, setHudHeight] = useState(118);
+  const handleHudHeight = useCallback((h: number) => {
+    if (!Number.isFinite(h) || h <= 0) return;
+    setHudHeight((prev) => (Math.abs(prev - h) < 1 ? prev : h));
+  }, []);
+  const compassPanelBottom = insets.bottom + 10 + hudHeight + toolGap;
+  const compassPanelRight = insets.right + 10 + MAP_TOOL_BUTTON_SIZE + toolGap;
   const bannerAccent = activeRouteColor ?? tempTargetColor;
   const bannerAccentText = contrastingTextColor(bannerAccent);
   const compassHeadingDeg = (() => {
@@ -436,14 +472,14 @@ export default function MapLibreMap() {
 
   const markProgrammaticCameraMove = useCallback((durationMs: number, isFollowing = false) => {
     const holdMs = Math.max(durationMs + 100, 2500);
-    console.log(`[DEBUG] markProgrammaticCameraMove — setting flags durationMs=${durationMs} holdMs=${holdMs} isFollowing=${isFollowing} programmaticMoveRef was=${programmaticMoveRef.current}`);
+    dlog(`[DEBUG] markProgrammaticCameraMove — setting flags durationMs=${durationMs} holdMs=${holdMs} isFollowing=${isFollowing} programmaticMoveRef was=${programmaticMoveRef.current}`);
     programmaticMoveRef.current = true;
     if (isFollowing) followingMoveRef.current = true;
     if (programmaticMoveTimerRef.current) {
       clearTimeout(programmaticMoveTimerRef.current);
     }
     programmaticMoveTimerRef.current = setTimeout(() => {
-      console.log(`[DEBUG] markProgrammaticCameraMove timer — clearing programmaticMoveRef (was=${programmaticMoveRef.current}) after ${holdMs}ms — remounting Camera to clear native state`);
+      dlog(`[DEBUG] markProgrammaticCameraMove timer — clearing programmaticMoveRef (was=${programmaticMoveRef.current}) after ${holdMs}ms — remounting Camera to clear native state`);
       programmaticMoveRef.current = false;
       programmaticMoveTimerRef.current = null;
       setCameraKey((k) => k + 1); // Force Camera remount to clear native commanded position
@@ -458,21 +494,31 @@ export default function MapLibreMap() {
       if (pendingLocationRecenterTimerRef.current) {
         clearTimeout(pendingLocationRecenterTimerRef.current);
       }
+      if (singleRecenterTimerRef.current) {
+        clearTimeout(singleRecenterTimerRef.current);
+      }
       if (toastTimerRef.current) {
         clearTimeout(toastTimerRef.current);
       }
     };
   }, []);
 
+  const stopTracking = useCallback(() => {
+    followingRef.current = false;
+    followingMoveRef.current = false;
+    setFollowing(false);
+  }, []);
+
   const stopFollowingFromUserGesture = useCallback((force = false) => {
-    console.log(`[DEBUG] stopFollowingFromUserGesture called force=${force} followingMoveRef=${followingMoveRef.current} programmaticMoveRef=${programmaticMoveRef.current}`);
+    dlog(`[DEBUG] stopFollowingFromUserGesture called force=${force} followingMoveRef=${followingMoveRef.current} programmaticMoveRef=${programmaticMoveRef.current}`);
     if (!force && (followingMoveRef.current || programmaticMoveRef.current)) {
-      console.log(`[DEBUG] stopFollowingFromUserGesture — bailing (not forced and flags set)`);
+      dlog(`[DEBUG] stopFollowingFromUserGesture — bailing (not forced and flags set)`);
       return;
     }
     followingMoveRef.current = false;
+    followingRef.current = false;
     setFollowing((prev) => {
-      if (prev) console.log(`[DEBUG] stopFollowingFromUserGesture — setting following=false`);
+      if (prev) dlog(`[DEBUG] stopFollowingFromUserGesture — setting following=false`);
       return prev ? false : prev;
     });
   }, []);
@@ -482,11 +528,11 @@ export default function MapLibreMap() {
     opts?: { zoomLevel?: number; durationMs?: number; isFollowing?: boolean; caller?: string },
   ) => {
     if (!cameraRef.current) {
-      console.log(`[DEBUG] flyCameraTo by="${opts?.caller}" — FAILED no cameraRef`);
+      dlog(`[DEBUG] flyCameraTo by="${opts?.caller}" — FAILED no cameraRef`);
       return false;
     }
     const durationMs = opts?.durationMs ?? 1000;
-    console.log(
+    dlog(
       `[ZOOM TO LOCATION] flyCameraTo called by="${opts?.caller ?? 'unknown'}" ` +
       `center=[${center[0].toFixed(6)}, ${center[1].toFixed(6)}] ` +
       `zoom=${opts?.zoomLevel ?? 'unchanged'} duration=${durationMs}ms ` +
@@ -494,7 +540,7 @@ export default function MapLibreMap() {
       (new Error().stack ?? '')
     );
     markProgrammaticCameraMove(durationMs, opts?.isFollowing ?? false);
-    console.log(`[DEBUG] flyCameraTo — calling setCamera programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
+    dlog(`[DEBUG] flyCameraTo — calling setCamera programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
     cameraRef.current.setCamera({
       centerCoordinate: center,
       ...(opts?.zoomLevel != null ? { zoomLevel: opts.zoomLevel } : {}),
@@ -510,8 +556,8 @@ export default function MapLibreMap() {
       return;
     }
     pendingViewTargetRef.current = null;
-    setFollowing(false);
-  }, [flyCameraTo]);
+    stopTracking();
+  }, [flyCameraTo, stopTracking]);
 
   const clearPendingLocationRecenter = useCallback(() => {
     pendingLocationRecenterRef.current = false;
@@ -535,33 +581,89 @@ export default function MapLibreMap() {
 
   const centerOnLocation = useCallback((loc: any, caller?: string) => {
     if (!loc?.coords || !cameraRef.current) {
-      console.log(`[DEBUG] centerOnLocation by="${caller}" — FAILED noCoords=${!loc?.coords} noCamera=${!cameraRef.current}`);
+      dlog(`[DEBUG] centerOnLocation by="${caller}" — FAILED noCoords=${!loc?.coords} noCamera=${!cameraRef.current}`);
       return false;
     }
     const { latitude, longitude } = loc.coords;
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      console.log(`[DEBUG] centerOnLocation by="${caller}" — FAILED invalid coords lat=${latitude} lon=${longitude}`);
+      dlog(`[DEBUG] centerOnLocation by="${caller}" — FAILED invalid coords lat=${latitude} lon=${longitude}`);
       return false;
     }
-    console.log(`[ZOOM TO LOCATION] centerOnLocation called by="${caller ?? 'unknown'}" lat=${latitude.toFixed(6)} lon=${longitude.toFixed(6)}`);
+    dlog(`[ZOOM TO LOCATION] centerOnLocation called by="${caller ?? 'unknown'}" lat=${latitude.toFixed(6)} lon=${longitude.toFixed(6)}`);
     // Use flyTo (minimum 1ms) on all platforms — moveTo (0ms) triggers native MapLibre oscillation on Android.
     return flyCameraTo([longitude, latitude], { zoomLevel: 14, durationMs: Platform.OS === 'android' ? 1 : 1000, caller: caller ?? 'centerOnLocation' });
   }, [flyCameraTo]);
 
-  const handleRecenterPress = useCallback(() => {
-    console.log(`[ZOOM TO LOCATION] handleRecenterPress — user tapped Recenter button hasLocation=${!!lastLocation?.coords} cameraReady=${cameraReady} programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
+  const doSingleRecenter = useCallback(() => {
+    dlog(`[ZOOM TO LOCATION] doSingleRecenter — hasLocation=${!!lastLocation?.coords} cameraReady=${cameraReady} following=${followingRef.current}`);
+    // Single tap while tracking stops tracking (tap-to-stop).
+    if (followingRef.current) {
+      stopTracking();
+      clearPendingLocationRecenter();
+      showToast('Tracking off');
+      return;
+    }
     if (Platform.OS !== 'android') {
       requestLocation();
     }
-    setFollowing(false);
-    if (centerOnLocation(lastLocation, 'handleRecenterPress')) {
-      console.log('[DEBUG] handleRecenterPress — centerOnLocation succeeded, clearing pending');
+    stopTracking();
+    if (centerOnLocation(lastLocation, 'handleRecenterPress-single')) {
+      dlog('[DEBUG] doSingleRecenter — centerOnLocation succeeded, clearing pending');
       clearPendingLocationRecenter();
       return;
     }
-    console.log('[DEBUG] handleRecenterPress — centerOnLocation failed, queuing pending');
+    dlog('[DEBUG] doSingleRecenter — centerOnLocation failed, queuing pending');
     queuePendingLocationRecenter();
-  }, [centerOnLocation, clearPendingLocationRecenter, lastLocation, queuePendingLocationRecenter, requestLocation, cameraReady]);
+  }, [centerOnLocation, clearPendingLocationRecenter, lastLocation, queuePendingLocationRecenter, requestLocation, cameraReady, stopTracking, showToast]);
+
+  const doDoubleTapTracking = useCallback(() => {
+    dlog(`[ZOOM TO LOCATION] doDoubleTapTracking — toggling tracking wasFollowing=${followingRef.current} hasLocation=${!!lastLocation?.coords}`);
+    // Double-tap toggles GPS tracking. When turning off, just stop.
+    if (followingRef.current) {
+      stopTracking();
+      clearPendingLocationRecenter();
+      showToast('Tracking off');
+      return;
+    }
+    if (Platform.OS !== 'android') {
+      requestLocation();
+    }
+    followingRef.current = true;
+    setFollowing(true);
+    followingMoveRef.current = true;
+    if (centerOnLocation(lastLocation, 'handleRecenterPress-double')) {
+      dlog('[DEBUG] doDoubleTapTracking — centerOnLocation succeeded, clearing pending');
+      clearPendingLocationRecenter();
+    } else {
+      dlog('[DEBUG] doDoubleTapTracking — centerOnLocation failed, queuing pending (tracking stays on)');
+      queuePendingLocationRecenter();
+    }
+    showToast('Tracking location — tap map to stop');
+  }, [centerOnLocation, clearPendingLocationRecenter, lastLocation, queuePendingLocationRecenter, requestLocation, stopTracking, showToast]);
+
+  const handleRecenterPress = useCallback(() => {
+    dlog(`[ZOOM TO LOCATION] handleRecenterPress — user tapped Recenter button hasLocation=${!!lastLocation?.coords} cameraReady=${cameraReady} programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
+    const now = Date.now();
+    const sinceLastTap = now - lastRecenterTapRef.current;
+    lastRecenterTapRef.current = now;
+    // Double-tap (second tap within 350ms) toggles GPS tracking.
+    if (sinceLastTap < 350) {
+      if (singleRecenterTimerRef.current) {
+        clearTimeout(singleRecenterTimerRef.current);
+        singleRecenterTimerRef.current = null;
+      }
+      doDoubleTapTracking();
+      return;
+    }
+    // Defer single-tap so a second tap can cancel it and become a double-tap.
+    if (singleRecenterTimerRef.current) {
+      clearTimeout(singleRecenterTimerRef.current);
+    }
+    singleRecenterTimerRef.current = setTimeout(() => {
+      singleRecenterTimerRef.current = null;
+      doSingleRecenter();
+    }, 350);
+  }, [doSingleRecenter, doDoubleTapTracking, lastLocation, cameraReady]);
 
   const openPlacementChooser = () => {
     setChooserOpen(true);
@@ -614,7 +716,7 @@ export default function MapLibreMap() {
       await updateCheckpointLocation(editingCheckpointId, latitude, longitude, mgrs);
       await setViewTarget({ latitude, longitude, zoom: 15 });
       await cancelPlacementMode();
-      setFollowing(false);
+      stopTracking();
       setEditingCheckpointId(null);
       showToast('Checkpoint updated');
       return;
@@ -636,11 +738,21 @@ export default function MapLibreMap() {
     await setCheckpointLabel(cp.id, `Target ${new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`);
     await setViewTarget({ latitude, longitude, zoom: 15 });
     await cancelPlacementMode();
-    setFollowing(false);
+    stopTracking();
   };
 
   const onMapPress = async (event: any) => {
-    if (!placementModeRequested) return;
+    if (!placementModeRequested) {
+      // Tap on the map while GPS tracking is active stops tracking —
+      // matches the "tap map to stop" hint shown when tracking starts.
+      // (A tap produces no region change, so the region handlers can't catch it.)
+      if (followingRef.current) {
+        stopTracking();
+        clearPendingLocationRecenter();
+        showToast('Tracking off');
+      }
+      return;
+    }
     let coords;
     if (event?.geometry?.coordinates) coords = event.geometry.coordinates;
     else if (event?.coordinates) coords = event.coordinates;
@@ -700,6 +812,28 @@ export default function MapLibreMap() {
     createRouteFromCheckpoint(selectedCheckpoint);
   };
 
+  const handleCloseRoute = useCallback(() => {
+    // Deactivate the active route (workspace or temp target) without deleting
+    // anything from the library. Stashed route state is kept so a temp-target
+    // close can still offer "Resume route" in the idle HUD.
+    void setActiveWorkspaceRoute(null, null);
+    persistActiveRouteId(null);
+    void setActiveRouteColor(null);
+    void setActiveRouteLoop(false);
+    void setActiveRouteStart(null);
+    void clearActiveRoute();
+    showToast('Route closed');
+  }, [setActiveWorkspaceRoute, persistActiveRouteId, setActiveRouteColor, setActiveRouteLoop, setActiveRouteStart, clearActiveRoute, showToast]);
+
+  const handleDismissCheckpoint = useCallback(() => {
+    // Deselect the current navigation target; the route stays loaded.
+    void selectCheckpoint(null);
+    showToast('Checkpoint dismissed');
+  }, [selectCheckpoint, showToast]);
+
+  const canCloseRoute = checkpoints.length > 0 || !!activeRouteColor || !!activeWorkspaceRouteId;
+  const canDismissCheckpoint = !!selectedCheckpoint;
+
   const handleDonePlacing = async () => {
     await cancelPlacementMode();
     setEditingCheckpointId(null);
@@ -730,7 +864,7 @@ export default function MapLibreMap() {
     const fly = async () => {
       const target = await consumeViewTarget();
       if (!target || cancelled) return;
-      console.log(`[ZOOM TO LOCATION] viewTarget effect — consumed viewTarget lat=${target.latitude.toFixed(6)} lon=${target.longitude.toFixed(6)} zoom=${target.zoom}`);
+      dlog(`[ZOOM TO LOCATION] viewTarget effect — consumed viewTarget lat=${target.latitude.toFixed(6)} lon=${target.longitude.toFixed(6)} zoom=${target.zoom}`);
       applyViewTarget(target, 'viewTarget-effect');
     };
     void fly();
@@ -742,20 +876,32 @@ export default function MapLibreMap() {
     if (!cameraReady || !pendingViewTargetRef.current) return;
     const target = pendingViewTargetRef.current;
     pendingViewTargetRef.current = null;
-    console.log(`[ZOOM TO LOCATION] deferred pendingViewTarget — applying deferred target lat=${target.latitude.toFixed(6)} lon=${target.longitude.toFixed(6)} zoom=${target.zoom}`);
+    dlog(`[ZOOM TO LOCATION] deferred pendingViewTarget — applying deferred target lat=${target.latitude.toFixed(6)} lon=${target.longitude.toFixed(6)} zoom=${target.zoom}`);
     applyViewTarget(target, 'pendingViewTarget-deferred');
   }, [cameraReady, applyViewTarget]);
 
   useEffect(() => {
     if (!pendingLocationRecenterRef.current || !cameraReady || !lastLocation) return;
-    console.log('[ZOOM TO LOCATION] pendingLocationRecenter effect — attempting recenter on latest location');
+    dlog('[ZOOM TO LOCATION] pendingLocationRecenter effect — attempting recenter on latest location');
     if (centerOnLocation(lastLocation, 'pendingLocationRecenter-effect')) {
       clearPendingLocationRecenter();
     }
   }, [cameraReady, centerOnLocation, clearPendingLocationRecenter, lastLocation]);
 
+  // GPS tracking (enabled by double-tapping the recenter button): re-center
+  // on every location update, preserving the current zoom. Any manual map
+  // gesture stops tracking via stopFollowingFromUserGesture.
+  useEffect(() => {
+    if (!following || !cameraReady || !lastLocation?.coords) return;
+    if (pendingLocationRecenterRef.current) return;
+    const { latitude, longitude } = lastLocation.coords;
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+    dlog(`[ZOOM TO LOCATION] follow-effect — tracking to lat=${latitude.toFixed(6)} lon=${longitude.toFixed(6)}`);
+    flyCameraTo([longitude, latitude], { durationMs: 800, isFollowing: true, caller: 'follow-effect' });
+  }, [lastLocation, following, cameraReady, flyCameraTo]);
+
   const setMapCameraRef = useCallback((ref: any) => {
-    console.log(`[DEBUG] setMapCameraRef called hasRef=${!!ref}`);
+    dlog(`[DEBUG] setMapCameraRef called hasRef=${!!ref}`);
     cameraRef.current = ref;
     if (ref) {
       setCameraReady(true);
@@ -763,7 +909,7 @@ export default function MapLibreMap() {
   }, []);
 
   const handleMapTouch = useCallback(() => {
-    console.log(`[DEBUG] handleMapTouch — user touched map programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
+    dlog(`[DEBUG] handleMapTouch — user touched map programmaticMoveRef=${programmaticMoveRef.current} followingMoveRef=${followingMoveRef.current}`);
     clearPendingLocationRecenter();
     stopFollowingFromUserGesture(true);
   }, [clearPendingLocationRecenter, stopFollowingFromUserGesture]);
@@ -775,7 +921,7 @@ export default function MapLibreMap() {
       ? `[${Number(coords[0]).toFixed(4)}, ${Number(coords[1]).toFixed(4)}]`
       : '?';
     const zoom = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? '?';
-    console.log(`[DEBUG] handleRegionWillChange isUserGesture=${isUserGesture} zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current} fol=${followingMoveRef.current}`);
+    dlog(`[DEBUG] handleRegionWillChange isUserGesture=${isUserGesture} zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current} fol=${followingMoveRef.current}`);
     if (isUserGesture === true) {
       clearPendingLocationRecenter();
       stopFollowingFromUserGesture(true);
@@ -1238,7 +1384,18 @@ export default function MapLibreMap() {
             : '?';
           const lng = coords?.[0] as number | undefined;
           const lat = coords?.[1] as number | undefined;
-          console.log(`[DEBUG] onRegionDidChange — zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current} fol=${followingMoveRef.current}`);
+          dlog(`[DEBUG] onRegionDidChange — zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current} fol=${followingMoveRef.current}`);
+
+          // Any user-initiated pan or zoom (including pinch-zoom, which may
+          // settle here even if the Will/IsChanging events were debounced
+          // away) disables GPS tracking. Must run before the same-position
+          // and debounce early-returns below so a user gesture is never
+          // skipped. Programmatic flies report isUserInteraction=false.
+          const didIsUserGesture = ev?.properties?.isUserInteraction ?? ev?.isUserInteraction;
+          if (didIsUserGesture === true) {
+            clearPendingLocationRecenter();
+            stopFollowingFromUserGesture(true);
+          }
 
           // Skip if position hasn't meaningfully changed since last settled event.
           if (
@@ -1252,7 +1409,7 @@ export default function MapLibreMap() {
               Math.abs(lng - prev.lng) < 1e-6 &&
               Math.abs(lat - prev.lat) < 1e-6
             ) {
-              console.log(`[DEBUG] onRegionDidChange — skipped (same position)`);
+              dlog(`[DEBUG] onRegionDidChange — skipped (same position)`);
               return;
             }
           }
@@ -1263,7 +1420,7 @@ export default function MapLibreMap() {
           // Debounce rapid repeated onRegionDidChange (native oscillation guard).
           const now = Date.now();
           if (now - lastRegionStampRef.current < 300 && !programmaticMoveRef.current) {
-            console.log(`[DEBUG] onRegionDidChange — skipped (debounce, ${now - lastRegionStampRef.current}ms since last)`);
+            dlog(`[DEBUG] onRegionDidChange — skipped (debounce, ${now - lastRegionStampRef.current}ms since last)`);
             return;
           }
           lastRegionStampRef.current = now;
@@ -1319,7 +1476,7 @@ export default function MapLibreMap() {
             ? `[${Number(coords[0]).toFixed(4)}, ${Number(coords[1]).toFixed(4)}]`
             : '?';
           const zoom = ev?.properties?.zoomLevel ?? ev?.properties?.zoom ?? '?';
-          console.log(`[DEBUG] onRegionIsChanging isUserGesture=${isUserGesture} zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current}`);
+          dlog(`[DEBUG] onRegionIsChanging isUserGesture=${isUserGesture} zoom=${zoom} center=${coordStr} prog=${programmaticMoveRef.current}`);
           if (isUserGesture === true) {
             clearPendingLocationRecenter();
             stopFollowingFromUserGesture(true);
@@ -1467,6 +1624,13 @@ export default function MapLibreMap() {
         </ShapeSource>
       </MapView>
 
+      {/* Brightness dimmer: black at (100 - brightness)% opacity. pointerEvents
+          none so it never intercepts map touches; absent entirely at 100%.
+          Sits above the tiles but below every HUD/tool overlay. */}
+      {mapBrightness < 100 ? (
+        <View pointerEvents="none" style={[styles.dimOverlay, { opacity: (100 - mapBrightness) / 100 }]} />
+      ) : null}
+
       <AttributionChip right={insets.right} top={insets.top} />
 
       {compassAccuracy.hasWarning ? (
@@ -1508,6 +1672,13 @@ export default function MapLibreMap() {
         onPrevTarget={handlePrevTarget}
         onNextTarget={handleNextTarget}
         showTargetStepper={!tempTargetActive && checkpoints.length > 1}
+        onHeight={handleHudHeight}
+        canCloseRoute={canCloseRoute}
+        onCloseRoute={handleCloseRoute}
+        canDismissCheckpoint={canDismissCheckpoint}
+        onDismissCheckpoint={handleDismissCheckpoint}
+        canOpenCheckpointList={checkpoints.length > 1}
+        onOpenCheckpointList={() => setCheckpointListOpen(true)}
         approachProgress={
           placementHudMode === 'nav' && startDistance != null && startDistance > 0 ? currentProgress : null
         }
@@ -1517,45 +1688,49 @@ export default function MapLibreMap() {
         <Toast key={toastCounter.current} message={toastMessage} onHide={() => setToastMessage(null)} />
       ) : null}
 
-      <MapToolButton
-        icon="location.fill.viewfinder"
-        label={locationRecenterPending ? 'Waiting for location' : 'Recenter map'}
-        onPress={handleRecenterPress}
-        colorScheme={colorScheme}
-        active={locationRecenterPending}
-        accentColor={String(tint)}
-        style={{ position: 'absolute', right: toolsRight, bottom: toolsBottom, zIndex: 50 }}
-      />
-      <MapToolButton
-        icon="safari.fill"
-        label="Compass"
-        onPress={() => setCompassOpen((v) => !v)}
-        colorScheme={colorScheme}
-        active={compassOpen}
-        accentColor={String(tint)}
+      {/* Right-edge tool column: single container keeps the three buttons
+          pixel-aligned and, with elevation, above the native map surface and
+          HUD on Android (zIndex alone isn't always enough for hit-testing).
+          When the compass panel is open the whole column sits above its
+          backdrop so re-tapping compass closes the panel directly. */}
+      <View
+        pointerEvents="box-none"
         style={{
           position: 'absolute',
           right: toolsRight,
-          bottom: toolsBottom + MAP_TOOL_BUTTON_SIZE + toolGap,
-          // Sit above the compass overlay backdrop so re-tapping the button
-          // closes the panel directly (backdrop handles taps elsewhere).
+          bottom: toolsBottom,
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: toolGap,
           zIndex: compassOpen ? 70 : 50,
+          elevation: compassOpen ? 8 : 4,
         }}
-      />
-      <MapToolButton
-        icon="temp-point-diamond"
-        label="Set target"
-        onPress={openPlacementChooser}
-        colorScheme={colorScheme}
-        active={tempTargetActive || placementModeRequested}
-        accentColor={tempTargetColor}
-        style={{
-          position: 'absolute',
-          right: toolsRight,
-          bottom: toolsBottom + 2 * (MAP_TOOL_BUTTON_SIZE + toolGap),
-          zIndex: 50,
-        }}
-      />
+      >
+        <MapToolButton
+          icon="temp-point-diamond"
+          label="Set target"
+          onPress={openPlacementChooser}
+          colorScheme={colorScheme}
+          active={tempTargetActive || placementModeRequested}
+          accentColor={tempTargetColor}
+        />
+        <MapToolButton
+          icon="safari.fill"
+          label="Compass"
+          onPress={handleCompassToolPress}
+          colorScheme={colorScheme}
+          active={compassToolActive}
+          accentColor={String(tint)}
+        />
+        <MapToolButton
+          icon="location.fill.viewfinder"
+          label={following ? 'Tracking location — tap to stop' : locationRecenterPending ? 'Waiting for location' : 'Recenter map — double-tap to track'}
+          onPress={handleRecenterPress}
+          colorScheme={colorScheme}
+          active={following || locationRecenterPending}
+          accentColor={String(tint)}
+        />
+      </View>
 
       <CheckpointModeDrawer
         visible={chooserOpen}
@@ -1586,9 +1761,25 @@ export default function MapLibreMap() {
         onCreateNew={handleAddTargetToNewRoute}
       />
 
+      <CheckpointPickerModal
+        visible={checkpointListOpen}
+        checkpoints={checkpoints}
+        selectedId={selectedId}
+        accentColor={summaryAccent}
+        onSelect={(id) => { setCheckpointListOpen(false); void selectCheckpoint(id); }}
+        onZoomToCheckpoint={(cp) => {
+          setCheckpointListOpen(false);
+          void selectCheckpoint(cp.id);
+          void setViewTarget({ latitude: cp.latitude, longitude: cp.longitude, zoom: 15 });
+        }}
+        onClose={() => setCheckpointListOpen(false)}
+      />
+
       <CompassOverlay
         open={compassOpen}
         onToggle={() => setCompassOpen((v) => !v)}
+        onFloat={openMiniCompass}
+        colorScheme={colorScheme}
         headingDeg={compassHeadingDeg}
         angleUnit={angleUnit}
         targetBearingDeg={compassTargetBearingDeg}
@@ -1597,21 +1788,37 @@ export default function MapLibreMap() {
         targetColor={compassTargetColor}
         bearingText={compassBearingText}
         distanceText={compassDistanceText}
-        panelBg={colorScheme === 'dark' ? 'rgba(0,0,0,0.82)' : 'rgba(255,255,255,0.96)'}
-        borderColor={String(borderColor)}
+        panelBg={String(surfaceColor)}
+        borderColor={String(dividerColor)}
         background={String(background)}
         textColor={String(textColor)}
-        textMuted={String(borderColor)}
-        textSubtle={String(borderColor)}
+        textMuted={String(mutedThemeColor)}
+        textSubtle={String(subtleThemeColor)}
         primary={String(tint)}
-        tick={String(borderColor)}
+        tick={String(subtleThemeColor)}
         tickStrong={String(textColor)}
         style={{
           left: insets.left + 10,
-          right: insets.right + 10,
-          bottom: insets.bottom + hudBottomInset,
+          right: compassPanelRight,
+          bottom: compassPanelBottom,
+          alignItems: 'center',
         }}
       />
+
+      {miniCompassOpen ? (
+        <MiniCompassWidget
+          headingDeg={compassHeadingDeg}
+          targetBearingDeg={compassTargetBearingDeg}
+          targetColor={compassTargetColor ?? null}
+          panelBg={String(surfaceColor)}
+          borderColor={String(dividerColor)}
+          dialBg={String(background)}
+          tick={String(subtleThemeColor)}
+          tickStrong={String(textColor)}
+          primary={String(tint)}
+          onClose={closeMiniCompass}
+        />
+      ) : null}
 
       <CompassWarningSheet
         visible={compassWarningOpen}
@@ -1641,6 +1848,11 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     alignSelf: 'stretch',
+  },
+  dimOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+    zIndex: 1,
   },
   loadingContainer: {
     flex: 1,

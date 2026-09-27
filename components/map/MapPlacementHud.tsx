@@ -42,6 +42,17 @@ type Props = {
   /** Append the current temp target to a workspace route. */
   canAddToRoute?: boolean;
   onAddToRoute?: () => void;
+  /** Deactivate the active route (workspace or temp) without deleting library data. */
+  canCloseRoute?: boolean;
+  onCloseRoute?: () => void;
+  /** Deselect the current checkpoint target; the route stays loaded. */
+  canDismissCheckpoint?: boolean;
+  onDismissCheckpoint?: () => void;
+  /** Long-press the widget body to open the checkpoint picker list. */
+  canOpenCheckpointList?: boolean;
+  onOpenCheckpointList?: () => void;
+  /** Reports the HUD's measured height (dp) so overlays can sit directly above it. */
+  onHeight?: (heightDp: number) => void;
 };
 
 const PROGRESS_TICKS = [0, 0.25, 0.5, 0.75, 1];
@@ -116,17 +127,44 @@ export function MapPlacementHud({
   onOpenRoutes,
   canAddToRoute,
   onAddToRoute,
+  canCloseRoute,
+  onCloseRoute,
+  canDismissCheckpoint,
+  onDismissCheckpoint,
+  canOpenCheckpointList,
+  onOpenCheckpointList,
+  onHeight,
 }: Props) {
   const insets = useSafeAreaInsets();
   const theme = Colors[colorScheme];
   const panelBg = colorScheme === 'dark' ? 'rgba(18,18,20,0.97)' : 'rgba(255,255,255,0.98)';
   const [expanded, setExpanded] = useState(false);
 
-  const canExpand = !!onAddToRoute && (canAddToRoute ?? false);
+  const canShowAddToRoute = !!onAddToRoute && (canAddToRoute ?? false);
+  const canShowCloseRoute = !!onCloseRoute && (canCloseRoute ?? false);
+  const canShowDismissCheckpoint = !!onDismissCheckpoint && (canDismissCheckpoint ?? false);
+  const canExpand = canShowAddToRoute || canShowCloseRoute || canShowDismissCheckpoint;
 
   const handleAddToRoute = () => {
     setExpanded(false);
     onAddToRoute?.();
+  };
+
+  const handleCloseRoute = () => {
+    setExpanded(false);
+    onCloseRoute?.();
+  };
+
+  const handleDismissCheckpoint = () => {
+    setExpanded(false);
+    onDismissCheckpoint?.();
+  };
+
+  const canOpenList = !!onOpenCheckpointList && (canOpenCheckpointList ?? false);
+  const handleOpenCheckpointList = () => {
+    if (!canOpenList) return;
+    setExpanded(false);
+    onOpenCheckpointList?.();
   };
 
   const bearingPrimary =
@@ -139,6 +177,7 @@ export function MapPlacementHud({
 
   return (
     <View
+      onLayout={(e) => onHeight?.(e.nativeEvent.layout.height)}
       style={[
         styles.wrap,
         {
@@ -166,14 +205,26 @@ export function MapPlacementHud({
       ) : mode === 'nav' ? (
         <>
           <View style={styles.navRow}>
-            <View style={[styles.bearingBlock, { borderColor: theme.divider }]}>
+            <Pressable
+              onLongPress={handleOpenCheckpointList}
+              delayLongPress={450}
+              accessibilityRole="button"
+              accessibilityLabel="Pick checkpoint from list"
+              style={[styles.bearingBlock, { borderColor: theme.divider }]}
+            >
               <View style={[styles.bearingArrow, { transform: [{ rotate: `${bearingRotationDeg ?? 0}deg` }] }]}>
                 <IconSymbol name="arrow.up" size={36} color={accentColor} />
               </View>
               <Text style={[styles.bearingValue, { color: textColor }]}>{bearingPrimary}</Text>
               <Text style={[styles.bearingUnit, { color: mutedColor }]}>{bearingLabel}</Text>
-            </View>
-            <View style={styles.navCopy}>
+            </Pressable>
+            <Pressable
+              onLongPress={handleOpenCheckpointList}
+              delayLongPress={450}
+              accessibilityRole="button"
+              accessibilityLabel="Pick checkpoint from list"
+              style={styles.navCopy}
+            >
               <Text style={[styles.navTitle, { color: textColor }]} numberOfLines={1}>
                 {title}
               </Text>
@@ -183,7 +234,7 @@ export function MapPlacementHud({
               <Text style={[styles.navDetail, { color: mutedColor }]} numberOfLines={1}>
                 {detail}
               </Text>
-            </View>
+            </Pressable>
             {showTargetStepper && onPrevTarget && onNextTarget ? (
               <View style={styles.stepper}>
                 <Pressable
@@ -229,20 +280,45 @@ export function MapPlacementHud({
             ) : null}
           </View>
           {canExpand && expanded ? (
-            <View style={styles.actionRow}>
-              <DenseButton
-                label="Add to route"
-                colorScheme={colorScheme}
-                onPress={handleAddToRoute}
-                style={{ flex: 1 }}
-              />
+            <View style={styles.expandedCol}>
+              {canShowAddToRoute ? (
+                <DenseButton
+                  label="Add to route"
+                  colorScheme={colorScheme}
+                  onPress={handleAddToRoute}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
+              {canShowDismissCheckpoint ? (
+                <DenseButton
+                  label="Dismiss checkpoint"
+                  colorScheme={colorScheme}
+                  onPress={handleDismissCheckpoint}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
+              {canShowCloseRoute ? (
+                <DenseButton
+                  label="Close route"
+                  variant="danger"
+                  colorScheme={colorScheme}
+                  onPress={handleCloseRoute}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
             </View>
           ) : null}
         </>
       ) : (
         <View style={styles.idleCol}>
           <View style={styles.idleRow}>
-            <View style={styles.idleCopy}>
+            <Pressable
+              onLongPress={handleOpenCheckpointList}
+              delayLongPress={450}
+              accessibilityRole="button"
+              accessibilityLabel="Pick checkpoint from list"
+              style={styles.idleCopy}
+            >
               <Text style={[styles.idleLabel, { color: mutedColor }]}>
                 {routeLabel ? 'ACTIVE ROUTE' : 'TARGET'}
               </Text>
@@ -252,7 +328,7 @@ export function MapPlacementHud({
               <Text style={[styles.idleSub, { color: mutedColor }]} numberOfLines={2}>
                 {detail}
               </Text>
-            </View>
+            </Pressable>
             <View style={styles.idleBtnGroup}>
               {canExpand ? (
                 <Pressable
@@ -272,13 +348,32 @@ export function MapPlacementHud({
             </View>
           </View>
           {canExpand && expanded ? (
-            <View style={styles.idleActions}>
-              <DenseButton
-                label="Add to route"
-                colorScheme={colorScheme}
-                onPress={handleAddToRoute}
-                style={{ flex: 1 }}
-              />
+            <View style={styles.expandedCol}>
+              {canShowAddToRoute ? (
+                <DenseButton
+                  label="Add to route"
+                  colorScheme={colorScheme}
+                  onPress={handleAddToRoute}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
+              {canShowDismissCheckpoint ? (
+                <DenseButton
+                  label="Dismiss checkpoint"
+                  colorScheme={colorScheme}
+                  onPress={handleDismissCheckpoint}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
+              {canShowCloseRoute ? (
+                <DenseButton
+                  label="Close route"
+                  variant="danger"
+                  colorScheme={colorScheme}
+                  onPress={handleCloseRoute}
+                  style={{ flex: 1 }}
+                />
+              ) : null}
             </View>
           ) : null}
           {(canResumeRoute && onResumeRoute) || onOpenRoutes ? (
@@ -352,6 +447,11 @@ const styles = StyleSheet.create({
   idleActions: {
     flexDirection: 'row',
     gap: 6,
+  },
+  expandedCol: {
+    flexDirection: 'column',
+    gap: 6,
+    marginTop: 8,
   },
   idleBtnGroup: {
     flexDirection: 'row',

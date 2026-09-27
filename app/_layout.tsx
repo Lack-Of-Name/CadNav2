@@ -2,7 +2,8 @@ import { ManualModal } from '@/components/manual/ManualModal';
 import MapTilerKeyProvider, { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
 import { TutorialModal } from '@/components/tutorial/TutorialModal';
 import { DrawerMenu } from '@/components/ui/DrawerMenu';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { DrawerEdgeControls } from '@/components/ui/DrawerEdgeControls';
+import { useDrawerPanel } from '@/components/ui/useDrawerPanel';
 import { Colors, HUD } from '@/constants/theme';
 import { OfflineMapProvider } from '@/hooks/offline-maps';
 import { SettingsProvider } from '@/hooks/settings';
@@ -14,7 +15,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 
 export const unstable_settings = {
@@ -119,35 +120,24 @@ function TutorialGate() {
 }
 
 function GlobalNavigationChrome() {
-  const colorScheme = useColorScheme() ?? 'light';
   const pathname = usePathname();
-  const insets = useSafeAreaInsets();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const theme = Colors[colorScheme];
+  const drawer = useDrawerPanel();
 
   return (
     <>
-      {!drawerOpen && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open navigation menu"
-          onPress={() => setDrawerOpen(true)}
-          style={[
-            styles.menuButton,
-            {
-              top: insets.top + 12,
-              left: insets.left + 12,
-              backgroundColor: Colors[colorScheme].surface,
-              borderColor: Colors[colorScheme].divider,
-            },
-          ]}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <IconSymbol name="line.3.horizontal" size={22} color={theme.text} />
-        </Pressable>
-      )}
-
-      <DrawerMenu open={drawerOpen} onClose={() => setDrawerOpen(false)} currentRoute={pathname} />
+      <DrawerEdgeControls
+        drawerOpen={drawer.open}
+        onOpen={drawer.openDrawer}
+        edgeGesture={drawer.edgePan}
+        tabGesture={drawer.tabPan}
+      />
+      <DrawerMenu
+        open={drawer.open}
+        onClose={drawer.closeDrawer}
+        currentRoute={pathname}
+        x={drawer.x}
+        closeGesture={drawer.drawerPan}
+      />
     </>
   );
 }
@@ -218,21 +208,6 @@ function RootLayout() {
 export default RootLayout;
 
 const styles = StyleSheet.create({
-  menuButton: {
-    position: 'absolute',
-    zIndex: 9500,
-    width: 42,
-    height: 42,
-    borderRadius: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-  },
   errorOverlay: {
     position: 'absolute',
     top: 0,

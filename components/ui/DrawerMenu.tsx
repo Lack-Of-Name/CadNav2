@@ -4,11 +4,12 @@
 import { Colors, Elevation, HUD, Radius, Space } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconSymbol } from './icon-symbol';
+import { DRAWER_WIDTH } from './useDrawerPanel';
 
 type NavItem = {
   icon: string;
@@ -27,34 +28,26 @@ type Props = {
   open: boolean;
   onClose: () => void;
   currentRoute?: string;
+  /** Panel position driven by useDrawerPanel (-DRAWER_WIDTH closed, 0 open). */
+  x: SharedValue<number>;
+  /** Leftward drag on the panel dismisses it (built by useDrawerPanel). */
+  closeGesture: PanGesture;
 };
 
-export function DrawerMenu({ open, onClose, currentRoute }: Props) {
+export function DrawerMenu({ open, onClose, currentRoute, x, closeGesture }: Props) {
   const scheme = useColorScheme() ?? 'light';
   const C = Colors[scheme];
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const translateX = useSharedValue(-300);
-  const overlayOpacity = useSharedValue(0);
-
-  useEffect(() => {
-    if (open) {
-      translateX.value = withTiming(0, { duration: 240 });
-      overlayOpacity.value = withTiming(0.5, { duration: 240 });
-    } else {
-      translateX.value = withTiming(-300, { duration: 200 });
-      overlayOpacity.value = withTiming(0, { duration: 200 });
-    }
-  }, [open]);
-
   const drawerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
+    transform: [{ translateX: x.value }],
   }));
 
-  const overlayStyle = useAnimatedStyle(() => ({
-    opacity: overlayOpacity.value,
-  }));
+  const overlayStyle = useAnimatedStyle(() => {
+    const progress = Math.min(1, Math.max(0, (x.value + DRAWER_WIDTH) / DRAWER_WIDTH));
+    return { opacity: progress * 0.5 };
+  });
 
   const normalizedCurrentRoute = normalizeRoute(currentRoute ?? '');
 
@@ -74,9 +67,10 @@ export function DrawerMenu({ open, onClose, currentRoute }: Props) {
         </Animated.View>
       )}
 
-      <Animated.View
-        pointerEvents={open ? 'auto' : 'none'}
-        style={[styles.drawer, { backgroundColor: C.surface, paddingTop: insets.top + Space.md, zIndex: 100 }, drawerStyle, Elevation.high]}>
+      <GestureDetector gesture={closeGesture}>
+        <Animated.View
+          pointerEvents={open ? 'auto' : 'none'}
+          style={[styles.drawer, { backgroundColor: C.surface, paddingTop: insets.top + Space.md, zIndex: 100 }, drawerStyle, Elevation.high]}>
         <View style={styles.drawerHeader}>
           <Image
             source={require('@/assets/icons/CadNav.png')}
@@ -123,7 +117,8 @@ export function DrawerMenu({ open, onClose, currentRoute }: Props) {
         <View style={[styles.footer, { borderTopColor: C.divider }]}>
           <Text style={[styles.footerText, { color: C.textSubtle }]}>CadNav v2  ·  Grid Navigation Tool</Text>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </GestureDetector>
     </>
   );
 }
@@ -133,8 +128,6 @@ function normalizeRoute(route: string) {
   const trimmed = withoutGroups.replace(/\/+$/, '');
   return trimmed.length > 0 ? trimmed : '/';
 }
-
-const DRAWER_WIDTH = 290;
 
 const styles = StyleSheet.create({
   drawer: {
@@ -188,9 +181,12 @@ const styles = StyleSheet.create({
   activeIndicator:{
     position: 'absolute',
     right: 0,
-    top: '15%',
+    // Equal top/bottom insets keep the bar vertically centred by construction,
+    // regardless of row height — percentage top/height can resolve
+    // asymmetrically on some platforms and rendered the bar off-centre.
+    top: 10,
+    bottom: 10,
     width: 3,
-    height: '70%',
     borderRadius: 2,
   },
   footer: {

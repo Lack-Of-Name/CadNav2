@@ -2,15 +2,17 @@ import { degreesToMils, getMagneticDeclination } from '@/components/map/converte
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { CHANGELOG } from '@/constants/changelog';
 import { Colors } from '@/constants/theme';
+import { useContributors } from '@/hooks/useContributors';
 import { useGPS } from '@/hooks/gps';
 import { useSettings } from '@/hooks/settings';
-import { computeTilt, useSensors } from '@/hooks/useSensors';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { computeTilt, useSensors } from '@/hooks/useSensors';
 import { utmGridConvergence } from '@/lib/mgrs';
 import Constants from 'expo-constants';
-import { Pedometer } from 'expo-sensors';
-import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, View } from 'react-native';
 
@@ -45,7 +47,7 @@ export default function AboutContent() {
   const { angleUnit } = useSettings();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const router = useRouter();
+  const { contributors } = useContributors();
 
   const [declination, setDeclination] = useState<number | null>(null);
   // Battery aware: sensors off by default. User opts in.
@@ -97,6 +99,16 @@ export default function AboutContent() {
     }
     void (async () => {
       try {
+        // Lazy-load Pedometer: its native module (ExponentPedometer) is missing on
+        // Android emulators / hardware without a step counter. A static import would
+        // crash the whole bundle at load time, so require it only here and bail
+        // gracefully when unavailable.
+        if (!requireOptionalNativeModule('ExponentPedometer')) {
+          if (active) setPedometerAvailable(false);
+          return;
+        }
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const Pedometer = require('expo-sensors/build/Pedometer') as typeof import('expo-sensors/build/Pedometer');
         const avail = await Pedometer.isAvailableAsync().catch(() => false);
         if (!active) return;
         setPedometerAvailable(avail);
@@ -143,11 +155,6 @@ export default function AboutContent() {
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
   const runtimeVersion = (Constants.expoConfig as any)?.runtimeVersion ?? (Constants as any)?.manifest2?.extra?.eas?.projectId ? 'EAS' : '-';
   const open = (url: string) => { void Linking.openURL(url); };
-  const openManualApiKey = () => {
-    // Close the About modal is handled by parent, but we can navigate to manual screen.
-    // Using router push ensures the API key guide is one tap away.
-    try { router.push('/manual'); } catch { open('https://github.com/Lack-Of-Name/CadNav2#configuration'); }
-  };
 
   const baroAltitude = barometer ? pressureToAltitudeM(barometer.pressure) : null;
 
@@ -177,19 +184,34 @@ export default function AboutContent() {
         </Pressable>
       </View>
 
-      <View style={[styles.apiKeyCard, { backgroundColor: theme.background, borderColor: theme.divider }]}>
-        <View style={{ flex: 1 }}>
-          <ThemedText style={[styles.apiKeyTitle, { color: theme.text }]}>Need a map key</ThemedText>
-          <ThemedText style={[styles.apiKeyDesc, { color: theme.textMuted }]}>
-            CadNav uses MapTiler for tiles. A free key takes about 2 minutes and no credit card is needed. You can also use offline maps without a key.
-          </ThemedText>
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <IconSymbol name="doc.text.fill" size={16} color={theme.textMuted} />
+          <ThemedText style={styles.sectionTitle}>Changelog</ThemedText>
         </View>
-        <Pressable onPress={openManualApiKey} style={[styles.apiKeyBtn, { backgroundColor: theme.primary }]}>
-          <ThemedText style={[styles.apiKeyBtnText, { color: '#fff' }]}>Open API key guide</ThemedText>
-        </Pressable>
-        <Pressable onPress={() => open('https://cloud.maptiler.com/account/keys')} style={[styles.apiKeyBtn, { backgroundColor: theme.surface, borderColor: theme.divider, borderWidth: StyleSheet.hairlineWidth }]}>
-          <ThemedText style={[styles.apiKeyBtnText, { color: theme.text }]}>Go to MapTiler keys</ThemedText>
-        </Pressable>
+        <View style={[styles.kvCard, { backgroundColor: theme.surface, borderColor: theme.divider, padding: 12, gap: 12 }]}>
+          {CHANGELOG.map((entry) => {
+            const isCurrent = entry.version === appVersion;
+            return (
+              <View key={entry.version}>
+                <View style={styles.versionRow}>
+                  <ThemedText style={[styles.versionText, { color: theme.text }]}>{entry.version}</ThemedText>
+                  {isCurrent ? (
+                    <View style={[styles.currentPill, { borderColor: theme.primary }]}>
+                      <ThemedText style={[styles.currentPillText, { color: theme.primary }]}>CURRENT</ThemedText>
+                    </View>
+                  ) : null}
+                </View>
+                {entry.highlights.map((h) => (
+                  <View key={h} style={styles.changeRow}>
+                    <View style={[styles.changeDot, { backgroundColor: theme.textSubtle }]} />
+                    <ThemedText style={[styles.changeText, { color: theme.textMuted }]}>{h}</ThemedText>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -500,14 +522,20 @@ export default function AboutContent() {
           <ThemedText style={styles.sectionTitle}>Contributors</ThemedText>
         </View>
         <View style={[styles.kvCard, { backgroundColor: theme.surface, borderColor: theme.divider, padding: 12, gap: 6 }]}>
-          <Pressable onPress={() => open('https://github.com/Lack-Of-Name')} style={styles.linkRowPress}>
-            <IconSymbol name="person.fill" size={14} color={theme.primary} />
-            <ThemedText type="link" style={styles.linkFlex}>lack-of-name (Lyren): lead and maps</ThemedText>
-          </Pressable>
-          <Pressable onPress={() => open('https://github.com/aellul27')} style={styles.linkRowPress}>
-            <IconSymbol name="person.fill" size={14} color={theme.primary} />
-            <ThemedText type="link" style={styles.linkFlex}>aellul27: contributor</ThemedText>
-          </Pressable>
+          {contributors.map((c) => (
+            <Pressable key={c.login} onPress={() => open(c.profileUrl)} style={styles.linkRowPress}>
+              <Image source={{ uri: c.avatarUrl }} style={styles.avatar} contentFit="cover" />
+              <ThemedText type="link" style={styles.linkFlex}>{c.login}</ThemedText>
+              {c.contributions != null ? (
+                <ThemedText style={[styles.mono, { color: theme.textSubtle }]}>
+                  {c.contributions} commit{c.contributions === 1 ? '' : 's'}
+                </ThemedText>
+              ) : null}
+            </Pressable>
+          ))}
+          <ThemedText style={[styles.microHint, { color: theme.textSubtle }]}>
+            Synced from GitHub — new contributors appear automatically.
+          </ThemedText>
         </View>
       </View>
 
@@ -519,7 +547,8 @@ export default function AboutContent() {
 
       <View style={styles.section}>
         <ThemedText style={styles.sectionTitle}>Special thanks</ThemedText>
-        <ThemedText style={[styles.text, { color: theme.textMuted }]}>You and every cadet, instructor and tester who filed a bug, suggested a waypoint, or carried CadNav into the field.</ThemedText>
+        <ThemedText style={[styles.text, { color: theme.textMuted }]}>You, who carried CadNav into the field. Thank you for you patronage!</ThemedText>
+        <ThemedText style={[styles.text, { color: theme.textMuted }]}>Contributors to the project. Thank you for your contributions!</ThemedText>
       </View>
     </ThemedView>
   );
@@ -613,27 +642,21 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   ctaBtnText: { fontSize: 12, fontWeight: '700' },
-  apiKeyCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-    marginBottom: 6,
-  },
-  apiKeyTitle: { fontSize: 14, fontWeight: '800' },
-  apiKeyDesc: { fontSize: 12, lineHeight: 16 },
-  apiKeyBtn: {
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
-  },
-  apiKeyBtnText: { fontSize: 13, fontWeight: '700' },
   section: { marginTop: 14 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   sectionTitle: { fontSize: 14, fontWeight: '800' },
+  versionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  versionText: { fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  currentPill: {
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 2,
+  },
+  currentPillText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.6 },
+  changeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 2 },
+  changeDot: { width: 5, height: 5, borderRadius: 2.5, marginTop: 6 },
+  changeText: { fontSize: 12, lineHeight: 17, flex: 1 },
   liveDot: { width: 8, height: 8, borderRadius: 4, marginLeft: 4 },
   liveLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
   toggle: {
@@ -712,6 +735,7 @@ const styles = StyleSheet.create({
   link: { fontSize: 13, marginBottom: 6 },
   linkFlex: { fontSize: 13, flex: 1 },
   linkRowPress: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 2 },
+  avatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(128,128,128,0.25)' },
   attrRow: {
     flexDirection: 'row',
     alignItems: 'center',

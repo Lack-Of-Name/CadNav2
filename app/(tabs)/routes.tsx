@@ -483,6 +483,9 @@ export default function RoutesScreen() {
         <FlatList
           bounces={false}
           overScrollMode="never"
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          windowSize={7}
           data={routes}
           keyExtractor={(i) => i.id}
           contentContainerStyle={[

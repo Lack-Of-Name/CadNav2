@@ -20,7 +20,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const IMAGE_MAP: Record<string, ImageSourcePropType> = {
-  'manual-api-key.png': require('@/assets/images/manual/manual-api-key.png'),
   'manual-api-key-01-signup.png': require('@/assets/images/manual/manual-api-key-01-signup.png'),
   'manual-api-key-02-dashboard.png': require('@/assets/images/manual/manual-api-key-02-dashboard.png'),
   'manual-api-key-03-copy-key.png': require('@/assets/images/manual/manual-api-key-03-copy-key.png'),
@@ -197,6 +196,8 @@ function SectionsView({
   onSelectSection: (s: ManualSection) => void;
 }) {
   const apiKeySection = sections.find((s) => s.id === 'api-key-tutorial');
+  // The featured guide is showcased above, so leave it out of the list below.
+  const listedSections = apiKeySection ? sections.filter((s) => s.id !== apiKeySection.id) : sections;
   return (
     <View style={styles.sectionsContainer}>
       <Text style={[styles.introText, { color: C.textMuted }]}>
@@ -218,7 +219,7 @@ function SectionsView({
           <Text style={[styles.chevron, { color: '#fff' }]}>›</Text>
         </Pressable>
       ) : null}
-      {sections.map((section) => (
+      {listedSections.map((section) => (
         <Pressable
           key={section.id}
           style={[styles.sectionCard, { backgroundColor: C.background, borderColor: C.divider }]}
@@ -264,7 +265,7 @@ function ItemsView({
           <View style={styles.itemRowBody}>
             <Text style={[styles.itemRowTitle, { color: C.text }]}>{item.title}</Text>
             <Text style={[styles.itemRowImage, { color: C.textSubtle }]} numberOfLines={1}>
-              {item.imageCaption.slice(0, 80)}…
+              {(item.imageCaption ?? item.description).slice(0, 80)}…
             </Text>
           </View>
           <Text style={[styles.chevron, { color: C.textSubtle }]}>›</Text>
@@ -275,11 +276,11 @@ function ItemsView({
 }
 
 function DetailView({ C, item }: { C: ThemeColors; item: ManualItem }) {
-  const imgSource = IMAGE_MAP[item.imageName] ?? undefined;
+  const imgSource = item.imageName ? IMAGE_MAP[item.imageName] ?? undefined : undefined;
   const { width: screenW } = useWindowDimensions();
   const imgWidth = Math.min(screenW - 48, 500);
   const imgHeight = Math.round(imgWidth / IMAGE_ASPECT_RATIO);
-  const isApiKeyItem = item.id === 'api-key-step-4-paste' || item.id === 'api-key-setup';
+  const isApiKeyItem = item.id === 'api-key-step-4-paste';
 
   return (
     <View style={styles.detailContainer}>
@@ -291,7 +292,7 @@ function DetailView({ C, item }: { C: ThemeColors; item: ManualItem }) {
             resizeMode="contain"
           />
         </View>
-      ) : (
+      ) : item.imageName ? (
         <View style={[styles.imagePlaceholder, { backgroundColor: C.background, borderColor: C.divider }]}>
           <Text style={[styles.imagePlaceholderIcon, { color: C.textSubtle }]}>IMG</Text>
           <Text style={[styles.imagePlaceholderText, { color: C.textMuted }]}>
@@ -301,7 +302,7 @@ function DetailView({ C, item }: { C: ThemeColors; item: ManualItem }) {
             {item.imageCaption}
           </Text>
         </View>
-      )}
+      ) : null}
       <Text style={[styles.pageTitle, { color: C.text }]}>{item.title}</Text>
       <Text style={[styles.pageDescription, { color: C.textMuted }]}>{item.description}</Text>
       {isApiKeyItem ? <ApiKeyInlineField C={C} /> : null}

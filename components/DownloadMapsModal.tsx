@@ -470,7 +470,7 @@ export default function DownloadMapsModal({ visible, onClose }: Props) {
                     {/* @ts-expect-error - MapLibre native module types not available at design time */}
                     <MapLibre.MapView 
                       style={StyleSheet.absoluteFillObject} 
-                        mapStyle={getMapStyleUrl(mapLayer, colorScheme, apiKey ?? '')}
+                        mapStyle={getMapStyleUrl(mapLayer, apiKey ?? '')}
                       logoEnabled={false}
                       compassEnabled={false}
                       pitchEnabled={false}

@@ -17,6 +17,32 @@ export type CompassRuleResult = {
   message: string;
   detail: string;
   remediation?: string;
+  /** Short UI note (2-4 words). Falls back to RULE_ACTIONS[id] when unset. */
+  action?: string;
+};
+
+/**
+ * Short action notes shown beside each compass warning (2-4 words max).
+ * Fixable rules get an imperative micro-action; rules the user cannot fix
+ * get a very brief explainer instead.
+ */
+export const RULE_ACTIONS: Record<RuleId, string> = {
+  R01: 'Wave figure-eight',
+  R02: 'Wait for updates',
+  R03: 'Go outside',
+  R04: 'Auto fallback',
+  R05: 'Go outside',
+  R06: 'Automatic retry',
+  R07: 'Avoid nearby metal',
+  R08: 'Move from metal',
+  R09: 'Step outside',
+  R10: 'Step outside',
+  R11: 'Hold steady',
+  R12: 'Wave figure-eight',
+  R13: 'Momentary glitch',
+  R14: 'Hold level',
+  R15: 'Walk a few steps',
+  R16: 'Power-save mode',
 };
 
 export type HeadingSample = { heading: number; timestamp: number };

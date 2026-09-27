@@ -36,7 +36,7 @@ const mapTutorial: Tutorial = {
     },
     {
       title: 'Revisit Tutorials',
-      text: 'You can replay any tutorial or browse the full manual anytime from the Settings screen. Look for the Tutorials section with badges for each guide.',
+      text: 'You can replay any tutorial or browse the full manual anytime from the Settings screen. Look for the Tutorials section with a row for each guide.',
     },
   ],
 };

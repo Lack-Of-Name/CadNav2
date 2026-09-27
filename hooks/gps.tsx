@@ -264,21 +264,40 @@ export function useGPS(options?: GPSOptions) {
               const prevTrue = trueHeadingRef.current;
               const prevAcc = headingAccuracyRef.current;
 
+              // Magnetometer noise fires this callback at high frequency with
+              // sub-visual jitter. Coalesce it: refs always track raw values,
+              // but React state (and therefore whole-screen re-renders) only
+              // updates on meaningful change. Thresholds elsewhere operate on
+              // multi-degree scales, so a quarter-degree epsilon is invisible.
+              const HEADING_EPSILON_DEG = 0.25;
+              const circDiff = (a: number, b: number) => {
+                let d = ((a - b + 540) % 360) - 180;
+                return Math.abs(d === -180 ? 180 : d);
+              };
+              const magChanged = mag != null && (prevMag == null || circDiff(mag, prevMag) > HEADING_EPSILON_DEG);
+              const trueChanged =
+                nativeTrue != null && (prevTrue == null || circDiff(nativeTrue, prevTrue) > HEADING_EPSILON_DEG);
+
               if (mag != null) {
                 magHeadingRef.current = mag;
-                setMagHeading(mag);
+                if (magChanged) setMagHeading(mag);
               }
               if (nativeTrue != null) {
                 trueHeadingRef.current = nativeTrue;
-                setTrueHeading(nativeTrue);
+                if (trueChanged) setTrueHeading(nativeTrue);
               }
               if (acc != null || (acc == null && headingAccuracyRef.current != null)) {
                 headingAccuracyRef.current = acc;
-                setHeadingAccuracy(acc);
+                if (acc !== prevAcc) setHeadingAccuracy(acc);
               }
+              // Staleness rules work on multi-second scales — bucket the
+              // timestamp so every sensor tick doesn't force a re-render.
               const now = Date.now();
-              lastHeadingTimestampRef.current = now;
-              setLastHeadingTimestamp(now);
+              const bucketedNow = Math.floor(now / 500) * 500;
+              if (lastHeadingTimestampRef.current == null || bucketedNow !== lastHeadingTimestampRef.current) {
+                lastHeadingTimestampRef.current = bucketedNow;
+                setLastHeadingTimestamp(bucketedNow);
+              }
 
               const loc = lastLocationRef.current;
               if (mag != null && loc) {
@@ -292,9 +311,12 @@ export function useGPS(options?: GPSOptions) {
 
               // Push heading-only updates into lastLocation so the compass UI
               // re-renders immediately, regardless of the position watch interval.
-              // Trigger when EITHER mag or true changed so a true-only update still
-              // propagates (e.g. computed-true resolving after a location fix).
-              const headingChanged = mag !== prevMag || trueHeadingRef.current !== prevTrue || acc !== prevAcc;
+              // Same epsilon as above (covers native-true moves and computed-true
+              // resolving after a location fix) so noise doesn't cascade renders.
+              const moved = (cur: number | null, prev: number | null) =>
+                cur != null && (prev == null || circDiff(cur, prev) > HEADING_EPSILON_DEG);
+              const headingChanged =
+                moved(mag, prevMag) || moved(trueHeadingRef.current, prevTrue) || acc !== prevAcc;
               if (headingChanged && lastLocationRef.current) {
                 setLastLocation((prev) =>
                   prev

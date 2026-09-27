@@ -1,5 +1,5 @@
 import { Colors } from '@/constants/theme';
-import type { CompassRuleResult } from '@/lib/compassRules';
+import { RULE_ACTIONS, type CompassRuleResult } from '@/lib/compassRules';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
@@ -95,6 +95,12 @@ export function CompassWarningSheet({ visible, onClose, activeRules }: Props) {
                     <View style={[styles.dot, { backgroundColor: dot }]} />
                     <Text style={[styles.rowText, { color: palette.text }]} numberOfLines={1}>
                       {r.name}
+                    </Text>
+                    <Text
+                      style={[styles.actionNote, { color: palette.textMuted, borderColor: palette.divider }]}
+                      numberOfLines={1}
+                    >
+                      {(r.action ?? RULE_ACTIONS[r.id] ?? '').toUpperCase()}
                     </Text>
                   </Animated.View>
                 );
@@ -213,6 +219,16 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '600',
+  },
+  actionNote: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    overflow: 'hidden',
   },
   actions: {
     paddingHorizontal: 16,
