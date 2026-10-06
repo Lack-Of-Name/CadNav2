@@ -1,3 +1,6 @@
+// CadNav 2 libraries — Copyright (C) 2026 Lyren, Alexander Ellul
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// See lib/LICENSE for full terms.
 import { computeRouteDistanceMeters, formatDistance } from '@/lib/geo';
 import { latLonToMGRS } from '@/lib/mgrs';
 import type { Checkpoint, RouteItem } from '@/types';

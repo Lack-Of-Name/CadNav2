@@ -1,0 +1,88 @@
+CadNav 2 — Apple App Store Distribution Exception
+Copyright (C) 2026 Lyren, Alexander Ellul
+SPDX-License-Identifier: GPL-3.0-or-later WITH CadNav-Apple-App-Store-Exception
+
+This file states an additional permission under section 7 of the
+GNU General Public License, version 3 (GPLv3).
+
+It applies to the Program as a whole (the CadNav 2 app, licensed
+GPL-3.0-or-later, see LICENSE) and, where needed, to the CadNav 2
+libraries in lib/ (licensed LGPL-3.0-or-later, see COPYING.LESSER and
+lib/LICENSE) when conveyed together with the Program as a Combined
+Work through Apple distribution channels.
+
+Additional permission:
+
+  As a special exception, the copyright holders who control copying
+  via this exception give you permission to convey object-code copies
+  of the covered work through:
+
+    - the Apple App Store,
+    - Apple TestFlight, and
+    - Apple notarised / Apple-provisioned distribution tied to those
+      channels (including FairPlay encryption applied by Apple),
+
+  subject to the Apple Media Services Terms and Conditions, the Apple
+  Developer Program License Agreement, and Apple usage rules, even
+  though those Apple-imposed terms would otherwise be inconsistent
+  with GPLv3 sections 3 (anti-circumvention waiver), 6 (Installation
+  Information / anti-tivoization for User Products), and 10
+  (no further restrictions).
+
+Scope and conditions:
+
+  1. This exception covers only terms, DRM, signing, and technical
+     measures imposed by Apple itself as operator of the channel, not
+     terms you or any other distributor add. You may not impose any
+     further restrictions of your own beyond what Apple imposes.
+
+  2. The obligation to make the Corresponding Source (and, for lib/,
+     the Minimal Corresponding Source / Corresponding Application Code
+     as applicable) available to anyone who receives object code
+     remains in full force. For Apple-channel distribution, satisfy
+     GPLv3 section 6(d) by offering equivalent network-server access
+     to the Corresponding Source at no charge through the same or a
+     clearly directed place — in practice, the public GitHub repo and
+     release tag matching each submitted build:
+
+       https://github.com/Lack-Of-Name/CadNav2
+
+     Keep that source available for as long as needed to satisfy the
+     License (at least 3 years / as long as you offer support for that
+     model, per section 6(b)).
+
+  3. To the extent Apple prevents end users from installing modified
+     versions on their devices (signing, sandboxing, FairPlay), the
+     Installation Information requirement in GPLv3 section 6 and LGPLv3
+     section 4(e) is waived for copies conveyed strictly via the Apple
+     channels above. No waiver applies to Android, web, sideloaded, or
+     otherwise directly distributed copies — those must comply with
+     sections 6 / 4(e) in full.
+
+  4. When you convey under this exception you waive, to the extent
+     exercised via Apple DRM, any legal power to forbid circumvention
+     only as required to use Apple distribution at all. This does not
+     limit users' rights outside the Apple channel.
+
+  5. Per GPLv3 section 7, paragraph 2, you may remove this additional
+     permission (and the Apple terms that depend on it) from any copy
+     you convey, and convey that copy under pure GPLv3 / LGPLv3
+     without Apple distribution. If you do distribute via Apple, you
+     must retain this notice and give recipients a copy of LICENSE,
+     COPYING.LESSER / lib/LICENSE as applicable, and this file.
+
+  6. This exception does not affect the separate MIT-licensed code in
+     lib/qr/vendor/ (Copyright (c) 2009 Kazuhiko Arase, see
+     lib/qr/vendor/LICENSE) nor the MIT attribution retained in
+     lib/mgrs.ts for the proj4js/mgrs port. Those files remain under
+     their MIT terms alongside the LGPL grant.
+
+  7. Prior releases of CadNav 2 made under Apache-2.0 remain under
+     Apache-2.0. This exception applies only to GPLv3 / LGPLv3 copies
+     from the relicensing date forward.
+
+How to apply: keep this file at the repository root alongside LICENSE.
+The LICENSE header points here. In-app, Settings > About > License
+summarises "GPL-3.0-or-later with Apple App Store exception" and links
+to LICENSE and to this file. For App Store Connect, upload a Custom
+EULA that points to LICENSE + this file + the source repo URL above.

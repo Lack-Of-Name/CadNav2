@@ -1,3 +1,6 @@
+// CadNav 2 libraries — Copyright (C) 2026 Lyren, Alexander Ellul
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// See lib/LICENSE for full terms.
 import type { GPSLocation } from '@/hooks/gps';
 import type { AccelerometerData, GyroscopeData, MagnetometerData } from '@/hooks/useSensors';
 

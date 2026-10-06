@@ -1,3 +1,8 @@
+// CadNav 2 libraries — Copyright (C) 2026 Lyren, Alexander Ellul
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// See lib/LICENSE for full terms.
+// Note: the encoder in lib/qr/vendor/ remains under its own MIT license
+// (Copyright (c) 2009 Kazuhiko Arase) — see lib/qr/vendor/LICENSE.
 import QRCode from './qr/vendor/index';
 
 export type QrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H';

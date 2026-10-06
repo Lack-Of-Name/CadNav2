@@ -1,3 +1,6 @@
+// CadNav 2 libraries — Copyright (C) 2026 Lyren, Alexander Ellul
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// See lib/LICENSE for full terms.
 import { haversineMeters } from '@/components/map/MaplibreMap.utils';
 
 import type { Checkpoint } from '@/types';

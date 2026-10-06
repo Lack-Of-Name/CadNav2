@@ -508,7 +508,11 @@ export default function AboutContent() {
           </Pressable>
           <Pressable onPress={() => open('https://github.com/Lack-Of-Name/CadNav2/blob/main/LICENSE')} style={styles.linkRowPress}>
             <IconSymbol name="doc.text.fill" size={14} color={theme.primary} />
-            <ThemedText type="link" style={styles.linkFlex}>License: Apache 2.0</ThemedText>
+            <ThemedText type="link" style={styles.linkFlex}>License: GPL-3.0-or-later with Apple App Store exception (libs: LGPL-3.0-or-later)</ThemedText>
+          </Pressable>
+          <Pressable onPress={() => open('https://github.com/Lack-Of-Name/CadNav2/blob/main/APPLE-APP-STORE-EXCEPTION.txt')} style={styles.linkRowPress}>
+            <IconSymbol name="doc.text.fill" size={14} color={theme.primary} />
+            <ThemedText type="link" style={styles.linkFlex}>Apple App Store exception (GPLv3 §7 additional permission)</ThemedText>
           </Pressable>
           <ThemedText style={[styles.microHint, { color: theme.textSubtle, marginTop: 4 }]}>
             Star the repo if CadNav helps you. It helps others find it. Pull requests for grid and declination fixes and offline pack improvements are welcome.
@@ -541,7 +545,7 @@ export default function AboutContent() {
 
       <View style={[styles.licenseBox, { borderColor: theme.divider, backgroundColor: theme.surface }]}>
         <ThemedText style={[styles.microHint, { color: theme.textSubtle, textAlign: 'center' }]}>
-          2026 Lyren and contributors. Licensed under Apache 2.0. See LICENSE for full terms. Map tiles from MapTiler, data from OSM contributors, rendering by MapLibre, mag model by NOAA and NCEI.
+          2026 Lyren, Alexander Ellul and contributors. Free software under GPL-3.0-or-later with Apple App Store exception (libraries in lib/ under LGPL-3.0-or-later). WITHOUT ANY WARRANTY. See LICENSE and APPLE-APP-STORE-EXCEPTION.txt. Source for this build: GitHub Lack-Of-Name/CadNav2 release tag. Map tiles from MapTiler, data from OSM contributors, rendering by MapLibre, mag model by NOAA and NCEI.
         </ThemedText>
       </View>
 

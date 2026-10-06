@@ -2,6 +2,8 @@
   "name": "cadnav2",
   "main": "expo-router/entry",
   "version": "1.2.0",
+  "license": "GPL-3.0-or-later",
+  "author": "Lyren, Alexander Ellul",
   "scripts": {
     "start": "expo start",
     "android": "npx expo run:android",

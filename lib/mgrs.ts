@@ -1,9 +1,16 @@
+// CadNav 2 libraries — Copyright (C) 2026 Lyren, Alexander Ellul
+// SPDX-License-Identifier: LGPL-3.0-or-later
+// See lib/LICENSE for full terms.
 /**
  * MGRS / UTM conversion helpers.
  *
  * Ported from the MIT-licensed `mgrs` package (https://github.com/proj4js/mgrs),
  * which itself follows the US NGA TR8350.2 specification. Faithfully preserves
  * the reference algorithm (including the 100,000m square "set" lettering).
+ *
+ * The original MIT copyright/permission notice is retained with the original
+ * package; modifications in this file are additionally available under
+ * LGPL-3.0-or-later as part of the CadNav 2 libraries.
  */
 
 export type LatLon = { latitude: number; longitude: number };

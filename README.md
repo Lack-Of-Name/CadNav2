@@ -14,7 +14,8 @@
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-5.9-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" /></a>
   <a href="https://maplibre.org"><img src="https://img.shields.io/badge/MapLibre-10.4-396CB2?style=flat-square" alt="MapLibre" /></a>
   <img src="https://img.shields.io/badge/Platform-Android%20%7C%20iOS-lightgrey?style=flat-square" alt="Platform" />
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue?style=flat-square" alt="License Apache 2.0" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue?style=flat-square" alt="License GPL-3.0-or-later" /></a>
+  <a href="lib/LICENSE"><img src="https://img.shields.io/badge/Libs-LGPLv3-green?style=flat-square" alt="Libraries LGPL-3.0-or-later" /></a>
 </p>
 
 <p align="center">
@@ -34,7 +35,7 @@ CadNav 2 is a React Native navigation tool designed for cadets, instructors and 
 
 Built with [Expo](https://expo.dev) and [Expo Router](https://docs.expo.dev/router/introduction/), the app runs on Android and iOS from a single codebase and supports offline map packs, theme customization and QR based sharing.
 
-> Status: Active development. Version 1.0.4. See [app.json](app.json) and [package.json](package.json) for current versions.
+> Status: Active development. Version 1.2.0. See [app.json](app.json) and [package.json](package.json) for current versions.
 
 ## Table of Contents
 
@@ -216,9 +217,13 @@ Pull requests that add features should include a short manual note or screenshot
 
 ## License
 
-Licensed under [Apache 2.0](LICENSE). Copyright 2026 Lyren.
+This program is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License v3.0 or later](LICENSE) with the [Apple App Store Distribution Exception](APPLE-APP-STORE-EXCEPTION.txt). Copyright 2026 Lyren, Alexander Ellul.
 
-See [LICENSE](LICENSE) for the full text.
+The reusable libraries in [`lib/`](lib/LICENSE) (color, geo, MGRS, compass rules, QR, share/import payloads, map module) are separately available under the [GNU Lesser General Public License v3.0 or later](lib/LICENSE), so they can be linked from other apps. Third-party code keeps its own license: `lib/qr/vendor/` stays MIT (Kazuhiko Arase, see `lib/qr/vendor/LICENSE`), and `lib/mgrs.ts` retains its MIT-port attribution to `proj4js/mgrs` alongside the LGPL grant.
+
+Apple App Store / TestFlight distribution is permitted via the additional permission in [APPLE-APP-STORE-EXCEPTION.txt](APPLE-APP-STORE-EXCEPTION.txt) (GPLv3 §7). Corresponding Source for every store build is the tagged release at https://github.com/Lack-Of-Name/CadNav2.
+
+See [LICENSE](LICENSE), [APPLE-APP-STORE-EXCEPTION.txt](APPLE-APP-STORE-EXCEPTION.txt), [COPYING.LESSER](COPYING.LESSER) and [lib/LICENSE](lib/LICENSE) for the full texts.
 
 ---
 
