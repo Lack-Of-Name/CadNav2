@@ -91,6 +91,9 @@ if (fs.existsSync(easPath)) {
     if (oldPkg && easRaw.includes(oldPkg)) {
       console.warn(`  ! eas.json mentions ${oldPkg} — review manually if it should track app version.`);
     }
+    if (/"appVersionSource"\s*:\s*"remote"/.test(easRaw)) {
+      console.warn('  ! EAS is using the remote version source. Register the new version with `eas build:version:set -p ios` and `-p android` before building.');
+    }
   } catch {}
 }
 

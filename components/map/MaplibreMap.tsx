@@ -37,6 +37,7 @@ import { useMiniCompass } from './useMiniCompass';
 import { degreesToMils } from './converter';
 import { computeGridCornersFromMapBounds, generateGzdLines, generateGridPoints, mgrsCellLabel } from './mapGrid';
 import { latLonToMGRS, parseMGRS, utmToLatLon } from '@/lib/mgrs';
+import { isWithinAccuracy } from '@/lib/proximity';
 import { useCompassAccuracy } from '@/hooks/useCompassAccuracy';
 
 /** Debug logging for camera/location flows. Compiled out of production:
@@ -137,7 +138,6 @@ export default function MapLibreMap() {
     circleStrokeColor: primaryRgba15,
   };
   const computedLocationMarkerBgStyle = { circleRadius: 12, circleColor: locationDotHex };
-  const iconColor = useThemeColor({}, 'tabIconDefault');
   const tint = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
   const borderColor = useThemeColor({}, 'tabIconDefault');
@@ -401,6 +401,17 @@ export default function MapLibreMap() {
           return `${Math.round(meters)} m`;
         })()
       : null;
+
+  // "At checkpoint" state: the remaining distance to the selected checkpoint
+  // is inside the current GPS fix's own error circle, so we cannot honestly
+  // say the user is anywhere else. Every compass ring/housing then turns to
+  // the route colour as an arrival cue.
+  const compassRingColor = isWithinAccuracy(
+    compassDistanceMeters,
+    lastLocation?.coords.accuracy ?? null,
+  )
+    ? (activeRouteColor ?? compassTargetColor ?? null)
+    : null;
 
   const targetGridRefText = selectedCheckpoint
     ? (selectedCheckpoint.mgrs?.trim() ||
@@ -1271,53 +1282,33 @@ export default function MapLibreMap() {
   }
 
   if (loading || (!apiKey && !hasOfflinePacks)) {
+    const gateColor = Colors[colorScheme].primary;
+    const gateTextColor = contrastingTextColor(gateColor);
     return (
-      <ThemedView style={[styles.page, { justifyContent: 'center', alignItems: 'center' }]}>
+      <ThemedView style={[styles.page, styles.keyGate]}>
         {loading ? (
-          <ActivityIndicator size="large" color={typeof tint === 'string' ? tint : String(bannerAccent)} style={{ marginBottom: 16 }} />
+          <ActivityIndicator size="large" color={gateColor} style={{ marginBottom: 18 }} />
         ) : (
-          <IconSymbol name="map.fill" size={64} color={iconColor} style={{ marginBottom: 16, opacity: 0.5 }} />
+          <View style={[styles.keyGateIcon, { backgroundColor: gateColor }]}>
+            <IconSymbol name="key.fill" size={30} color={gateTextColor} />
+          </View>
         )}
-        <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8, color: textColor, textAlign: 'center' }}>
-          {loading ? 'MapTiler API' : 'Welcome to CadNav — Let\'s Get Your Maps'}
+        <Text style={[styles.keyGateTitle, { color: textColor }]}>
+          {loading ? 'Loading map' : 'Connect your map'}
         </Text>
-        <Text style={{ fontSize: 14, textAlign: 'center', marginHorizontal: 32, marginBottom: 12, color: textColor, opacity: 0.7 }}>
-          {loading ? 'Waiting for MapTiler API key...' : 'CadNav uses MapTiler (free) for map tiles. It takes ~2 minutes — no credit card — or use offline maps with no key.'}
+        <Text style={[styles.keyGateBody, { color: textColor }]}>
+          {loading ? 'Preparing MapTiler…' : 'Add your free MapTiler key to start navigating.'}
         </Text>
         {!loading && (
-          <>
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-              <TouchableOpacity
-                style={{ backgroundColor: bannerAccent, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
-                onPress={promptForKey}
-              >
-                <Text style={{ color: bannerAccentText, fontWeight: '600' }}>Enter API Key</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ backgroundColor: 'transparent', borderWidth: 1.5, borderColor: String(bannerAccent), paddingHorizontal: 20, paddingVertical: 12, borderRadius: 8 }}
-                onPress={() => router.push('/manual')}
-              >
-                <Text style={{ color: String(bannerAccent), fontWeight: '600' }}>View setup guide</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={{ backgroundColor: 'rgba(128,128,128,0.14)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
-                onPress={() => router.push('/(tabs)/settings')}
-              >
-                <Text style={{ color: textColor, fontWeight: '600' }}>Open Settings</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ backgroundColor: 'rgba(128,128,128,0.14)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
-                onPress={() => router.push('/manual')}
-              >
-                <Text style={{ color: textColor, fontWeight: '600', fontSize: 13 }}>Why do I need a key?</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={{ fontSize: 11, textAlign: 'center', marginHorizontal: 32, marginTop: 14, color: textColor, opacity: 0.45 }}>
-              Skip for now works too — download an offline pack in Settings → Offline Maps.
-            </Text>
-          </>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Set up map key"
+            onPress={() => promptForKey()}
+            style={[styles.keyGateButton, { backgroundColor: gateColor }]}
+          >
+            <Text style={[styles.keyGateButtonText, { color: gateTextColor }]}>Set up map key</Text>
+            <IconSymbol name="arrow.right" size={17} color={gateTextColor} />
+          </TouchableOpacity>
         )}
       </ThemedView>
     );
@@ -1348,9 +1339,9 @@ export default function MapLibreMap() {
             </TouchableOpacity>
             <TouchableOpacity
               style={{ backgroundColor: 'rgba(128,128,128,0.18)', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 8 }}
-              onPress={promptForKey}
+              onPress={() => promptForKey()}
             >
-              <Text style={{ color: textColor, fontWeight: '600' }}>Enter API Key</Text>
+              <Text style={{ color: textColor, fontWeight: '600' }}>Map key</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1786,6 +1777,7 @@ export default function MapLibreMap() {
         targetLabel={compassTargetLabel}
         headingReferenceLabel={compassHeadingDeg == null ? null : compassHeadingRefLabel}
         targetColor={compassTargetColor}
+        ringColor={compassRingColor}
         bearingText={compassBearingText}
         distanceText={compassDistanceText}
         panelBg={String(surfaceColor)}
@@ -1810,6 +1802,7 @@ export default function MapLibreMap() {
           headingDeg={compassHeadingDeg}
           targetBearingDeg={compassTargetBearingDeg}
           targetColor={compassTargetColor ?? null}
+          ringColor={compassRingColor}
           panelBg={String(surfaceColor)}
           borderColor={String(dividerColor)}
           dialBg={String(background)}
@@ -1858,6 +1851,49 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  keyGate: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  keyGateIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  keyGateTitle: {
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: -0.5,
+  },
+  keyGateBody: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    opacity: 0.65,
+    marginTop: 8,
+    marginBottom: 28,
+    maxWidth: 320,
+  },
+  keyGateButton: {
+    minHeight: 54,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  keyGateButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   summaryWrap: {
     position: 'absolute',

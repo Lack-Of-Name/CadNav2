@@ -17,41 +17,41 @@ export type ManualSection = {
 const sections: ManualSection[] = [
   {
     id: 'api-key-tutorial',
-    title: 'Get Your Free Map Key - Step by Step',
-    summary: 'Start here. 4 screenshots: sign up at MapTiler, open Keys, copy your key, paste it in CadNav. About 2 minutes. No credit card needed.',
+    title: 'Get Your Free Map Key',
+    summary: 'About two minutes, no credit card. CadNav walks you through it with one button.',
     items: [
       {
         id: 'api-key-step-1-signup',
-        title: 'Step 1 - Sign Up at MapTiler (Free)',
+        title: 'Step 1 - Get your key',
         description:
-          'Open cloud.maptiler.com, tap Sign Up, create a free account (email + password). The Free tier is generous and covers normal field use - no credit card needed. Once verified, you land on the MapTiler dashboard.',
+          'Tap Get my free key in CadNav. It opens MapTiler, where you create a free account. No credit card needed.',
         imageName: 'manual-api-key-01-signup.png',
         imageCaption:
           'Screenshot 1 - MapTiler homepage / sign-up: show cloud.maptiler.com with the Sign Up button highlighted. Crop to 800x500, annotate with a red arrow / circle on Sign Up. Keep UI chrome visible so users recognise the site.',
       },
       {
         id: 'api-key-step-2-dashboard',
-        title: 'Step 2 - Open Your Dashboard to Keys',
+        title: 'Step 2 - Open Keys',
         description:
-          'After logging in, open the top-left menu (or go directly to cloud.maptiler.com/account/keys). Tap Keys in the left sidebar. You will see a Default key already created for you.',
+          'After signing in, MapTiler opens your Keys page. A default key is already waiting for you.',
         imageName: 'manual-api-key-02-dashboard.png',
         imageCaption:
           'Screenshot 2 - MapTiler dashboard with left sidebar: highlight Keys. Show the Default key row. 800x500, circle the Keys item in red. Blur any personal email if visible.',
       },
       {
         id: 'api-key-step-3-copy',
-        title: 'Step 3 - Copy Your Key',
+        title: 'Step 3 - Copy it',
         description:
-          'In the Keys table, tap the copy icon (two overlapping squares) next to your key, or select the key string and copy it. It is a long hex string (about 40 chars). Keep the dashboard open in case you need it again.',
+          'Tap the copy icon next to your key. It is a long string of letters and numbers.',
         imageName: 'manual-api-key-03-copy-key.png',
         imageCaption:
           'Screenshot 3 - Close-up of the Keys table row: highlight the copy button / key string. Show tooltip Copied if possible. 800x500, arrow pointing to the copy icon. Mask most of the key but leave 4 to 6 chars visible so users recognise the format.',
       },
       {
         id: 'api-key-step-4-paste',
-        title: 'Step 4 - Paste in CadNav and Save',
+        title: 'Step 4 - Paste it in CadNav',
         description:
-          'Back in CadNav: paste into the Paste your MapTiler key field and tap Save key. The map reloads immediately. If it fails, double-check for extra spaces. You can always change it later in Settings under Map then MapTiler API Key. Tip: you can also tap Skip for now to use downloaded offline maps without any key. You can paste and save your key right below without leaving this guide.',
+          'Return to CadNav and tap Paste, then Connect map. The map loads immediately. You can replace the key later in Settings.',
         imageName: 'manual-api-key-04-paste-key.png',
         imageCaption:
           'Screenshot 4 - CadNav KeyEntryModal with the paste field focused and Save key highlighted. Also show the fallback: Settings under Map then MapTiler API Key row. 800x500, two-callout composite: (1) paste field plus Save, (2) Settings row. Use the existing manual-api-key.png composite as template - replace with fresh captures.',

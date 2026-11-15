@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import AboutContent from '@/components/AboutContent';
@@ -18,7 +18,7 @@ import { useCheckpoints } from '@/hooks/checkpoints';
 import { useSettings, type GpsMode, type MapLayer, type ThemeMode } from '@/hooks/settings';
 import { useTutorials } from '@/hooks/tutorials';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { hexToHsv, hsvToHex } from '@/lib/colorUtils';
+import { contrastingTextColor, hexToHsv, hsvToHex } from '@/lib/colorUtils';
 import { getMaplibreModule } from '@/lib/maplibreModule';
 import { useRouter } from 'expo-router';
 
@@ -379,7 +379,7 @@ export default function SettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { angleUnit, mapHeading, mapLayer, mapGridEnabled, mapGridSubdivisionsEnabled, mapGridNumbersEnabled, themeMode, gpsMode, locationDotColor, mapBrightness, setSetting } = useSettings();
-  const { apiKey, clearApiKey } = useMapTilerKey();
+  const { apiKey, clearApiKey, promptForKey } = useMapTilerKey();
   const { showTutorial } = useTutorials();
   const [infoOpen, setInfoOpen] = useState(false);
   const [downloadMapsOpen, setDownloadMapsOpen] = useState(false);
@@ -390,13 +390,17 @@ export default function SettingsScreen() {
   const isMils = angleUnit === 'mils';
   const isTrue = mapHeading === 'true';
 
-  async function handleResetApiKey() {
+  async function handleMapKey() {
+    if (!apiKey) {
+      promptForKey();
+      return;
+    }
     await alert({
-      title: 'Reset MapTiler API Key',
-      message: 'Delete the stored MapTiler API key and enter a new one?',
+      title: 'Replace map key?',
+      message: 'The current key will be removed. You will need to paste a new one.',
       buttons: [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'OK', onPress: async () => await clearApiKey() },
+        { text: 'Replace', style: 'destructive', onPress: async () => await clearApiKey() },
       ],
     });
   }
@@ -553,29 +557,6 @@ export default function SettingsScreen() {
               onChange={(next) => void setSetting('mapBrightness', next)}
             />
           </View>
-          <View style={styles.appearanceBlock}>
-            <ThemedText style={[styles.appearanceLabel, { color: theme.textMuted }]}>Map Key</ThemedText>
-            <ThemedText style={[styles.apiKeyTitle, { color: theme.text }]}>Need a map key?</ThemedText>
-            <ThemedText style={[styles.apiKeyDesc, { color: theme.textMuted }]}>
-              CadNav uses MapTiler for tiles. A free key takes about 2 minutes and no credit card is needed. You can also use offline maps without a key.
-            </ThemedText>
-            <Pressable
-              onPress={() => router.push('/manual')}
-              accessibilityRole="button"
-              accessibilityLabel="Open API key guide"
-              style={[styles.apiKeyBtn, { backgroundColor: theme.primary }]}
-            >
-              <ThemedText style={[styles.apiKeyBtnText, { color: '#fff' }]}>Open API key guide</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() => { void Linking.openURL('https://cloud.maptiler.com/account/keys'); }}
-              accessibilityRole="button"
-              accessibilityLabel="Go to MapTiler keys"
-              style={[styles.apiKeyBtn, { backgroundColor: theme.surface, borderColor: theme.divider, borderWidth: StyleSheet.hairlineWidth }]}
-            >
-              <ThemedText style={[styles.apiKeyBtnText, { color: theme.text }]}>Go to MapTiler keys</ThemedText>
-            </Pressable>
-          </View>
           <SettingsRow 
             icon="arrow.down.circle.fill" 
             label="Offline Maps"
@@ -585,10 +566,19 @@ export default function SettingsScreen() {
           />
           <SettingsRow 
             icon="key.fill"
-            label="MapTiler API Key" 
+            label="Map key"
             color={theme.primary}
-            value={apiKey ? 'Configured' : 'Missing'}
-            onPress={handleResetApiKey}
+            value={apiKey ? 'Connected' : undefined}
+            rightElement={
+              !apiKey ? (
+                <View style={[styles.mapKeyConnect, { backgroundColor: theme.primary }]}>
+                  <ThemedText style={[styles.mapKeyConnectText, { color: contrastingTextColor(theme.primary) }]}>
+                    Connect
+                  </ThemedText>
+                </View>
+              ) : undefined
+            }
+            onPress={() => void handleMapKey()}
           />
           <SettingsRow 
             icon="trash.fill"
@@ -738,24 +728,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  apiKeyTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  apiKeyDesc: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  apiKeyBtn: {
-    paddingVertical: 9,
+  mapKeyConnect: {
+    paddingVertical: 6,
     paddingHorizontal: 12,
-    borderRadius: Radius.md,
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
+    borderRadius: Radius.full,
   },
-  apiKeyBtnText: {
-    fontSize: 13,
+  mapKeyConnectText: {
+    fontSize: 12,
     fontWeight: '700',
   },
   themeModeGrid: {

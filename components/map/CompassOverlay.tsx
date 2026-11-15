@@ -17,6 +17,11 @@ type Props = {
   distanceText?: string | null;
   headingReferenceLabel?: string | null;
   targetColor?: string | null;
+  /**
+   * When set, the dial ring/housing is drawn in this colour (used for the
+   * "arrived" state, where it is set to the route colour).
+   */
+  ringColor?: string | null;
   onFloat?: () => void;
   style?: ViewStyle;  panelBg?: string;
   borderColor?: string;
@@ -74,6 +79,7 @@ export function CompassOverlay({
   distanceText,
   headingReferenceLabel,
   targetColor,
+  ringColor,
   onFloat,
   style,
   panelBg,
@@ -228,7 +234,19 @@ export function CompassOverlay({
             </Pressable>
           </View>
 
-          <View style={[styles.dial, { backgroundColor: resolvedBackground, borderColor: resolvedBorder, width: dialSize, height: dialSize }]}>
+          <View
+            style={[
+              styles.dial,
+              {
+                backgroundColor: resolvedBackground,
+                borderColor: ringColor ?? resolvedBorder,
+                // Thicker rim in the arrived state so the route colour reads at a glance.
+                borderWidth: ringColor ? Math.max(3, StyleSheet.hairlineWidth) : StyleSheet.hairlineWidth,
+                width: dialSize,
+                height: dialSize,
+              },
+            ]}
+          >
             <Animated.View style={[styles.ring, ringStyle]}>
               {TICKS.map((deg) => {
                 const isMajor = deg % 45 === 0;

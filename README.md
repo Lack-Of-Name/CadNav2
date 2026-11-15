@@ -151,18 +151,9 @@ npm install
 
 ### Environment
 
-```bash
-cp .env.example .env.local
-# then edit .env.local
-```
+No build-time map key is required. On first launch CadNav asks the user to connect their own free MapTiler key in a two-step flow. See [assets/images/manual/manual-api-key-01-signup.png](assets/images/manual/manual-api-key-01-signup.png) through `manual-api-key-04-paste-key.png` for the signup flow.
 
-Required variable:
-
-```text
-EXPO_PUBLIC_MAPTILER_BUNDLED_KEY=your_maptiler_key_here
-```
-
-Get a key at [cloud.maptiler.com](https://cloud.maptiler.com). The bundled key is used for the 24 hour trial tile access. See [assets/images/manual/manual-api-key-01-signup.png](assets/images/manual/manual-api-key-01-signup.png) through `manual-api-key-04-paste-key.png` for the signup flow.
+Get a key at [cloud.maptiler.com](https://cloud.maptiler.com).
 
 ### Run
 
@@ -178,7 +169,7 @@ Expo will print a QR code. Scan it with Expo Go or open the native build.
 
 ## Configuration
 
-- **Map provider**: The API key is injected through `components/map/MapTilerKeyProvider.tsx`. Tile style URL construction lives in `components/map/MaplibreMap.tsx` and `MaplibreMap.utils.tsx`.
+- **Map provider**: Users connect their key through `components/map/ApiKeyOnboarding.tsx`; state and storage live in `components/map/MapTilerKeyProvider.tsx`. Tile style URL construction lives in `components/map/MaplibreMap.tsx` and `MaplibreMap.utils.tsx`.
 - **Magnetic declination**: Calculated locally from `assets/WMMHR.COF` and `assets/WMMHR.json` via `components/map/declination.tsx`. No network required for compass correction.
 - **Storage**: All persistent data uses AsyncStorage keys from `constants/storageKeys.ts`. Workspace routes use `APP_ROUTES`, saved library uses `cadnav2.routes.v1`.
 - **Theming**: Tokens in `constants/theme.ts`, applied through `hooks/use-color-scheme.ts` and themed primitives in `components/themed-text.tsx` and `components/themed-view.tsx`.
@@ -190,13 +181,23 @@ Expo will print a QR code. Scan it with Expo Go or open the native build.
 npm run build:android
 # which runs: expo prebuild --platform android && cd android && gradlew.bat assembleDebug
 
+# Local unsigned IPA (macOS + Xcode only, no Apple certificate)
+npm run build:ios:unsigned
+# writes versions/v<package.json version>-unsigned.ipa
+
 # EAS cloud builds
 eas build --platform android          # production
 eas build --platform android --profile preview
 eas build --platform android --profile development
+eas build --platform ios              # production
+eas build --platform ios --profile preview
 ```
 
+The unsigned IPA script is intended for initial testing on a jailbroken/TrollStore device or for re-signing later. A stock iPhone will not install an unsigned IPA. Apple's `xcodebuild` only runs on macOS, so the script cannot run on Windows or Linux.
+
 Profiles are defined in [eas.json](eas.json). Project ID is set in [app.json](app.json) under `extra.eas.projectId`. For store submission see the `submit` profile in `eas.json` and run `eas submit`.
+
+The project uses `"appVersionSource": "remote"` in `eas.json`, so the EAS remote version must be registered too. After `npm run version:update -- <version>`, run `eas build:version:set -p ios` and `eas build:version:set -p android` from an interactive terminal and enter the next build number.
 
 ## Documentation
 

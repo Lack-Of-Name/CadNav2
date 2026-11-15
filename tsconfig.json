@@ -5,6 +5,9 @@
     "allowJs": true,
     "checkJs": false,
     "strict": true,
+    // Tests run under Node's native type stripping, which requires explicit
+    // .ts extensions in relative imports. Harmless for Metro (noEmit: true).
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./*"

@@ -58,6 +58,12 @@ const MAPPING = {
   'antenna.radiowaves.left.and.right': 'settings-input-antenna',
   'bolt.fill': 'bolt',
   'qrcode': 'qr-code',
+  // API key onboarding
+  'key.fill': 'vpn-key',
+  'checkmark.circle.fill': 'check-circle',
+  'doc.on.doc.fill': 'content-copy',
+  'arrow.right': 'arrow-forward',
+  'lock.shield.fill': 'security',
   // extra mappings used by AboutContent diagnostics
   'sensor.tag.radiowaves.forward.fill': 'sensors',
   'sensor.tag.radiowaves.forward': 'sensors',

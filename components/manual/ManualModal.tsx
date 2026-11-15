@@ -2,6 +2,8 @@ import { MANUAL_SECTIONS, type ManualItem, type ManualSection } from '@/constant
 import { Colors, Radius, Space } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useMapTilerKey } from '@/components/map/MapTilerKeyProvider';
+import { maskApiKey } from '@/lib/apiKey';
+import { contrastingTextColor } from '@/lib/colorUtils';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -39,6 +41,8 @@ type ViewMode = 'sections' | 'items' | 'detail';
 type ThemeColors = {
   primary: string;
   secondary: string;
+  success: string;
+  error: string;
   text: string;
   textMuted: string;
   textSubtle: string;
@@ -337,16 +341,18 @@ function ApiKeyInlineField({ C }: { C: ThemeColors }) {
     setSaving(false);
     if (!res.ok) setError(res.message);
     else {
-      setSuccess('Key saved. The map will reload with tiles.');
+      setSuccess('Connected. The map will reload with tiles.');
       setInput('');
     }
   };
 
+  const primaryText = contrastingTextColor(C.primary);
+
   return (
     <View style={[styles.apiKeyFieldCard, { backgroundColor: C.background, borderColor: C.divider }]}>
-      <Text style={[styles.apiKeyFieldTitle, { color: C.text }]}>Paste your MapTiler key here</Text>
+      <Text style={[styles.apiKeyFieldTitle, { color: C.text }]}>Connect your map key</Text>
       <Text style={[styles.apiKeyFieldHelp, { color: C.textMuted }]}>
-        Copy your key from cloud.maptiler.com/account/keys and paste below. Tap Save to store it. Current: {apiKey ? `${apiKey.slice(0, 6)}...${apiKey.slice(-4)}` : 'none saved'}
+        Paste the key you copied from MapTiler. Current: {maskApiKey(apiKey) ?? 'not connected'}
       </Text>
       <TextInput
         value={input}
@@ -358,26 +364,27 @@ function ApiKeyInlineField({ C }: { C: ThemeColors }) {
         autoComplete="off"
         style={[styles.apiKeyInput, { color: C.text, borderColor: C.divider, backgroundColor: C.surface }]}
       />
-      {error ? <Text style={[styles.apiKeyError, { color: '#B54A3C' }]}>{error}</Text> : null}
-      {success ? <Text style={[styles.apiKeySuccess, { color: '#5C7A3A' }]}>{success}</Text> : null}
+      {error ? <Text style={[styles.apiKeyError, { color: C.error }]}>{error}</Text> : null}
+      {success ? <Text style={[styles.apiKeySuccess, { color: C.success }]}>{success}</Text> : null}
       <View style={styles.apiKeyActions}>
         <Pressable
           onPress={() => Linking.openURL('https://cloud.maptiler.com/account/keys')}
           style={[styles.apiKeySecondaryBtn, { borderColor: C.divider }]}
         >
-          <Text style={[styles.apiKeySecondaryBtnText, { color: C.text }]}>Open MapTiler keys</Text>
+          <Text style={[styles.apiKeySecondaryBtnText, { color: C.text }]}>Open MapTiler</Text>
         </Pressable>
         <Pressable
           onPress={handleSave}
           disabled={saving}
           style={[styles.apiKeyPrimaryBtn, { backgroundColor: C.primary, opacity: saving ? 0.7 : 1 }]}
         >
-          {saving ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.apiKeyPrimaryBtnText}>Save key</Text>}
+          {saving ? (
+            <ActivityIndicator color={primaryText} size="small" />
+          ) : (
+            <Text style={[styles.apiKeyPrimaryBtnText, { color: primaryText }]}>Connect</Text>
+          )}
         </Pressable>
       </View>
-      <Pressable onPress={() => Linking.openURL('https://cloud.maptiler.com/')} style={styles.apiKeyLink}>
-        <Text style={[styles.apiKeyLinkText, { color: C.textMuted }]}>Need a key: cloud.maptiler.com - sign up free</Text>
-      </Pressable>
     </View>
   );
 }
@@ -637,17 +644,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   apiKeyPrimaryBtnText: {
-    color: '#fff',
     fontSize: 13,
     fontWeight: '700',
-  },
-  apiKeyLink: {
-    marginTop: 4,
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  apiKeyLinkText: {
-    fontSize: 12,
   },
 
   // Footer

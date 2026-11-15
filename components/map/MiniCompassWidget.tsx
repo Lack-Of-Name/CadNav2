@@ -8,6 +8,11 @@ type Props = {
   headingDeg: number | null;
   targetBearingDeg: number | null;
   targetColor?: string | null;
+  /**
+   * When set, the dial ring/housing is drawn in this colour (used for the
+   * "arrived" state, where it is set to the route colour).
+   */
+  ringColor?: string | null;
   panelBg: string;
   borderColor: string;
   dialBg: string;
@@ -122,6 +127,7 @@ export function MiniCompassWidget({
   headingDeg,
   targetBearingDeg,
   targetColor,
+  ringColor,
   panelBg,
   borderColor,
   dialBg,
@@ -265,7 +271,14 @@ export function MiniCompassWidget({
           <View
             style={[
               styles.dial,
-              { backgroundColor: dialBg, borderColor, width: dialSize, height: dialSize },
+              {
+                backgroundColor: dialBg,
+                borderColor: ringColor ?? borderColor,
+                // Thicker rim in the arrived state so the route colour reads at a glance.
+                borderWidth: ringColor ? Math.max(3, StyleSheet.hairlineWidth) : StyleSheet.hairlineWidth,
+                width: dialSize,
+                height: dialSize,
+              },
             ]}
           >
             <Animated.View style={[styles.fill, ringStyle]}>

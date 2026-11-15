@@ -2,31 +2,40 @@ import { alert as showAlert } from '@/components/alert';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import StyledButton from '@/components/ui/StyledButton';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { FIRST_OPEN_TIME, MAPTILER_API_KEY as STORAGE_KEY, TUTORIALS_COMPLETED } from '@/constants/storageKeys';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { MAPTILER_API_KEY as STORAGE_KEY, TUTORIALS_COMPLETED } from '@/constants/storageKeys';
+import { parseApiKeyInput } from '@/lib/apiKey';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, AppStateStatus, KeyboardAvoidingView, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, AppState, AppStateStatus, Linking, Modal, Platform, StyleSheet, View } from 'react-native';
 
-const BUNDLED_KEY = process.env.EXPO_PUBLIC_MAPTILER_BUNDLED_KEY ?? null;
-const TRIAL_DURATION_MS = 24 * 60 * 60 * 1000;
+import { ApiKeyOnboarding } from './ApiKeyOnboarding';
+
+type PromptOptions = {
+  /** Jump straight to the paste step (used when replacing an existing key). */
+  startAtPaste?: boolean;
+};
 
 type ContextValue = {
   apiKey: string | null;
   loading: boolean;
   clearApiKey: () => Promise<void>;
-  promptForKey: () => void;
+  promptForKey: (options?: PromptOptions) => void;
   saveApiKey: (rawInput: string) => Promise<{ ok: true } | { ok: false; message: string }>;
   pendingTutorialId: string | null;
   clearPendingTutorial: () => void;
 };
 
-const MapTilerKeyContext = createContext<ContextValue>({ apiKey: null, loading: true, clearApiKey: async () => {}, promptForKey: () => {}, saveApiKey: async () => ({ ok: false, message: 'Not ready' }), pendingTutorialId: null, clearPendingTutorial: () => {} });
+const MapTilerKeyContext = createContext<ContextValue>({
+  apiKey: null,
+  loading: true,
+  clearApiKey: async () => {},
+  promptForKey: () => {},
+  saveApiKey: async () => ({ ok: false, message: 'Not ready' }),
+  pendingTutorialId: null,
+  clearPendingTutorial: () => {},
+});
 
 export function useMapTilerKey() {
   return useContext(MapTilerKeyContext);
@@ -36,105 +45,84 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [startAtPaste, setStartAtPaste] = useState(false);
   const [showTutorialPrompt, setShowTutorialPrompt] = useState(false);
   const [pendingTutorialId, setPendingTutorialId] = useState<string | null>(null);
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [orientationModalVisible, setOrientationModalVisible] = useState(false);
   const tutorialPromptShownRef = useRef(false);
-  const inputTextColor = useThemeColor({}, 'text');
-  const inputBorderColor = useThemeColor({}, 'tabIconDefault');
-  const placeholderColor = useThemeColor({ light: '#999', dark: '#666' }, 'text');
 
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       try {
-        let key: string | null = null;
         const saved = await AsyncStorage.getItem(STORAGE_KEY);
+        if (!mounted) return;
+
         if (saved) {
-          key = saved;
-          setApiKey(key);
+          setApiKey(saved);
           setShowModal(false);
-          setLoading(false);
-        } else {
-          const firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_TIME);
-          const now = Date.now();
 
-          if (!firstOpenRaw) {
-            await AsyncStorage.setItem(FIRST_OPEN_TIME, String(now));
-            if (BUNDLED_KEY) {
-              key = BUNDLED_KEY;
-              setApiKey(key);
-              setShowModal(false);
-            }
-            setLoading(false);
-          } else {
-            const firstOpen = parseInt(firstOpenRaw, 10);
-            if (now - firstOpen < TRIAL_DURATION_MS && BUNDLED_KEY) {
-              key = BUNDLED_KEY;
-              setApiKey(key);
-              setShowModal(false);
-            }
-            setLoading(false);
-          }
-        }
-
-        if (key) {
           const locOk = await requestLocationPermission();
+          if (!mounted) return;
           if (!locOk) setLocationModalVisible(true);
           else {
             const orientOk = await requestOrientationPermission();
+            if (!mounted) return;
             if (!orientOk) setOrientationModalVisible(true);
           }
+        } else {
+          // No trial fallback: the map needs a key, so make that the first step.
+          setShowModal(true);
         }
       } catch (err) {
-        setShowModal(true);
-        void showAlert({ title: 'MapTilerKeyProvider', message: String(err) });
+        if (mounted) {
+          setShowModal(true);
+          void showAlert({ title: 'MapTilerKeyProvider', message: String(err) });
+        }
       } finally {
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // Re-check location permission whenever the app becomes active, skip API key verification to prevent offline wait states
+  // Re-check the stored key and location permission when the app becomes active.
+  // The key itself is not re-verified here so offline use never blocks on a
+  // network round-trip.
   useEffect(() => {
     let mounted = true;
     const handleAppState = (next: AppStateStatus) => {
-      if (next === 'active') {
-        (async () => {
-          try {
-            const saved = await AsyncStorage.getItem(STORAGE_KEY);
-            if (saved) {
-              if (!mounted) return;
-              setShowModal(false);
-              if (!locationModalVisible) {
-                const locOk = await requestLocationPermission();
-                if (!locOk && mounted) setLocationModalVisible(true);
-                else {
-                  const orientOk = await requestOrientationPermission();
-                  if (!orientOk && mounted) setOrientationModalVisible(true);
-                }
-              }
-            } else {
-              // No saved key — check if still within trial
-              const firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_TIME);
-              if (firstOpenRaw) {
-                const firstOpen = parseInt(firstOpenRaw, 10);
-                if (Date.now() - firstOpen < TRIAL_DURATION_MS) {
-                  if (mounted) setShowModal(false);
-                } else {
-                  if (mounted) setShowModal(true);
-                }
-              } else {
-                // No first-open recorded (shouldn't happen, but handle gracefully)
-                if (mounted) setShowModal(false);
+      if (next !== 'active') return;
+
+      (async () => {
+        try {
+          const saved = await AsyncStorage.getItem(STORAGE_KEY);
+          if (!mounted) return;
+
+          if (saved) {
+            setApiKey(saved);
+            setShowModal(false);
+            if (!locationModalVisible) {
+              const locOk = await requestLocationPermission();
+              if (!locOk && mounted) setLocationModalVisible(true);
+              else {
+                const orientOk = await requestOrientationPermission();
+                if (!orientOk && mounted) setOrientationModalVisible(true);
               }
             }
-          } catch (err) {
-            if (mounted) setShowModal(true);
-            void showAlert({ title: 'MapTilerKeyProvider', message: String(err) });
+          } else {
+            setShowModal(true);
           }
-        })();
-      }
+        } catch (err) {
+          if (mounted) setShowModal(true);
+          void showAlert({ title: 'MapTilerKeyProvider', message: String(err) });
+        }
+      })();
     };
 
     const sub = AppState.addEventListener('change', handleAppState);
@@ -151,53 +139,63 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       const max = 1 << z; // 2^20 = 1,048,576
       const x = Math.floor(Math.random() * max);
       const y = Math.floor(Math.random() * max);
-      const url = `https://api.maptiler.com/maps/outdoor-v2/256/${z}/${x}/${y}.png?key=${key}`;
+      const url = `https://api.maptiler.com/maps/outdoor-v2/256/${z}/${x}/${y}.png?key=${encodeURIComponent(key)}`;
       // Cap the verify request so a flaky field connection can't hang the modal forever.
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12000);
       const res = await fetch(url, { method: 'GET', signal: controller.signal });
       clearTimeout(timeout);
       if (res.ok) return { ok: true, isNetworkError: false };
-      
-      // If we got an unauthorized/forbidden, the key is definitely invalid
+
+      // If we got an unauthorized/forbidden, the key is definitely invalid.
       if (res.status === 401 || res.status === 403) {
-        return { ok: false, message: `Invalid API key: ${res.status} ${res.statusText}`, isNetworkError: false };
+        return {
+          ok: false,
+          message: 'That key was rejected. Copy it from MapTiler and try again.',
+          isNetworkError: false,
+        };
       }
-      
-      // For rate limits (429) or server errors (5xx), we shouldn't assume the key is bad
-      // and lock the user out, especially if they are out in the field.
-      // Provide status info for better debugging when used from the modal
-      return { ok: true, message: `Request failed but not resetting: ${res.status} ${res.statusText}`, isNetworkError: true };
+
+      // For rate limits (429) or server errors (5xx), don't assume the key is
+      // bad and lock the user out, especially if they are out in the field.
+      return { ok: true, isNetworkError: true };
     } catch (err: any) {
-      // Network error / timeout, probably offline or flaky. Don't reject the key —
-      // let the user save it and try the map; we only reject on an explicit 401/403 above.
+      // Network error / timeout: let the user save the key and try the map.
+      // We only reject on an explicit 401/403 above.
       const isAbort = err?.name === 'AbortError';
-      return { ok: true, message: isAbort ? 'Verification timed out — saved anyway. The map will confirm the key works.' : (err?.message ?? 'Network error'), isNetworkError: true };
+      return {
+        ok: true,
+        message: isAbort ? 'Verification timed out. Your key was saved.' : undefined,
+        isNetworkError: true,
+      };
     }
   }
 
   async function submitApiKey(rawInput: string) {
-    const input = rawInput.trim();
-    if (!input) return { ok: false, message: 'Please enter your MapTiler API key.' } as const;
+    const input = parseApiKeyInput(rawInput);
+    if (!input) {
+      return {
+        ok: false,
+        message: 'That does not look like a MapTiler key. Copy it from MapTiler and try again.',
+      } as const;
+    }
 
     const res = await verifyKey(input);
     if (!res.ok) {
-      return { ok: false, message: res.message ?? 'The provided MapTiler API key is invalid. Please check it and try again.' } as const;
+      return {
+        ok: false,
+        message: res.message ?? 'That key did not work. Copy it from MapTiler and try again.',
+      } as const;
     }
 
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, input.trim());
-      setApiKey(input.trim());
-      setShowModal(false);
-      maybeShowTutorialPrompt();
-      // after receiving a valid API key, request location permission (prompt user)
-      const locOk = await requestLocationPermission(true);
-      if (!locOk) setLocationModalVisible(true);
+      await AsyncStorage.setItem(STORAGE_KEY, input);
+      setApiKey(input);
       return { ok: true } as const;
     } catch (err) {
       Alert.alert('Storage error', 'Failed to save the API key for future launches.');
       void showAlert({ title: 'MapTiler storage error', message: String(err) });
-      return { ok: false, message: String(err) } as const;
+      return { ok: false, message: 'Could not save the key on this device.' } as const;
     }
   }
 
@@ -230,15 +228,12 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
           navigator.geolocation.getCurrentPosition(
             () => resolve(true),
             () => resolve(false),
-            { timeout: 8000 }
+            { timeout: 8000 },
           );
         });
       } else {
-          const { status } = await Location.requestForegroundPermissionsAsync();
-          if (status === 'granted') {
-            return true;
-          }
-          return false;
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        return status === 'granted';
       }
     } catch (err) {
       void showAlert({ title: 'MapTiler requestLocationPermission', message: String(err) });
@@ -251,7 +246,7 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS !== 'web') return true; // orientation permission API is for web/iOS Safari
       // If DeviceOrientationEvent.requestPermission exists (iOS Safari), call it
       if (!('DeviceOrientationEvent' in window)) return false;
-      const ctor: any = (DeviceOrientationEvent as any);
+      const ctor: any = DeviceOrientationEvent as any;
       if (typeof ctor.requestPermission === 'function') {
         try {
           const result = await ctor.requestPermission();
@@ -283,25 +278,33 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   async function clearApiKey() {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
-      // Fall back to the bundled key if still within the trial period
-      const firstOpenRaw = await AsyncStorage.getItem(FIRST_OPEN_TIME);
-      if (firstOpenRaw && BUNDLED_KEY) {
-        const firstOpen = parseInt(firstOpenRaw, 10);
-        if (Date.now() - firstOpen < TRIAL_DURATION_MS) {
-          setApiKey(BUNDLED_KEY);
-          setShowModal(false);
-          return;
-        }
-      }
     } catch (err) {
       void showAlert({ title: 'MapTiler clearApiKey', message: String(err) });
     }
     setApiKey(null);
+    setStartAtPaste(true);
     setShowModal(true);
   }
 
-  function promptForKey() {
+  function promptForKey(options?: PromptOptions) {
+    setStartAtPaste(!!options?.startAtPaste);
     setShowModal(true);
+  }
+
+  function handleKeyDone() {
+    setShowModal(false);
+    setStartAtPaste(false);
+    maybeShowTutorialPrompt();
+
+    void (async () => {
+      const locOk = await requestLocationPermission(true);
+      if (!locOk) {
+        setLocationModalVisible(true);
+        return;
+      }
+      const orientOk = await requestOrientationPermission();
+      if (!orientOk) setOrientationModalVisible(true);
+    })();
   }
 
   async function maybeShowTutorialPrompt() {
@@ -327,23 +330,32 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <MapTilerKeyContext.Provider value={{ apiKey, loading, clearApiKey, promptForKey, saveApiKey: submitApiKey, pendingTutorialId, clearPendingTutorial: () => setPendingTutorialId(null) }}>
+    <MapTilerKeyContext.Provider
+      value={{
+        apiKey,
+        loading,
+        clearApiKey,
+        promptForKey,
+        saveApiKey: submitApiKey,
+        pendingTutorialId,
+        clearPendingTutorial: () => setPendingTutorialId(null),
+      }}
+    >
       {children}
-      <KeyEntryModal
+      <ApiKeyOnboarding
         visible={showModal}
-        inputTextColor={inputTextColor}
-        inputBorderColor={inputBorderColor}
-        placeholderColor={placeholderColor}
-        onCancel={() => { setShowModal(false); maybeShowTutorialPrompt(); }}
-        onOpenMapTiler={() => Linking.openURL('https://cloud.maptiler.com/account/keys/')}
+        initialStep={startAtPaste ? 'paste' : 'intro'}
         onSubmitKey={submitApiKey}
+        onDone={handleKeyDone}
       />
 
       <Modal visible={locationModalVisible} animationType="fade" transparent={true}>
         <View style={styles.backdrop}>
           <ThemedView style={styles.container}>
             <ThemedText style={styles.title}>Location Permission Required</ThemedText>
-            <ThemedText style={styles.help}>This app requires location access to function. Please enable location for this app/site.</ThemedText>
+            <ThemedText style={styles.help}>
+              This app requires location access to function. Please enable location for this app/site.
+            </ThemedText>
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={openSettings}>
                 Open Settings
@@ -367,7 +379,9 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
         <View style={styles.backdrop}>
           <ThemedView style={styles.container}>
             <ThemedText style={styles.title}>Orientation Permission Required</ThemedText>
-            <ThemedText style={styles.help}>This app needs access to device orientation (compass) to show device heading. Please grant access to continue.</ThemedText>
+            <ThemedText style={styles.help}>
+              This app needs access to device orientation (compass) to show device heading. Please grant access to continue.
+            </ThemedText>
             <View style={styles.row}>
               <StyledButton variant="secondary" onPress={() => { /* guide text only */ }}>
                 Help
@@ -420,122 +434,12 @@ function MapTilerKeyProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-function KeyEntryModal({
-  visible,
-  inputTextColor,
-  inputBorderColor,
-  placeholderColor,
-  onCancel,
-  onOpenMapTiler,
-  onSubmitKey,
-}: {
-  visible: boolean;
-  inputTextColor: string;
-  inputBorderColor: string;
-  placeholderColor: string;
-  onCancel: () => void;
-  onOpenMapTiler: () => void;
-  onSubmitKey: (input: string) => Promise<{ ok: true } | { ok: false; message: string }>;
-}) {
-  const [input, setInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
-  const colorScheme = useColorScheme() ?? 'light';
-
-  useEffect(() => {
-    if (!visible) {
-      setInput('');
-      setError(null);
-      setVerifying(false);
-    }
-  }, [visible]);
-
-  return (
-    <Modal
-      visible={visible}
-      animationType="fade"
-      transparent={true}
-      presentationStyle="overFullScreen"
-      statusBarTranslucent={Platform.OS === 'android'}
-      navigationBarTranslucent={Platform.OS === 'android'}
-    >
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
-          <View style={styles.backdrop}>
-          <ThemedView style={styles.container}>
-            <ScrollView bounces={false} overScrollMode="never" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollBody}>
-              <View style={styles.heroRow}>
-                <View style={[styles.heroIcon, { backgroundColor: Colors[colorScheme].primary }]}>
-                  <IconSymbol name="map.fill" size={22} color="#fff" />
-                </View>
-                <View style={styles.heroText}>
-                  <ThemedText style={styles.title}>Free trial ended</ThemedText>
-                  <ThemedText style={styles.subtitle}>Bring your own free MapTiler key to continue</ThemedText>
-                </View>
-              </View>
-
-              <ThemedText style={styles.help}>
-                Your 24-hour free trial has ended. CadNav is free and open source, so to keep
-                tile costs at zero we ask you to add your own free MapTiler key. The free tier
-                is generous and covers normal field use.
-              </ThemedText>
-
-              <TextInput
-                autoFocus
-                placeholder="Paste your MapTiler key"
-                placeholderTextColor={placeholderColor}
-                value={input}
-                onChangeText={(t) => {
-                  setInput(t);
-                  setError(null);
-                }}
-                style={[styles.input, { color: inputTextColor, borderColor: inputBorderColor }]}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="off"
-                textContentType="none"
-                importantForAutofill="no"
-              />
-              {error ? <ThemedText style={[styles.error, { color: Colors[colorScheme].error }]}>{error}</ThemedText> : null}
-              <View style={styles.row}>
-                <StyledButton variant="secondary" onPress={onOpenMapTiler}>
-                  Get a key
-                </StyledButton>
-                <View style={styles.spacer} />
-                <StyledButton
-                  variant="primary"
-                  onPress={async () => {
-                    setVerifying(true);
-                    const result = await onSubmitKey(input);
-                    setVerifying(false);
-                    if (!result.ok) setError(result.message);
-                  }}
-                  disabled={verifying}
-                >
-                  {verifying ? <ActivityIndicator color="#fff" /> : 'Save key'}
-                </StyledButton>
-              </View>
-              <TouchableOpacity
-                style={styles.offlineLink}
-                onPress={onCancel}
-              >
-                <ThemedText style={styles.offlineLinkText}>
-                  Skip for now (offline mode)
-                </ThemedText>
-              </TouchableOpacity>
-            </ScrollView>
-          </ThemedView>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   container: {
     width: '90%',
@@ -552,43 +456,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  subtitle: {
-    fontSize: 13,
-    opacity: 0.6,
-    marginTop: 2,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
-  },
-  heroIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroText: {
-    flex: 1,
-  },
   help: {
+    marginTop: 8,
     marginBottom: 16,
     opacity: 0.7,
     fontSize: 14,
     lineHeight: 20,
-  },
-  
-  scrollBody: {
-    paddingBottom: 8,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    fontSize: 16,
   },
   row: {
     flexDirection: 'row',
@@ -596,19 +469,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   spacer: { width: 12 },
-  error: {
-    marginBottom: 8,
-  },
-  offlineLink: {
-    marginTop: 20,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  offlineLinkText: {
-    fontSize: 13,
-    opacity: 0.5,
-  },
-  
 });
 
 export default MapTilerKeyProvider;

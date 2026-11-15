@@ -51,11 +51,11 @@ const apiKeyTutorial: Tutorial = {
     },
     {
       title: 'Getting a Key',
-      text: 'Go to cloud.maptiler.com and sign up for a free account. Once logged in, go to your account settings and copy your API key.',
+      text: 'Tap Get my free key. CadNav opens MapTiler, where you create a free account and copy the key it gives you.',
     },
     {
       title: 'Entering the Key',
-      text: 'Tap the MapTiler API Key row in Settings, then paste your key. The map will automatically reload with your tiles once the key is saved.',
+      text: 'Return to CadNav, tap Paste, then Connect map. The map reloads automatically. You can replace the key later in Settings.',
     },
   ],
 };

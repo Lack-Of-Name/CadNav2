@@ -23,6 +23,7 @@ This file is the fastest way to understand where the app lives and which files t
 - [components/map/MapGrid.ts](../components/map/mapGrid.ts) contains grid reference math and conversion helpers.
 - [components/map/converter.tsx](../components/map/converter.tsx) contains coordinate and declination conversion helpers.
 - [components/map/MapTilerKeyProvider.tsx](../components/map/MapTilerKeyProvider.tsx) supplies the MapTiler API key context.
+- [components/map/ApiKeyOnboarding.tsx](../components/map/ApiKeyOnboarding.tsx) is the two-step Connect your map flow.
 - [components/map/gridoverlay.web.tsx](../components/map/gridoverlay.web.tsx) is the web-only grid overlay implementation.
 
 ## UI Building Blocks
